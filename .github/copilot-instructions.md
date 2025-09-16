@@ -53,3 +53,62 @@ Notes:
 - README and these instructions updated when public behavior, run commands, or structure change.
 
 Keep this file short and practical. Adjust examples when versions/paths change.
+
+---
+
+# Agent Development and Documentation Protocol
+
+This section defines the workflow and standards for AI coding agents working in this repository. The goal is to ensure that every new or changed functional requirement is fully understood, documented, implemented, and tested to a high standard.
+
+## 1. Requirement Clarification
+- When a new functional requirement is described, the agent must:
+   - Ask clarifying questions to fully understand the feature, its scope, and acceptance criteria.
+   - If the requirement is a change to an existing feature, clarify the nature and impact of the change.
+   - If the feature is complex, suggest splitting it into smaller, manageable steps.
+
+## 2. Functional Documentation
+- The agent must:
+   - Update the functional documentation to include the new feature or update the relevant section if it is a change.
+   - Ensure the documentation clearly describes:
+      - The purpose and scope of the feature
+      - User stories or scenarios
+      - Acceptance criteria
+      - Any dependencies or constraints
+
+## 3. Technical Documentation
+- The agent must:
+   - Review existing technical documentation for relevant context.
+   - Ask questions to clarify technical details as needed.
+   - Update technical documentation to reflect any new or changed implementation details, including:
+      - Architecture and design decisions
+      - Data models and APIs
+      - Integration points
+      - Error handling and edge cases
+
+## 4. Implementation
+- The agent must:
+   - Develop the feature according to the clarified requirements and updated documentation.
+   - Follow repository conventions and best practices.
+   - If the feature is too complex, break it into multiple PRs or steps as appropriate.
+
+## 5. Testing
+- The agent must:
+   - Ensure automated tests exist for all new or changed functionality.
+   - Target at least 85% code coverage for the relevant code.
+   - Add or update tests as needed (unit, integration, or end-to-end).
+   - Do not consider the feature complete until all tests pass.
+
+## 6. Review and Iteration
+- The agent must:
+   - Review the implementation and documentation for completeness and clarity.
+   - Iterate as needed based on feedback or test results.
+
+## 7. Completion Criteria
+- The feature is only considered complete when:
+   - Functional and technical documentation are up to date
+   - Implementation matches the requirements
+   - Tests exist and pass with at least 85% coverage
+
+---
+
+**Note:** This protocol is mandatory for all agent-driven development in this repository. Any deviation must be justified and documented.
