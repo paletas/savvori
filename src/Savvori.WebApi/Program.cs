@@ -1,4 +1,3 @@
-using Microsoft.EntityFrameworkCore;
 using Savvori.WebApi;
 using Savvori.Shared;
 using Savvori.WebApi.Scraping;
@@ -6,16 +5,18 @@ using Savvori.WebApi.Scraping.Scrapers;
 using Savvori.WebApi.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.EntityFrameworkCore;
 using Quartz;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.AddServiceDefaults();
 
 builder.Services.AddOpenApi();
 
 builder.Services.AddMemoryCache();
 
-builder.Services.AddDbContext<SavvoriDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+builder.AddNpgsqlDbContext<SavvoriDbContext>("savvori");
 
 builder.Services.AddAuthentication(options =>
 {
@@ -148,9 +149,12 @@ builder.Services.AddQuartzHostedService(q => q.WaitForJobsToComplete = true);
 
 var app = builder.Build();
 
+app.MapDefaultEndpoints();
+
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<SavvoriDbContext>();
+    await db.Database.MigrateAsync();
     await CategorySeeder.SeedAsync(db, app.Logger);
 }
 

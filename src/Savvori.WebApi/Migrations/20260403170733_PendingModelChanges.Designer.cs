@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Savvori.WebApi;
@@ -11,9 +12,11 @@ using Savvori.WebApi;
 namespace Savvori.WebApi.Migrations
 {
     [DbContext(typeof(SavvoriDbContext))]
-    partial class SavvoriDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260403170733_PendingModelChanges")]
+    partial class PendingModelChanges
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
