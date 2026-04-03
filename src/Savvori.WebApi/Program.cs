@@ -3,6 +3,7 @@ using Savvori.WebApi;
 using Savvori.Shared;
 using Savvori.WebApi.Scraping;
 using Savvori.WebApi.Scraping.Scrapers;
+using Savvori.WebApi.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Quartz;
@@ -10,6 +11,8 @@ using Quartz;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
+
+builder.Services.AddMemoryCache();
 
 builder.Services.AddDbContext<SavvoriDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
@@ -62,11 +65,55 @@ builder.Services.AddHttpClient("pingodoce", c =>
     c.Timeout = TimeSpan.FromSeconds(60);
 });
 
+builder.Services.AddHttpClient("auchan", c =>
+{
+    c.BaseAddress = new Uri("https://www.auchan.pt");
+    c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
+    c.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "pt-PT,pt;q=0.9");
+    c.Timeout = TimeSpan.FromSeconds(60);
+});
+
+builder.Services.AddHttpClient("minipreco", c =>
+{
+    c.BaseAddress = new Uri("https://www.minipreco.pt");
+    c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
+    c.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "pt-PT,pt;q=0.9");
+    c.Timeout = TimeSpan.FromSeconds(60);
+});
+
+// Default HttpClient for stub scrapers (Lidl, Intermarché, Mercadona)
+foreach (var stubSlug in new[] { "lidl", "intermarche", "mercadona" })
+{
+    builder.Services.AddHttpClient(stubSlug, c =>
+    {
+        c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
+        c.Timeout = TimeSpan.FromSeconds(30);
+    });
+}
+
 builder.Services.AddScoped<ScraperResultProcessor>();
 
 // Register all IStoreScraper implementations
 builder.Services.AddScoped<IStoreScraper, ContinenteScraper>();
 builder.Services.AddScoped<IStoreScraper, PingoDoceScraper>();
+builder.Services.AddScoped<IStoreScraper, AuchanScraper>();
+builder.Services.AddScoped<IStoreScraper, MiniprecoScraper>();
+builder.Services.AddScoped<IStoreScraper, LidlScraper>();
+builder.Services.AddScoped<IStoreScraper, InterarcheScraper>();
+builder.Services.AddScoped<IStoreScraper, MercadonaScraper>();
+
+// Location and optimization services
+builder.Services.AddHttpClient("geoapi", c =>
+{
+    c.BaseAddress = new Uri("https://geo.iotech.pt");
+    c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "Savvori/1.0");
+    c.Timeout = TimeSpan.FromSeconds(10);
+});
+builder.Services.AddScoped<ILocationService, GeoApiLocationService>();
+builder.Services.AddScoped<IShoppingOptimizer, ShoppingOptimizer>();
 
 // --- Quartz scheduler ---
 builder.Services.AddQuartz(q =>
@@ -100,6 +147,12 @@ builder.Services.AddQuartz(q =>
 builder.Services.AddQuartzHostedService(q => q.WaitForJobsToComplete = true);
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<SavvoriDbContext>();
+    await CategorySeeder.SeedAsync(db, app.Logger);
+}
 
 if (app.Environment.IsDevelopment())
 {

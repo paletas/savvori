@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head><title>Minipreço Product Listing Fixture</title></head>
+<body>
+<div id="productgridcontainer" class="productgridcontainer disposicion_grid">
+
+  <!-- Product 1: Regular product with unit price -->
+  <div class="product-list__item">
+    <div class="product-list__item__badge"></div>
+    <a href="/produtos/laticinios-e-ovos/leite/leite-meio-gordo-e-gordo/p/6692">
+      <img src="https://s2.minipreco.pt/medias/mimosa_magro.jpg" alt="Mimosa Leite Magro">
+      MIMOSA Leite Magro 1 L
+      <div class="price_container">
+        <p class="price">1,00 €</p>
+        <p class="pricePerKilogram">(1,00 €/l.)</p>
+      </div>
+    </a>
+    <input class="price" type="hidden" value="1.00" />
+    <button>Adicionar</button>
+  </div>
+
+  <!-- Product 2: Promotion -->
+  <div class="product-list__item">
+    <div class="product-list__item__badge badge-discount">-12% SOBRE PVPR</div>
+    <a href="/produtos/laticinios-e-ovos/leite/bebidas-vegetais/p/195043">
+      <img src="https://s1.minipreco.pt/medias/mimosa_sl.jpg" alt="Mimosa Leite Sem Lactose">
+      MIMOSA Leite Magro Sem Lactose 1 L
+      <div class="price_container">
+        <p class="price">1,14 €</p>
+        <p class="pricePerKilogram">(1,14 €/l.)</p>
+      </div>
+    </a>
+    <input class="price" type="hidden" value="1.14" />
+    <button>Adicionar</button>
+  </div>
+
+  <!-- Product 3: Product with kg unit price -->
+  <div class="product-list__item">
+    <a href="/produtos/mercearia/arroz/arroz-agulha/p/11111">
+      <img src="https://s3.minipreco.pt/medias/arroz.jpg" alt="Arroz">
+      CAÇAROLA Arroz Agulha 1 Kg
+      <div class="price_container">
+        <p class="price">0,89 €</p>
+        <p class="pricePerKilogram">(0,89 €/Kg.)</p>
+      </div>
+    </a>
+    <input class="price" type="hidden" value="0.89" />
+    <button>Adicionar</button>
+  </div>
+
+  <!-- Product 4: Small package ml -->
+  <div class="product-list__item">
+    <a href="/produtos/laticinios-e-ovos/leite/leite-meio-gordo-e-gordo/p/262214">
+      <img src="https://s3.minipreco.pt/medias/mimosa_200.jpg" alt="Mimosa 200ml">
+      MIMOSA Leite Meio Gordo Sem Lactose UHT 200 ml
+      <div class="price_container">
+        <p class="price">0,53 €</p>
+        <p class="pricePerKilogram">(2,65 €/l.)</p>
+      </div>
+    </a>
+    <button>Adicionar</button>
+  </div>
+
+  <!-- Product 5: No href with /p/ — should be skipped -->
+  <div class="product-list__item">
+    <a href="/produtos/categoria-apenas">
+      Produto sem ID
+      <p class="price">0,99 €</p>
+    </a>
+  </div>
+
+</div>
+</body>
+</html>

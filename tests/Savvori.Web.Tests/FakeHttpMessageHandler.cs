@@ -18,9 +18,15 @@ public sealed class FakeHttpMessageHandler : HttpMessageHandler
     public void SetDefaultResponse(string html)
         => _defaultContent = html;
 
+    private int _requestCount;
+
+    /// <summary>Total number of HTTP requests processed by this handler.</summary>
+    public int RequestCount => _requestCount;
+
     protected override Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request, CancellationToken cancellationToken)
     {
+        Interlocked.Increment(ref _requestCount);
         var url = request.RequestUri?.ToString() ?? string.Empty;
         var (status, content) = _routes
             .Where(kv => url.Contains(kv.Key, StringComparison.OrdinalIgnoreCase))

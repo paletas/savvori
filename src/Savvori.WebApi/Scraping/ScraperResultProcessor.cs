@@ -11,6 +11,9 @@ public sealed class ScraperResultProcessor
     private readonly SavvoriDbContext _db;
     private readonly ILogger<ScraperResultProcessor> _logger;
 
+    // In-memory cache populated once per ProcessProductsAsync call: slug → Guid
+    private Dictionary<string, Guid> _categoryCache = [];
+
     public ScraperResultProcessor(SavvoriDbContext db, ILogger<ScraperResultProcessor> logger)
     {
         _db = db;
@@ -35,6 +38,10 @@ public sealed class ScraperResultProcessor
         var stores = await _db.Stores
             .Where(s => s.StoreChainId == chain.Id && s.IsActive)
             .ToListAsync(ct);
+
+        // Cache category slugs for fast lookup during this processing run
+        _categoryCache = await _db.ProductCategories
+            .ToDictionaryAsync(pc => pc.Slug, pc => pc.Id, ct);
 
         var processedCount = 0;
 
@@ -123,8 +130,15 @@ public sealed class ScraperResultProcessor
         var unit = sizeUnit?.Unit ?? scraped.Unit;
         var unitPrice = scraped.UnitPrice ?? ProductNormalizer.ComputeUnitPrice(scraped.Price, unit, sizeValue);
 
+        // Resolve CategoryId from the scraped category string
+        var categoryId = ResolveCategoryId(scraped.Category);
+
         // Resolve canonical product
-        var product = await FindOrCreateProductAsync(scraped, normalized, sizeValue, unit, chain, ct);
+        var product = await FindOrCreateProductAsync(scraped, normalized, sizeValue, unit, categoryId, ct);
+
+        // If an existing product has no CategoryId but we now have one, backfill it
+        if (product.CategoryId is null && categoryId is not null)
+            product.CategoryId = categoryId;
 
         // Upsert ProductStoreLink so we can map back to scraped product later
         await UpsertStoreLinkAsync(product, chain, scraped, ct);
@@ -156,12 +170,19 @@ public sealed class ScraperResultProcessor
         }
     }
 
+    private Guid? ResolveCategoryId(string? scrapedCategory)
+    {
+        var slug = CategoryMapper.MapToSlug(scrapedCategory);
+        if (slug is null) return null;
+        return _categoryCache.TryGetValue(slug, out var id) ? id : null;
+    }
+
     private async Task<Product> FindOrCreateProductAsync(
         ScrapedProduct scraped,
         string normalized,
         decimal? sizeValue,
         ProductUnit unit,
-        StoreChain chain,
+        Guid? categoryId,
         CancellationToken ct)
     {
         // Tier 1: EAN match (most reliable)
@@ -185,6 +206,7 @@ public sealed class ScraperResultProcessor
             Name = scraped.Name,
             Brand = scraped.Brand,
             Category = scraped.Category,
+            CategoryId = categoryId,
             NormalizedName = normalized,
             EAN = scraped.EAN,
             Unit = unit,

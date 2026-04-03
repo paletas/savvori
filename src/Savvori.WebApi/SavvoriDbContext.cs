@@ -28,6 +28,13 @@ public class SavvoriDbContext : DbContext
             .HasForeignKey(pc => pc.ParentCategoryId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        // ShoppingListItem → Product
+        modelBuilder.Entity<ShoppingListItem>()
+            .HasOne(i => i.Product)
+            .WithMany()
+            .HasForeignKey(i => i.ProductId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         // Product → ProductCategory
         modelBuilder.Entity<Product>()
             .HasOne(p => p.ProductCategory)

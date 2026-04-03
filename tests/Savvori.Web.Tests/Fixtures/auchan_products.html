@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head><title>Auchan Product Listing Fixture</title></head>
+<body>
+<div class="search-results">
+  <div class="result-count">12 produtos encontrados</div>
+  <div class="product-grid">
+
+    <!-- Product 1: Regular product -->
+    <div class="product-tile auc-product-tile"
+         data-pid="3010403"
+         data-gtm='{"name":"LEITE AUCHAN UHT MEIO GORDO SLIM 1L","id":"3010403","price":"0.86","brand":"AUCHAN","category":"alimentação/produtos-lácteos/leites/leite-uht","dimension6":"","dimension7":"No","position":"1"}'
+         data-urls='{"productUrl":"/pt/alimentacao/produtos-lacteos/leites/leite-uht/p/3010403.html","absoluteProductUrl":"https://www.auchan.pt/pt/alimentacao/produtos-lacteos/leites/leite-uht/p/3010403.html"}'>
+      <div class="product-tile__img">
+        <img src="https://www.auchan.pt/dw/image/v2/leite_auchan.jpg" alt="Leite Auchan" />
+      </div>
+      <div class="product-tile__name">Leite Auchan Uht Meio Gordo Slim 1l</div>
+      <div class="auc-product-tile__prices">
+        <div class="auc-measures--price-per-unit">0.86 €/Lt</div>
+        <div class="price">0,86 €</div>
+      </div>
+    </div>
+
+    <!-- Product 2: Promotion product (dimension7=Yes) -->
+    <div class="product-tile auc-product-tile"
+         data-pid="11885"
+         data-gtm='{"name":"LEITE MIMOSA UHT MEIO GORDO 1L","id":"11885","price":"1.00","brand":"MIMOSA","category":"alimentação/produtos-lácteos/leites/leite-uht","dimension6":"","dimension7":"Yes","position":"2"}'
+         data-urls='{"productUrl":"/pt/alimentacao/produtos-lacteos/leites/leite-uht/leite-mimosa/11885.html","absoluteProductUrl":"https://www.auchan.pt/pt/alimentacao/produtos-lacteos/leites/leite-uht/leite-mimosa/11885.html"}'>
+      <div class="product-tile__img">
+        <img src="https://www.auchan.pt/dw/image/v2/mimosa_leite.jpg" alt="Leite Mimosa" />
+      </div>
+      <div class="product-tile__name">Leite Mimosa Uht Meio Gordo 1l</div>
+      <div class="auc-product-tile__prices">
+        <div class="auc-measures--price-per-unit">1 €/Lt</div>
+        <div class="price">1,00 €
+          <div class="auc-price__promotion">Promoção</div>
+          <div class="auc-price__promotion__label">Promoção</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Product 3: Multipack with different unit price -->
+    <div class="product-tile auc-product-tile"
+         data-pid="3010402"
+         data-gtm='{"name":"LEITE AUCHAN UHT MEIO GORDO SLIM 6X1L","id":"3010402","price":"5.16","brand":"AUCHAN","category":"alimentação/produtos-lácteos/leites/leite-uht","dimension6":"","dimension7":"No","position":"3"}'
+         data-urls='{"absoluteProductUrl":"https://www.auchan.pt/pt/alimentacao/produtos-lacteos/leites/leite-uht/p/3010402.html"}'>
+      <div class="product-tile__name">Leite Auchan Uht Meio Gordo Slim 6x1l</div>
+      <div class="auc-product-tile__prices">
+        <div class="auc-measures--price-per-unit">0.86 €/Lt</div>
+        <div class="price">5,16 €</div>
+      </div>
+    </div>
+
+    <!-- Product 4: No unit price -->
+    <div class="product-tile auc-product-tile"
+         data-pid="99999"
+         data-gtm='{"name":"IOGURTE YOCO MORANGO 4X125G","id":"99999","price":"1.29","brand":"YOCO","category":"alimentação/produtos-lácteos/iogurtes/iogurtes-sólidos","dimension6":"","dimension7":"No","position":"4"}'
+         data-urls='{}'>
+      <div class="product-tile__name">Iogurte Yoco Morango 4x125g</div>
+      <div class="auc-product-tile__prices">
+        <div class="price">1,29 €</div>
+      </div>
+    </div>
+
+    <!-- Product 5: Invalid — no pid -->
+    <div class="product-tile auc-product-tile"
+         data-gtm='{"name":"PRODUTO SEM ID","price":"0.99","brand":"MARCA"}'>
+      <div class="product-tile__name">Produto sem id</div>
+    </div>
+
+    <!-- Product 6: Invalid — price 0 -->
+    <div class="product-tile auc-product-tile"
+         data-pid="11111"
+         data-gtm='{"name":"PRODUTO SEM PRECO","id":"11111","price":"0","brand":"MARCA"}'>
+      <div class="product-tile__name">Produto sem preço</div>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>
