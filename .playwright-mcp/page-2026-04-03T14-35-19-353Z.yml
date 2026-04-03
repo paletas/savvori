@@ -1,0 +1,220 @@
+- generic [active] [ref=e1]:
+  - alert [ref=e2]:
+    - img "Icon" [ref=e3]
+    - img "Icon" [ref=e4]
+    - img "Icon" [ref=e5]
+    - button "Close" [ref=e6] [cursor=pointer]:
+      - generic [ref=e7]: ×
+  - generic [ref=e8]:
+    - banner [ref=e9]:
+      - link "Skip to main content" [ref=e10] [cursor=pointer]:
+        - /url: "#maincontent"
+      - link "Skip to footer content" [ref=e11] [cursor=pointer]:
+        - /url: "#footercontent"
+      - navigation [ref=e12]:
+        - generic [ref=e16]:
+          - list [ref=e18]:
+            - listitem [ref=e19]:
+              - link "Sobre nós" [ref=e20] [cursor=pointer]:
+                - /url: https://www.pingodoce.pt/sobre-nos/
+            - listitem [ref=e21]:
+              - link "As nossas marcas" [ref=e22] [cursor=pointer]:
+                - /url: https://www.pingodoce.pt/as-nossas-marcas/
+            - listitem [ref=e23]:
+              - link "Comida Fresca" [ref=e24] [cursor=pointer]:
+                - /url: https://comidafresca.pingodoce.pt/
+            - listitem [ref=e25]:
+              - link "As nossas lojas" [ref=e26] [cursor=pointer]:
+                - /url: https://www.pingodoce.pt/lojas/
+            - listitem [ref=e27]:
+              - link "Sustentabilidade" [ref=e28] [cursor=pointer]:
+                - /url: https://www.pingodoce.pt/sustentabilidade/
+            - listitem [ref=e29]:
+              - link "Junte-se a nós" [ref=e30] [cursor=pointer]:
+                - /url: https://www.pingodoce.pt/junte-se-a-nos/
+            - listitem [ref=e31]:
+              - link "Apoio ao cliente" [ref=e32] [cursor=pointer]:
+                - /url: https://www.pingodoce.pt/apoio-ao-cliente/
+          - generic [ref=e34]:
+            - link "O Meu Pingo Doce" [ref=e35] [cursor=pointer]:
+              - /url: https://www.pingodoce.pt/app-o-meu-pingo-doce/
+              - img "O Meu Pingo Doce" [ref=e36]
+            - list [ref=e37]:
+              - listitem [ref=e38]:
+                - link "O Meu Pingo Doce" [ref=e39] [cursor=pointer]:
+                  - /url: https://www.pingodoce.pt/app-o-meu-pingo-doce/
+        - generic [ref=e40]:
+          - generic [ref=e41]:
+            - link "Pingo Doce" [ref=e43] [cursor=pointer]:
+              - /url: /home/home
+              - img "Pingo Doce" [ref=e44]
+            - navigation [ref=e45]:
+              - list [ref=e48]:
+                - listitem [ref=e49]:
+                  - link "Loja Online" [ref=e50] [cursor=pointer]:
+                    - /url: https://www.pingodoce.pt/home/produtos/promocoes
+                - listitem [ref=e51]:
+                  - link "Receitas e Dicas" [ref=e52] [cursor=pointer]:
+                    - /url: https://www.pingodoce.pt/receitas-dicas/
+                - listitem [ref=e53]:
+                  - link "Folhetos" [ref=e54] [cursor=pointer]:
+                    - /url: https://www.pingodoce.pt/folhetos/
+                - listitem [ref=e55]:
+                  - link "Encomendar Comida" [ref=e56] [cursor=pointer]:
+                    - /url: https://www.pingodoce.pt/produtos/comida-fresca-takeaway/encomendas/
+            - search [ref=e60]:
+              - img "Submit search keywords" [ref=e61] [cursor=pointer]
+              - combobox "Enter Keyword or Item No." [ref=e62]
+            - generic [ref=e63]:
+              - img "Pingo Doce" [ref=e64]
+              - generic [ref=e66] [cursor=pointer]: Código-Postal
+          - generic [ref=e68]:
+            - link "Pingo Doce" [ref=e70] [cursor=pointer]:
+              - /url: /home/favoritos
+              - img "Pingo Doce" [ref=e71]
+            - button "Login to your account" [ref=e74] [cursor=pointer]:
+              - img "Pingo Doce" [ref=e75]
+            - generic [ref=e76]:
+              - generic [ref=e77]:
+                - button "0 Produtos no carrinho" [ref=e78] [cursor=pointer]:
+                  - img "Pingo Doce" [ref=e79]
+                - generic [ref=e80]: 0,00 €
+              - generic [ref=e81]:
+                - generic [ref=e82]:
+                  - paragraph [ref=e83]: O meu carrinho
+                  - button "Fechar menu" [ref=e84] [cursor=pointer]:
+                    - img "Fechar menu" [ref=e85]
+                - generic [ref=e86]:
+                  - paragraph [ref=e87]: O seu carrinho de compras está vazio.
+                  - paragraph [ref=e88]: Comece a explorar os nossos produtos e descubra uma variedade de produtos incríveis!
+                  - link "Começar a comprar" [ref=e89] [cursor=pointer]:
+                    - /url: /home/produtos
+    - main [ref=e90]:
+      - generic [ref=e97]:
+        - img "Erro 404" [ref=e98]
+        - generic [ref=e99]:
+          - generic [ref=e100]:
+            - generic [ref=e101]: Erro 404
+            - generic [ref=e102]: Ups, não conseguimos encontrar o que procura
+          - generic [ref=e103]: Mas temos novidades fresquinhas preparadas para si!
+        - button "Ir para a página principal" [pressed] [ref=e105] [cursor=pointer]
+    - contentinfo [ref=e106]:
+      - generic [ref=e108]:
+        - generic [ref=e109]:
+          - generic [ref=e111]:
+            - generic [ref=e113]:
+              - heading "Já conhece a App O Meu Pingo Doce?" [level=2] [ref=e114]
+              - text: Adira e seja sempre um dos primeiros a conhecer as novidades e as melhores oportunidades de poupança
+            - generic [ref=e116]:
+              - link "Saiba Mais" [ref=e118] [cursor=pointer]:
+                - /url: https://www.pingodoce.pt/app-o-meu-pingo-doce/
+                - button "Saiba Mais" [ref=e119]
+              - generic [ref=e120]:
+                - link "GooglePlay" [ref=e122] [cursor=pointer]:
+                  - /url: https://play.google.com/store/apps/details?id=pt.pingodoce&hl=pt_PT
+                  - img "google-play-badge" [ref=e123]
+                - link "AppStore" [ref=e125] [cursor=pointer]:
+                  - /url: https://apps.apple.com/pt/app/o-meu-pingo-doce/id1218939596
+                  - img "app-store-badge" [ref=e126]
+          - generic [ref=e129]:
+            - heading "Apoio ao cliente" [level=2] [ref=e131]
+            - list [ref=e132]:
+              - listitem [ref=e133]:
+                - link "Contacte-nos" [ref=e134] [cursor=pointer]:
+                  - /url: https://www.pingodoce.pt/apoio-ao-cliente/#contactos
+              - listitem [ref=e135]:
+                - link "Perguntas frequentes" [ref=e136] [cursor=pointer]:
+                  - /url: https://www.pingodoce.pt/apoio-ao-cliente/perguntas-frequentes
+              - listitem [ref=e137]:
+                - link "Comunicação de irregularidades" [ref=e138] [cursor=pointer]:
+                  - /url: https://www.pingodoce.pt/comunicacao-de-irregularidades/
+              - listitem [ref=e139]:
+                - link "Livro de Reclamações" [ref=e140] [cursor=pointer]:
+                  - /url: https://www.livroreclamacoes.pt/Inicio/
+          - generic [ref=e142]:
+            - heading "Pingo Doce" [level=2] [ref=e144]
+            - list [ref=e145]:
+              - listitem [ref=e146]:
+                - link "Cookies" [ref=e147] [cursor=pointer]:
+                  - /url: https://www.pingodoce.pt/sobre-nos/
+                  - text: Sobre nós
+              - listitem [ref=e148]:
+                - link "As nossas marcas" [ref=e149] [cursor=pointer]:
+                  - /url: https://www.pingodoce.pt/produtos/marca-propria-pingo-doce/
+              - listitem [ref=e150]:
+                - link "As nossas lojas" [ref=e151] [cursor=pointer]:
+                  - /url: https://www.pingodoce.pt/lojas/
+              - listitem [ref=e152]:
+                - link "Responsabilidade" [ref=e153] [cursor=pointer]:
+                  - /url: https://www.pingodoce.pt/responsabilidade/
+              - listitem [ref=e154]:
+                - link "Junte-se a nós" [ref=e155] [cursor=pointer]:
+                  - /url: https://www.pingodoce.pt/junte-se-a-nos/
+        - generic [ref=e156]:
+          - generic [ref=e158]:
+            - text: Encomenda via parceiros
+            - list [ref=e160]:
+              - listitem [ref=e161]:
+                - img "Glovo" [ref=e162]
+          - generic [ref=e164]:
+            - text: Redes Sociais
+            - list [ref=e166]:
+              - listitem [ref=e167]:
+                - link "Instagram" [ref=e168] [cursor=pointer]:
+                  - /url: https://www.instagram.com/pingodoce/
+                  - img "instagram" [ref=e169]
+              - listitem [ref=e170]:
+                - link "Youtube" [ref=e171] [cursor=pointer]:
+                  - /url: https://www.youtube.com/user/pingodocept
+                  - img "youtube" [ref=e172]
+              - listitem [ref=e173]:
+                - link "Linkedin" [ref=e174] [cursor=pointer]:
+                  - /url: https://www.linkedin.com/company/pingo-doce/
+                  - img "linkedin" [ref=e175]
+              - listitem [ref=e176]:
+                - link "Facebook" [ref=e177] [cursor=pointer]:
+                  - /url: https://www.facebook.com/pingodoce/
+                  - img "facebook" [ref=e178]
+              - listitem [ref=e179]:
+                - link "TikTok" [ref=e180] [cursor=pointer]:
+                  - /url: https://www.tiktok.com/@pingodoce
+                  - img "tiktok" [ref=e181]
+        - generic [ref=e182]:
+          - generic [ref=e183]:
+            - list [ref=e187]:
+              - listitem [ref=e188]:
+                - img "Visa" [ref=e189]
+              - listitem [ref=e190]:
+                - img "MasterCard" [ref=e191]
+              - listitem [ref=e192]:
+                - img "MB" [ref=e193]
+            - list [ref=e197]:
+              - listitem [ref=e198]:
+                - link "Cookies" [ref=e199] [cursor=pointer]:
+                  - /url: https://www.pingodoce.pt/termos-condicoes/#cookies
+              - listitem [ref=e200]:
+                - link "Termos e Condições" [ref=e201] [cursor=pointer]:
+                  - /url: https://www.pingodoce.pt/termos-condicoes/
+              - listitem [ref=e202]:
+                - link "Proteção de Dados Pessoais" [ref=e203] [cursor=pointer]:
+                  - /url: https://www.pingodoce.pt/termos-condicoes/#dadospessoais
+              - listitem [ref=e204]:
+                - link "Acordo ortográfico" [ref=e205] [cursor=pointer]:
+                  - /url: https://www.pingodoce.pt/acordo-ortografico/
+              - listitem [ref=e206]:
+                - link "Mapa do site" [ref=e207] [cursor=pointer]:
+                  - /url: https://www.pingodoce.pt/mapa-do-site/
+          - generic [ref=e211]: © Pingo Doce 2026. Todos os direitos reservados
+  - dialog "COOKIES" [ref=e213]:
+    - generic [ref=e215]:
+      - generic [ref=e217]:
+        - heading "COOKIES" [level=2] [ref=e218]
+        - generic [ref=e219]:
+          - text: Ao clicar em "Aceitar todos os cookies", concorda com o armazenamento de cookies no seu dispositivo para melhorar a navegação no site, analisar a utilização do site e ajudar nas nossas iniciativas de marketing.
+          - 'link "Política de Cookies: Mais informação sobre a sua privacidade, abre num separador novo" [ref=e220] [cursor=pointer]':
+            - /url: https://www.pingodoce.pt/termos-condicoes/#cookies
+            - text: Política de COOKIES
+      - generic [ref=e222]:
+        - button "Definições de cookies, Abre a caixa de diálogo do centro de preferências" [ref=e223] [cursor=pointer]: Definições de cookies
+        - button "Aceitar todos os cookies" [ref=e224] [cursor=pointer]
+    - button "Fechar janela de cookies" [ref=e226] [cursor=pointer]

@@ -1,0 +1,284 @@
+- generic [active] [ref=e1]:
+  - link "Saltar para o conteúdo" [ref=e2] [cursor=pointer]:
+    - /url: "#maincontent"
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e6]:
+        - list [ref=e7]:
+          - listitem [ref=e8]:
+            - link "Sobre nós" [ref=e9] [cursor=pointer]:
+              - /url: /sobre-nos/
+          - listitem [ref=e10]:
+            - link "As nossas marcas" [ref=e11] [cursor=pointer]:
+              - /url: /produtos/marca-propria-pingo-doce/
+          - listitem [ref=e12]:
+            - link "Comida Fresca" [ref=e13] [cursor=pointer]:
+              - /url: https://comidafresca.pingodoce.pt
+          - listitem [ref=e14]:
+            - link "As nossas lojas" [ref=e15] [cursor=pointer]:
+              - /url: /lojas/
+          - listitem [ref=e16]:
+            - link "Sustentabilidade" [ref=e17] [cursor=pointer]:
+              - /url: /sustentabilidade/
+          - listitem [ref=e18]:
+            - link "Junte-se a nós" [ref=e19] [cursor=pointer]:
+              - /url: /junte-se-a-nos/
+          - listitem [ref=e20]:
+            - link "Apoio ao cliente" [ref=e21] [cursor=pointer]:
+              - /url: /apoio-ao-cliente/
+        - link "O Meu Pingo Doce" [ref=e23] [cursor=pointer]:
+          - /url: /app-o-meu-pingo-doce
+      - generic [ref=e25]:
+        - link "Pingo Doce" [ref=e26] [cursor=pointer]:
+          - /url: /
+          - img "Pingo Doce" [ref=e27]
+        - list [ref=e28]:
+          - listitem [ref=e29]:
+            - link "Loja Online" [ref=e30] [cursor=pointer]:
+              - /url: https://www.pingodoce.pt/home/produtos/promocoes
+          - listitem [ref=e31]:
+            - link "Receitas e Dicas" [ref=e32] [cursor=pointer]:
+              - /url: /receitas-dicas/
+          - listitem [ref=e33]:
+            - link "Folhetos" [ref=e34] [cursor=pointer]:
+              - /url: /folhetos/
+          - listitem [ref=e35]:
+            - link "Encomendar Comida" [ref=e36] [cursor=pointer]:
+              - /url: /comida-fresca-takeaway/encomendas/
+        - textbox "Pesquisar" [ref=e40]:
+          - /placeholder: O que procura?
+        - link "Favoritos" [ref=e41] [cursor=pointer]:
+          - /url: https://www.pingodoce.pt/home/favoritos
+        - link "Área pessoal" [ref=e42] [cursor=pointer]:
+          - /url: https://www.pingodoce.pt/home/login
+  - main [ref=e43]:
+    - generic [ref=e44]:
+      - navigation "breadcrumbs" [ref=e50]:
+        - list [ref=e51]:
+          - listitem [ref=e52]:
+            - link "Home" [ref=e53] [cursor=pointer]:
+              - /url: /
+          - listitem [ref=e54]:
+            - link "As Nossas Marcas" [ref=e55] [cursor=pointer]:
+              - /url: https://www.pingodoce.pt/as-nossas-marcas/
+          - listitem [ref=e56]: Produtos testados
+      - generic [ref=e64]:
+        - heading "Confirmamos a autenticidade dos nossos produtos" [level=1] [ref=e65]
+        - generic [ref=e66]: Somos a única empresa de supermercados com laboratório próprio que testa o ADN dos ingredientes nos produtos de Marca Própria.
+      - generic [ref=e73]:
+        - iframe [ref=e75]:
+          - generic [active] [ref=f4e1]:
+            - generic "Leitor de vídeo do YouTube" [ref=f4e3]
+            - generic [ref=f4e5]:
+              - generic:
+                - generic:
+                  - button "Ver vídeo" [ref=f4e10] [cursor=pointer]:
+                    - generic [ref=f4e13]:
+                      - img
+                  - button "Ocultar controlos do leitor" [ref=f4e14] [cursor=pointer]
+                  - generic [ref=f4e16]:
+                    - generic [ref=f4e21]:
+                      - generic [ref=f4e22]:
+                        - link "Ingredientes confirmados | ADN | Pingo Doce" [ref=f4e23] [cursor=pointer]:
+                          - /url: https://www.youtube.com/watch?v=y2_VcBAvaEw
+                        - link "Pingo Doce" [ref=f4e24] [cursor=pointer]:
+                          - /url: /channel/UCRotQnDNrxOIlDH-7_uWpnA
+                          - generic [ref=f4e25]: Pingo Doce
+                      - generic [ref=f4e26]:
+                        - button "thumbnail-image" [ref=f4e27] [cursor=pointer]:
+                          - img "thumbnail-image" [ref=f4e28]
+                        - generic [ref=f4e30]:
+                          - generic: Pingo Doce
+                          - generic: 46,5 mil subscritores
+                    - generic [ref=f4e31]:
+                      - button "Copiar link" [ref=f4e34] [cursor=pointer]:
+                        - generic [ref=f4e38]:
+                          - img
+                      - link "Ver no YouTube" [ref=f4e45] [cursor=pointer]:
+                        - /url: https://www.youtube.com/watch?v=y2_VcBAvaEw
+                        - generic [ref=f4e48]:
+                          - text: Ver no
+                          - img [ref=f4e50]:
+                            - generic [ref=f4e52]:
+                              - img
+        - generic [ref=e76]:
+          - heading "Cada ingrediente é uma prioridade" [level=2] [ref=e77]
+          - generic [ref=e78]: "Para garantirmos a autenticidade dos produtos de Marca Própria do Pingo Doce, temos um laboratório de Biologia Molecular, onde testamos o ADN dos ingredientes e confirmamos a sua composição. No Pingo Doce, é isso que encontra: produtos de qualidade, autênticos e saborosos. Só em 2023, foram realizados mais de 1.500 testes, a 620 produtos, entre 2 a 3 vezes durante o ano."
+      - generic [ref=e85]:
+        - heading "Porque testamos os nossos produtos?" [level=2] [ref=e86]
+        - generic [ref=e87]:
+          - generic [ref=e88]:
+            - img "Number 1" [ref=e89]
+            - heading "Garantir segurança" [level=4] [ref=e90]
+            - generic [ref=e91]: Tornar a cadeia alimentar mais segura é o nosso objetivo. Para isso, confirmamos que os ingredientes não foram adulterados e que as matérias-primas referidas no rótulo são realmente as que são utilizadas na receita desse produto.
+          - generic [ref=e92]:
+            - img "Number 2" [ref=e93]
+            - heading "Combater a fraude alimentar" [level=4] [ref=e94]
+            - generic [ref=e95]: No nosso laboratório de Biologia Molecular, conseguimos detetar más práticas de processamento, como o cruzamento de linhas de produção e/ou substituição de ingredientes. Desta forma, garantimos maior controlo e transparência.
+      - generic [ref=e103]:
+        - generic [ref=e104]:
+          - heading "ADN LAB" [level=6] [ref=e105]
+          - generic [ref=e106]:
+            - generic [ref=e107]: Inovamos
+            - text: com o trabalho que desenvolvemos no nosso laboratório de Biologia Molecular, único no retalho em Portugal
+        - generic [ref=e108]:
+          - heading "ADN LAB" [level=6] [ref=e109]
+          - generic [ref=e110]:
+            - generic [ref=e111]: Classificamos
+            - text: os produtos para garantir que estão em conformidade
+        - generic [ref=e112]:
+          - heading "ADN LAB" [level=6] [ref=e113]
+          - generic [ref=e114]:
+            - generic [ref=e115]: Garantimos
+            - text: que o que está escrito nos rótulos corresponde ao que está dentro da embalagem
+        - generic [ref=e116]:
+          - heading "ADN LAB" [level=6] [ref=e117]
+          - generic [ref=e118]:
+            - generic [ref=e119]: Sequenciamos
+            - text: o ADN dos alimentos para identificar a sua composição e garantir a sua segurança
+      - generic [ref=e131]:
+        - generic [ref=e132]:
+          - heading "Testados, seguros e prontos a saborear" [level=1] [ref=e133]
+          - img "Imagem Laboratório Pingo Doce" [ref=e136]
+        - generic [ref=e137]:
+          - generic [ref=e138]:
+            - heading "Laboratório de Biologia Molecular" [level=6] [ref=e139]
+            - generic [ref=e140]: "Testamos o ADN dos alimentos e garantimos a qualidade dos nossos produtos, principalmente, aqueles que são mais suscetíveis de fraude alimentar: os produtos compostos ou processados, nos quais pode existir a troca de ingredientes de qualidade por outros de menor valor."
+          - generic [ref=e141]:
+            - heading "Testes de ADN" [level=6] [ref=e142]
+            - generic [ref=e143]: Como é que sabemos que um queijo de ovelha é mesmo de ovelha? Com recurso a técnicas de biologia molecular, como a sequenciação, analisamos ao detalhe o ADN dos ingredientes e identificamos as espécies presentes nos produtos.
+      - generic [ref=e149]:
+        - text: Somos a única empresa de supermercados com laboratório próprio para garantir a qualidade dos seus
+        - link "produtos" [ref=e150] [cursor=pointer]:
+          - /url: https://www.pingodoce.pt/produtos/
+        - text: .
+      - generic [ref=e155]:
+        - heading "Pela qualidade dos nossos produtos" [level=2] [ref=e156]
+        - generic [ref=e157]:
+          - generic [ref=e163]:
+            - heading "Não gostamos de químicos" [level=2] [ref=e164]
+            - generic [ref=e165]: Os produtos da Marca Própria Pingo Doce mantêm o seu sabor e aspeto sem a adição de intensificadores de sabor nem corantes artificiais. Conheça tudo o que fazemos para assegurar a melhor qualidade dos nossos produtos com os ingredientes mais naturais.
+            - link "Saber mais" [ref=e166] [cursor=pointer]:
+              - /url: https://www.pingodoce.pt/campanhas/qualidade-marca-propria-pingo-doce
+          - generic [ref=e172]:
+            - heading "Reduzimos o sal, açúcar e gorduras" [level=2] [ref=e173]
+            - generic [ref=e174]: No Pingo Doce, promovemos uma alimentação saudável e equilibrada. Por isso, nos últimos 10 anos já retirámos dos nossos produtos de marca própria mais de 2.000 toneladas de açúcar, 51 toneladas de sal, 24 toneladas de gordura e 443 toneladas de gordura saturada.
+      - generic [ref=e179]:
+        - generic [ref=e180]: Perguntas frequentes
+        - generic [ref=e181]:
+          - heading "O que é um laboratório de Biologia Molecular para alimentos?" [level=4] [ref=e183]
+          - heading "Porque é importante fazer este tipo de testes?" [level=4] [ref=e185]
+          - heading "Porque é que o Pingo Doce tem um laboratório de Biologia Molecular próprio?" [level=4] [ref=e187]
+        - generic [ref=e189] [cursor=pointer]: Mostrar mais
+  - generic [ref=e192]:
+    - generic [ref=e193]:
+      - heading "É tão bom encontrar-nos assim." [level=2] [ref=e194]
+      - heading "Em qualquer lado." [level=2] [ref=e195]
+    - generic [ref=e196]:
+      - generic [ref=e197]: "Encontre-nos em:"
+      - generic [ref=e198]:
+        - link "App Pingo Doce" [ref=e199] [cursor=pointer]:
+          - /url: /nova-app-pingo-doce/
+          - generic [ref=e200]: App Pingo Doce
+        - link "Instagram" [ref=e201] [cursor=pointer]:
+          - /url: https://www.instagram.com/pingodoce/
+          - generic [ref=e202]: Instagram
+        - link "TikTok" [ref=e203] [cursor=pointer]:
+          - /url: https://www.tiktok.com/@pingodoce
+          - generic [ref=e204]: TikTok
+        - link "Facebook" [ref=e205] [cursor=pointer]:
+          - /url: https://www.facebook.com/pingodoce
+          - generic [ref=e206]: Facebook
+        - link "YouTube" [ref=e207] [cursor=pointer]:
+          - /url: https://www.youtube.com/user/pingodocept
+          - generic [ref=e208]: YouTube
+        - link "Linkedin" [ref=e209] [cursor=pointer]:
+          - /url: https://www.linkedin.com/company/pingo-doce
+          - generic [ref=e210]: Linkedin
+  - contentinfo [ref=e211]:
+    - generic [ref=e212]:
+      - generic [ref=e213]:
+        - generic [ref=e214]:
+          - generic [ref=e215]: Já conhece a App O Meu Pingo Doce?
+          - paragraph [ref=e216]: Adira e seja sempre um dos primeiros a conhecer as novidades e as melhores oportunidades de poupança
+          - generic [ref=e217]:
+            - link "Saiba mais" [ref=e218] [cursor=pointer]:
+              - /url: /app-o-meu-pingo-doce
+            - generic [ref=e219]:
+              - link "Google Play" [ref=e220] [cursor=pointer]:
+                - /url: https://play.google.com/store/apps/details?id=pt.pingodoce&hl=pt_PT
+              - link "Apple Store" [ref=e221] [cursor=pointer]:
+                - /url: https://apps.apple.com/pt/app/o-meu-pingo-doce/id1218939596
+        - generic [ref=e222]:
+          - generic [ref=e223]:
+            - generic [ref=e224]: Apoio ao Cliente
+            - list [ref=e225]:
+              - listitem [ref=e226]:
+                - link "Contacte-nos" [ref=e227] [cursor=pointer]:
+                  - /url: /apoio-ao-cliente/#contactos
+              - listitem [ref=e228]:
+                - link "Perguntas frequentes" [ref=e229] [cursor=pointer]:
+                  - /url: /apoio-ao-cliente/perguntas-frequentes
+              - listitem [ref=e230]:
+                - link "Comunicação de irregularidades" [ref=e231] [cursor=pointer]:
+                  - /url: /comunicacao-de-irregularidades/
+          - generic [ref=e232]:
+            - generic [ref=e233]: Pingo Doce
+            - list [ref=e234]:
+              - listitem [ref=e235]:
+                - link "Sobre nós" [ref=e236] [cursor=pointer]:
+                  - /url: /sobre-nos/
+              - listitem [ref=e237]:
+                - link "As nossas marcas" [ref=e238] [cursor=pointer]:
+                  - /url: /marca-propria-pingo-doce/
+              - listitem [ref=e239]:
+                - link "As nossas lojas" [ref=e240] [cursor=pointer]:
+                  - /url: /lojas/
+              - listitem [ref=e241]:
+                - link "Sustentabilidade" [ref=e242] [cursor=pointer]:
+                  - /url: /sustentabilidade/
+              - listitem [ref=e243]:
+                - link "Junte-se a nós" [ref=e244] [cursor=pointer]:
+                  - /url: /junte-se-a-nos/
+              - listitem [ref=e245]:
+                - link "Notícias" [ref=e246] [cursor=pointer]:
+                  - /url: /sobre-nos/noticias/
+      - generic [ref=e247]:
+        - generic [ref=e248]:
+          - generic [ref=e249]: Encomendas via parceiros
+          - img "Glovo" [ref=e251]
+        - generic [ref=e252]:
+          - generic [ref=e253]: Redes sociais
+          - generic [ref=e254]:
+            - link "Instagram" [ref=e255] [cursor=pointer]:
+              - /url: https://www.instagram.com/pingodoce
+            - link "Youtube" [ref=e256] [cursor=pointer]:
+              - /url: https://www.youtube.com/user/pingodocept
+            - link "Linkedin" [ref=e257] [cursor=pointer]:
+              - /url: https://www.linkedin.com/company/pingo-doce
+            - link "Facebook" [ref=e258] [cursor=pointer]:
+              - /url: https://www.facebook.com/pingodoce
+            - link "Tiktok" [ref=e259] [cursor=pointer]:
+              - /url: https://www.tiktok.com/@pingodoce
+      - generic [ref=e260]:
+        - img "Métodos de pagamento" [ref=e261]
+        - list [ref=e262]:
+          - listitem [ref=e263]:
+            - link "Diretório de lojas" [ref=e264] [cursor=pointer]:
+              - /url: https://pingodoce.directory/
+          - listitem [ref=e265]:
+            - link "Cookies" [ref=e266] [cursor=pointer]:
+              - /url: /termos-condicoes/#cookies
+          - listitem [ref=e267]:
+            - link "Termos e Condições" [ref=e268] [cursor=pointer]:
+              - /url: /termos-condicoes/
+          - listitem [ref=e269]:
+            - link "Proteção de Dados Pessoais" [ref=e270] [cursor=pointer]:
+              - /url: /termos-condicoes/#dadospessoais
+          - listitem [ref=e271]:
+            - link "Livro de Reclamações" [ref=e272] [cursor=pointer]:
+              - /url: https://www.livroreclamacoes.pt/Inicio/
+          - listitem [ref=e273]:
+            - link "Mapa do site" [ref=e274] [cursor=pointer]:
+              - /url: https://www.pingodoce.pt/mapa-do-site/
+      - generic [ref=e275]: © Pingo Doce 2026. Todos os direitos reservados

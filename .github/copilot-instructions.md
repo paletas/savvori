@@ -6,7 +6,7 @@ These instructions help AI coding agents work productively in this codebase. Kee
 - Root: `d:\Savvori`
 - Solution: `Savvori.sln`
 - Projects:
-   - Web API: `src/Savvori.Web/Savvori.Web.csproj` (ASP.NET Core minimal API, .NET 10 RC)
+   - Web API: `src/Savvori.WebApi/Savvori.WebApi.csproj` (ASP.NET Core minimal API, .NET 10 RC)
    - Tests: `tests/Savvori.Web.Tests/Savvori.Web.Tests.csproj` (xUnit)
 
 ## First steps for any task
@@ -18,7 +18,7 @@ These instructions help AI coding agents work productively in this codebase. Kee
 - Build all:
    - `dotnet build Savvori.sln`
 - Run the web app:
-   - `dotnet run --project src/Savvori.Web/Savvori.Web.csproj`
+   - `dotnet run --project src/Savvori.WebApi/Savvori.WebApi.csproj`
    - Development endpoints:
       - GET http://localhost:5000/weatherforecast
       - OpenAPI (dev): http://localhost:5000/openapi/v1.json
@@ -45,7 +45,7 @@ Notes:
    - `dotnet new xunit -n Savvori.Api.Tests -o tests/Savvori.Api.Tests`
    - `dotnet sln Savvori.sln add tests/Savvori.Api.Tests/Savvori.Api.Tests.csproj`
 - Reference the web project from tests:
-   - `dotnet add tests/Savvori.Api.Tests/Savvori.Api.Tests.csproj reference src/Savvori.Web/Savvori.Web.csproj`
+   - `dotnet add tests/Savvori.Api.Tests/Savvori.Api.Tests.csproj reference src/Savvori.WebApi/Savvori.WebApi.csproj`
 
 ## Quality gates before PRs
 - Build succeeds and `dotnet test` passes locally.
