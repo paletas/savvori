@@ -117,3 +117,8 @@ yarn.lock
 # EF Core / scaffolding
 ############################
 ScaffoldingReadMe.txt
+
+############################
+# Playwright MCP snapshots
+############################
+.playwright-mcp/
