@@ -1,0 +1,9 @@
+@import "tailwindcss";
+@plugin "daisyui" {
+  themes: light --default, dark;
+}
+
+/* Custom Savvori styles */
+.savvori-gradient {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}

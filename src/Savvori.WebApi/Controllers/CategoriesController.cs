@@ -109,9 +109,10 @@ public class CategoriesController : ControllerBase
                 p.Unit,
                 p.SizeValue,
                 p.ImageUrl,
-                LowestPrice = p.Prices
-                    .Where(pp => pp.IsLatest)
-                    .Select(pp => (decimal?)pp.Price)
+                LowestPrice = p.StoreProducts
+                    .Where(sp => sp.IsActive)
+                    .SelectMany(sp => sp.Prices.Where(spp => spp.IsLatest))
+                    .Select(spp => (decimal?)spp.Price)
                     .Min()
             })
             .ToListAsync(ct);

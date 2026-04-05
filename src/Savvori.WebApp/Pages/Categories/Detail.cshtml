@@ -1,0 +1,51 @@
+@page "{slug}"
+@model CategoryDetailModel
+@{
+    ViewData["Title"] = Model.CategoryName ?? "Category";
+}
+
+<!-- Breadcrumb -->
+<div class="breadcrumbs text-sm mb-6">
+    <ul>
+        <li><a asp-page="/Index">Home</a></li>
+        <li><a asp-page="/Categories/Index">Categories</a></li>
+        <li>@Model.CategoryName</li>
+    </ul>
+</div>
+
+<div class="flex justify-between items-center mb-6">
+    <div>
+        <h1 class="text-3xl font-bold">@Model.CategoryName</h1>
+        @if (Model.Total > 0)
+        {
+            <p class="text-base-content/60 text-sm mt-1">@Model.Total products</p>
+        }
+    </div>
+</div>
+
+@if (!Model.Products.Any())
+{
+    <div class="alert alert-info">No products in this category yet.</div>
+}
+else
+{
+    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-8" id="product-grid">
+        @foreach (var product in Model.Products)
+        {
+            <partial name="_ProductCard" model="product" />
+        }
+    </div>
+
+    <!-- Pagination -->
+    @if (Model.TotalPages > 1)
+    {
+        <div class="flex justify-center gap-1 mt-6">
+            @for (var i = 1; i <= Model.TotalPages; i++)
+            {
+                <a asp-page="/Categories/Detail" asp-route-slug="@Model.Slug"
+                   asp-route-page="@i"
+                   class="btn btn-sm @(i == Model.CurrentPage ? "btn-primary" : "btn-ghost")">@i</a>
+            }
+        </div>
+    }
+}

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="pt" data-theme="light">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - Savvori Admin</title>
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body class="min-h-screen bg-base-200">
+
+<div class="drawer lg:drawer-open">
+    <input id="admin-drawer" type="checkbox" class="drawer-toggle" />
+
+    <div class="drawer-content flex flex-col">
+        <!-- Top navbar -->
+        <div class="navbar bg-base-100 shadow-sm border-b border-base-200 lg:hidden">
+            <label for="admin-drawer" class="btn btn-ghost btn-circle drawer-button">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h8m-8 6h16" />
+                </svg>
+            </label>
+            <span class="text-lg font-bold">🛒 Savvori Admin</span>
+        </div>
+
+        <!-- Page content -->
+        <main class="flex-1 p-6">
+            @if (TempData["Success"] != null)
+            {
+                <div class="alert alert-success mb-4">
+                    <span>@TempData["Success"]</span>
+                </div>
+            }
+            @if (TempData["Error"] != null)
+            {
+                <div class="alert alert-error mb-4">
+                    <span>@TempData["Error"]</span>
+                </div>
+            }
+            @RenderBody()
+        </main>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="drawer-side z-40">
+        <label for="admin-drawer" aria-label="close sidebar" class="drawer-overlay"></label>
+        <aside class="min-h-full w-64 bg-base-100 border-r border-base-200">
+            <div class="p-4 border-b border-base-200">
+                <a asp-page="/Index" class="text-xl font-bold text-primary">🛒 Savvori</a>
+                <div class="badge badge-warning badge-sm ml-2">Admin</div>
+            </div>
+            <ul class="menu p-4 gap-1">
+                <li class="menu-title">Management</li>
+                <li>
+                    <a asp-page="/Admin/Scraping/Index" class="flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Scraping Jobs
+                    </a>
+                </li>
+                <li>
+                    <a asp-page="/Admin/Stores/Index" class="flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
+                        Stores
+                    </a>
+                </li>
+                <li>
+                    <a asp-page="/Admin/Products/Index" class="flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                        </svg>
+                        Products
+                    </a>
+                </li>
+                <li>
+                    <a asp-page="/Admin/Mapping/Index" class="flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                        </svg>
+                        Mapping
+                    </a>
+                </li>
+                <li class="menu-title mt-2">Navigation</li>
+                <li><a asp-page="/Index">← Back to site</a></li>
+            </ul>
+        </aside>
+    </div>
+</div>
+
+<script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"></script>
+@await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

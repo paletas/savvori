@@ -1,22 +1,35 @@
-using Savvori.WebApi;
+using System.Security.Claims;
+using System.Text;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using Quartz;
 using Savvori.Shared;
+using Savvori.WebApi;
 using Savvori.WebApi.Scraping;
 using Savvori.WebApi.Scraping.Scrapers;
 using Savvori.WebApi.Services;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.EntityFrameworkCore;
-using Quartz;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 
+// Register scraping ActivitySource and Meter with the OTel pipeline
+builder.Services.AddSingleton<ScrapingTelemetry>();
+builder.Services.AddOpenTelemetry()
+    .WithTracing(t => t.AddSource(ScrapingTelemetry.ActivitySourceName))
+    .WithMetrics(m => m.AddMeter(ScrapingTelemetry.MeterName));
+
 builder.Services.AddOpenApi();
 
 builder.Services.AddMemoryCache();
 
-builder.AddNpgsqlDbContext<SavvoriDbContext>("savvori");
+if (builder.Environment.IsEnvironment("Testing"))
+    builder.Services.AddDbContext<SavvoriDbContext>(opts =>
+        opts.UseInMemoryDatabase(builder.Configuration["TestDbName"] ?? "TestDb"));
+else
+    builder.AddNpgsqlDbContext<SavvoriDbContext>("savvori");
 
 builder.Services.AddAuthentication(options =>
 {
@@ -35,17 +48,28 @@ builder.Services.AddAuthentication(options =>
 })
 .AddJwtBearer(options =>
 {
+    var key = Encoding.UTF8.GetBytes(
+        builder.Configuration["Jwt:Key"] ?? "dev_secret_key_change_me_in_prod!!");
+    options.MapInboundClaims = true;
     options.TokenValidationParameters = new()
     {
         ValidateIssuer = false,
         ValidateAudience = false,
         ValidateLifetime = true,
-        ValidateIssuerSigningKey = false // TODO: Set to true and configure key in production
+        ValidateIssuerSigningKey = true,
+        IssuerSigningKey = new SymmetricSecurityKey(key),
+        RoleClaimType = ClaimTypes.Role
     };
 })
 .AddCookie();
 
 builder.Services.AddControllers();
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("AdminOnly", policy =>
+        policy.RequireRole("admin"));
+});
 
 // --- Scraping infrastructure ---
 builder.Services.AddHttpClient("continente", c =>
@@ -109,7 +133,7 @@ builder.Services.AddScoped<IStoreScraper, MercadonaScraper>();
 // Location and optimization services
 builder.Services.AddHttpClient("geoapi", c =>
 {
-    c.BaseAddress = new Uri("https://geo.iotech.pt");
+    c.BaseAddress = new Uri("https://geoapi.pt");
     c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "Savvori/1.0");
     c.Timeout = TimeSpan.FromSeconds(10);
 });
@@ -154,8 +178,33 @@ app.MapDefaultEndpoints();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<SavvoriDbContext>();
-    await db.Database.MigrateAsync();
-    await CategorySeeder.SeedAsync(db, app.Logger);
+    if (db.Database.IsRelational())
+    {
+        await db.Database.MigrateAsync();
+        await CategorySeeder.SeedAsync(db, app.Logger);
+        await UserSeeder.SeedAsync(db, app.Logger);
+        await StoreChainSeeder.SeedAsync(db, app.Configuration, app.Logger);
+
+        // Mark any jobs left in Running state as Failed — they were interrupted by a restart.
+        var staleJobs = await db.ScrapingJobs
+            .Where(j => j.Status == ScrapingJobStatus.Running)
+            .ToListAsync();
+        if (staleJobs.Count > 0)
+        {
+            foreach (var stale in staleJobs)
+            {
+                stale.Status = ScrapingJobStatus.Failed;
+                stale.CompletedAt = DateTime.UtcNow;
+                stale.ErrorMessage = "Job interrupted by application restart.";
+            }
+            await db.SaveChangesAsync();
+            app.Logger.LogWarning("Marked {Count} interrupted scraping job(s) as Failed on startup.", staleJobs.Count);
+        }
+    }
+    else
+    {
+        await db.Database.EnsureCreatedAsync();
+    }
 }
 
 if (app.Environment.IsDevelopment())
@@ -194,6 +243,8 @@ record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
 public class ScrapingChainConfig
 {
     public string Slug { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string BaseUrl { get; set; } = string.Empty;
     public bool Enabled { get; set; } = true;
     public bool ScrapeLocations { get; set; } = true;
     public string? MorningCron { get; set; }

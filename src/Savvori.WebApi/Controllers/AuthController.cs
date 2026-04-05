@@ -48,26 +48,31 @@ public class AuthController : ControllerBase
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == req.Email);
         if (user == null || !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
             return Unauthorized();
-        var claims = new[]
+        var claims = new List<Claim>
         {
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new Claim(ClaimTypes.Email, user.Email)
         };
+        if (user.IsAdmin)
+            claims.Add(new Claim(ClaimTypes.Role, "admin"));
         var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
         await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(claimsIdentity));
-        return Ok(new { token = GenerateJwtToken(user) });
+        return Ok(new { token = GenerateJwtToken(user), isAdmin = user.IsAdmin });
     }
 
     private string GenerateJwtToken(User user)
     {
-        var key = Encoding.UTF8.GetBytes(_config["Jwt:Key"] ?? "dev_secret_key_change_me");
+        var key = Encoding.UTF8.GetBytes(_config["Jwt:Key"] ?? "dev_secret_key_change_me_in_prod!!");
         var creds = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256);
+        var tokenClaims = new List<Claim>
+        {
+            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new Claim(ClaimTypes.Email, user.Email)
+        };
+        if (user.IsAdmin)
+            tokenClaims.Add(new Claim(ClaimTypes.Role, "admin"));
         var token = new System.IdentityModel.Tokens.Jwt.JwtSecurityToken(
-            claims: new[]
-            {
-                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-                new Claim(ClaimTypes.Email, user.Email)
-            },
+            claims: tokenClaims,
             expires: DateTime.UtcNow.AddDays(7),
             signingCredentials: creds
         );

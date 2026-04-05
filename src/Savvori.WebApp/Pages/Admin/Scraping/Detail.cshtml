@@ -1,0 +1,136 @@
+@page "{slug}"
+@model ScrapingDetailModel
+@using Savvori.WebApp.Pages.Admin.Scraping
+@{
+    ViewData["Title"] = $"Scraping — {Model.ChainSlug}";
+    Layout = "../_AdminLayout";
+}
+
+<div class="mb-6">
+    <div class="breadcrumbs text-sm mb-2">
+        <ul>
+            <li><a asp-page="/Admin/Scraping/Index">Scraping Jobs</a></li>
+            <li class="capitalize">@Model.ChainSlug</li>
+        </ul>
+    </div>
+    <div class="flex items-center justify-between">
+        <h1 class="text-2xl font-bold capitalize">@Model.ChainSlug — Job History</h1>
+        <form method="post" asp-page-handler="Trigger">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="btn btn-primary btn-sm"
+                    onclick="return confirm('Trigger an immediate scrape for @Model.ChainSlug?')">
+                ▶ Trigger Now
+            </button>
+        </form>
+    </div>
+</div>
+
+@if (Model.Detail is null)
+{
+    <div class="alert alert-error">Could not load scraping details for '@Model.ChainSlug'.</div>
+}
+else
+{
+    <!-- Job history table -->
+    <div class="card bg-base-100 shadow mb-6">
+        <div class="card-body">
+            <h2 class="card-title text-base mb-3">Recent Jobs (last 10)</h2>
+            @if (!Model.Detail.Jobs.Any())
+            {
+                <p class="text-base-content/60 text-sm">No jobs recorded yet.</p>
+            }
+            else
+            {
+                <div class="overflow-x-auto">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Started</th>
+                                <th>Completed</th>
+                                <th>Duration</th>
+                                <th>Status</th>
+                                <th>Products</th>
+                                <th>Error</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var job in Model.Detail.Jobs)
+                            {
+                                var statusCss = job.Status switch
+                                {
+                                    0 => "badge-ghost",
+                                    1 => "badge-warning",
+                                    2 => "badge-success",
+                                    3 => "badge-error",
+                                    _ => "badge-ghost"
+                                };
+                                var statusLabel = job.Status switch
+                                {
+                                    0 => "Pending",
+                                    1 => "Running",
+                                    2 => "Completed",
+                                    3 => "Failed",
+                                    _ => "?"
+                                };
+                                var duration = job.CompletedAt.HasValue
+                                    ? (job.CompletedAt.Value - job.StartedAt).ToString(@"mm\:ss")
+                                    : "—";
+                                <tr>
+                                    <td class="text-xs">@job.StartedAt.ToString("dd/MM HH:mm")</td>
+                                    <td class="text-xs">@(job.CompletedAt?.ToString("dd/MM HH:mm") ?? "—")</td>
+                                    <td class="text-xs">@duration</td>
+                                    <td><span class="badge @statusCss badge-xs">@statusLabel</span></td>
+                                    <td class="text-xs text-right">@job.ProductsScraped.ToString("N0")</td>
+                                    <td class="text-xs text-error max-w-xs truncate" title="@job.ErrorMessage">@job.ErrorMessage</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Recent logs -->
+    <div class="card bg-base-100 shadow">
+        <div class="card-body">
+            <h2 class="card-title text-base mb-3">Recent Logs</h2>
+            @if (!Model.Detail.RecentLogs.Any())
+            {
+                <p class="text-base-content/60 text-sm">No logs available.</p>
+            }
+            else
+            {
+                <div class="overflow-x-auto max-h-96 overflow-y-auto">
+                    <table class="table table-xs font-mono">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Level</th>
+                                <th>Message</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var log in Model.Detail.RecentLogs)
+                            {
+                                var levelCss = log.Level switch
+                                {
+                                    0 => "text-base-content/60",
+                                    1 => "text-warning",
+                                    2 => "text-error",
+                                    _ => ""
+                                };
+                                var levelLabel = log.Level switch { 0 => "INFO", 1 => "WARN", 2 => "ERR", _ => "?" };
+                                <tr class="@levelCss">
+                                    <td class="whitespace-nowrap">@log.Timestamp.ToString("HH:mm:ss")</td>
+                                    <td class="whitespace-nowrap font-bold">@levelLabel</td>
+                                    <td>@log.Message</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+}

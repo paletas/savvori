@@ -1,0 +1,96 @@
+@page
+@model StoresIndexModel
+@{
+    ViewData["Title"] = "Find Stores";
+}
+
+<div class="max-w-2xl mx-auto">
+    <h1 class="text-3xl font-bold mb-2">Find Stores Near You</h1>
+    <p class="text-base-content/60 mb-8">Enter your Portuguese postal code to find nearby supermarkets</p>
+
+    <div class="card bg-base-100 shadow mb-8">
+        <div class="card-body">
+            <form method="get" class="flex flex-col sm:flex-row gap-3">
+                <input asp-for="PostalCode" type="text" placeholder="e.g. 1000-001"
+                       class="input input-bordered flex-1" maxlength="8" />
+                <select asp-for="RadiusKm" class="select select-bordered">
+                    <option value="5">5 km</option>
+                    <option value="10">10 km</option>
+                    <option value="15" selected>15 km</option>
+                    <option value="25">25 km</option>
+                </select>
+                <button type="submit" class="btn btn-primary">Search</button>
+            </form>
+        </div>
+    </div>
+
+    @if (Model.Error != null)
+    {
+        <div class="alert alert-error mb-4"><span>@Model.Error</span></div>
+    }
+
+    @if (Model.Result != null)
+    {
+        <div class="mb-4">
+            <p class="text-sm text-base-content/60">
+                Found <strong>@Model.Result.StoreCount</strong> stores within <strong>@Model.Result.RadiusKm km</strong>
+                of postal code <strong>@Model.Result.PostalCode</strong>
+            </p>
+        </div>
+
+        @if (!Model.Result.Stores.Any())
+        {
+            <div class="alert alert-info">No stores found within @Model.Result.RadiusKm km of your location.</div>
+        }
+        else
+        {
+            <!-- Group by chain -->
+            @foreach (var chain in Model.Result.Stores.GroupBy(s => s.ChainName ?? s.ChainSlug))
+            {
+                <div class="mb-6">
+                    <h2 class="text-lg font-bold mb-3 flex items-center gap-2">
+                        <span class="badge badge-primary badge-sm">@chain.Count()</span>
+                        @chain.Key
+                    </h2>
+                    <div class="space-y-2">
+                        @foreach (var store in chain.OrderBy(s => s.DistanceKm))
+                        {
+                            <div class="card bg-base-100 shadow-sm border border-base-200">
+                                <div class="card-body py-3 px-4 flex-row justify-between items-start">
+                                    <div>
+                                        <p class="font-medium text-sm">@store.Name</p>
+                                        @if (!string.IsNullOrEmpty(store.Address))
+                                        {
+                                            <p class="text-xs text-base-content/50">@store.Address, @store.City</p>
+                                        }
+                                    </div>
+                                    <div class="badge badge-ghost badge-sm shrink-0 ml-2">
+                                        @store.DistanceKm.ToString("F1") km
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        }
+    }
+    else if (string.IsNullOrEmpty(Model.PostalCode))
+    {
+        <!-- All store chains overview -->
+        <div>
+            <h2 class="text-lg font-bold mb-4">All supported store chains</h2>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                @foreach (var storeName in new[] { "Continente", "Pingo Doce", "Auchan", "Minipreço" })
+                {
+                    <div class="card bg-base-100 shadow border border-base-200">
+                        <div class="card-body items-center text-center py-4">
+                            <div class="text-3xl mb-1">🏪</div>
+                            <p class="font-medium text-sm">@storeName</p>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>

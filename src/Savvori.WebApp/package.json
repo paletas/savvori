@@ -1,0 +1,13 @@
+{
+  "name": "savvori-webapp",
+  "private": true,
+  "scripts": {
+    "build:css": "tailwindcss -i ./wwwroot/css/input.css -o ./wwwroot/css/site.css --minify",
+    "watch:css": "tailwindcss -i ./wwwroot/css/input.css -o ./wwwroot/css/site.css --watch"
+  },
+  "devDependencies": {
+    "tailwindcss": "^4.1.3",
+    "@tailwindcss/cli": "^4.1.3",
+    "daisyui": "^5.0.35"
+  }
+}

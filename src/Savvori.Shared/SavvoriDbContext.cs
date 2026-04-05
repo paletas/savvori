@@ -8,6 +8,7 @@ public class User
     public string? PostalCode { get; set; }
     public double? Latitude { get; set; }
     public double? Longitude { get; set; }
+    public bool IsAdmin { get; set; } = false;
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }
@@ -44,8 +45,7 @@ public class Product
     public ProductUnit Unit { get; set; } = ProductUnit.Unit;
     public decimal? SizeValue { get; set; }
     public string? ImageUrl { get; set; }
-    public List<ProductPrice> Prices { get; set; } = new();
-    public List<ProductStoreLink> StoreLinks { get; set; } = new();
+    public List<StoreProduct> StoreProducts { get; set; } = new();
 }
 
 public class Store
@@ -61,22 +61,4 @@ public class Store
     public double? Latitude { get; set; }
     public double? Longitude { get; set; }
     public bool IsActive { get; set; } = true;
-    public List<ProductPrice> Prices { get; set; } = new();
-}
-
-public class ProductPrice
-{
-    public Guid Id { get; set; }
-    public Guid ProductId { get; set; }
-    public Product Product { get; set; } = null!;
-    public Guid StoreId { get; set; }
-    public Store Store { get; set; } = null!;
-    public decimal Price { get; set; }
-    public decimal? UnitPrice { get; set; }
-    public string Currency { get; set; } = "EUR";
-    public bool IsPromotion { get; set; }
-    public string? PromotionDescription { get; set; }
-    public string? SourceUrl { get; set; }
-    public bool IsLatest { get; set; } = true;
-    public DateTime LastUpdated { get; set; }
 }

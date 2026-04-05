@@ -6,7 +6,7 @@ namespace Savvori.WebApi.Services;
 
 /// <summary>
 /// Implements <see cref="ILocationService"/> using the free geoapi.pt service
-/// (https://geo.iotech.pt/cp/{postalCode}?json=1) for postal-code resolution.
+/// (https://geoapi.pt/cp/{postalCode}?json=1) for postal-code resolution.
 /// Results are cached in-memory for 24 hours to minimise outbound requests.
 /// </summary>
 public sealed class GeoApiLocationService : ILocationService
@@ -50,14 +50,9 @@ public sealed class GeoApiLocationService : ILocationService
             var content = await response.Content.ReadAsStringAsync(ct);
             var result = JsonSerializer.Deserialize<GeoApiResponse>(content, JsonOptions);
 
-            if (result?.Latitude is null || result.Longitude is null) return null;
+            if (result?.Centro is null || result.Centro.Length < 2) return null;
 
-            if (!double.TryParse(result.Latitude, System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture, out var lat)) return null;
-            if (!double.TryParse(result.Longitude, System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture, out var lon)) return null;
-
-            var coord = new GeoCoordinate(lat, lon);
+            var coord = new GeoCoordinate(result.Centro[0], result.Centro[1]);
             _cache.Set(cacheKey, coord, TimeSpan.FromHours(24));
             return coord;
         }
@@ -97,19 +92,17 @@ public sealed class GeoApiLocationService : ILocationService
 
     private sealed class GeoApiResponse
     {
-        [JsonPropertyName("lat")]
-        public string? Latitude { get; set; }
+        // geoapi.pt returns coordinates as [latitude, longitude] in the "centro" array
+        [JsonPropertyName("centro")]
+        public double[]? Centro { get; set; }
 
-        [JsonPropertyName("lng")]
-        public string? Longitude { get; set; }
-
-        [JsonPropertyName("localidade")]
+        [JsonPropertyName("Localidade")]
         public string? Locality { get; set; }
 
-        [JsonPropertyName("concelho")]
+        [JsonPropertyName("Concelho")]
         public string? Municipality { get; set; }
 
-        [JsonPropertyName("distrito")]
+        [JsonPropertyName("Distrito")]
         public string? District { get; set; }
     }
 }

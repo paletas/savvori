@@ -1,52 +1,100 @@
-﻿<!DOCTYPE html>
-<html lang="en">
+<!DOCTYPE html>
+<html lang="pt" data-theme="light">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@ViewData["Title"] - Savvori.WebApp</title>
-    <script type="importmap"></script>
-    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <title>@ViewData["Title"] - Savvori</title>
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/Savvori.WebApp.styles.css" asp-append-version="true" />
 </head>
-<body>
-    <header>
-        <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
-            <div class="container">
-                <a class="navbar-brand" asp-area="" asp-page="/Index">Savvori.WebApp</a>
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
-                        aria-expanded="false" aria-label="Toggle navigation">
-                    <span class="navbar-toggler-icon"></span>
-                </button>
-                <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
-                    <ul class="navbar-nav flex-grow-1">
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" asp-area="" asp-page="/Index">Home</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" asp-area="" asp-page="/Privacy">Privacy</a>
+<body class="min-h-screen bg-base-100 flex flex-col">
+    <div class="navbar bg-base-100 shadow-sm border-b border-base-200 sticky top-0 z-50">
+        <div class="navbar-start">
+            <div class="dropdown">
+                <div tabindex="0" role="button" class="btn btn-ghost lg:hidden">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h8m-8 6h16" />
+                    </svg>
+                </div>
+                <ul tabindex="0" class="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-52">
+                    <li><a asp-page="/Index">Home</a></li>
+                    <li><a asp-page="/Products/Index">Products</a></li>
+                    <li><a asp-page="/Stores/Index">Stores</a></li>
+                    @if (User.Identity?.IsAuthenticated == true)
+                    {
+                        <li><a asp-page="/ShoppingLists/Index">My Lists</a></li>
+                    }
+                </ul>
+            </div>
+            <a asp-page="/Index" class="btn btn-ghost text-xl font-bold text-primary">🛒 Savvori</a>
+        </div>
+        <div class="navbar-center hidden lg:flex">
+            <ul class="menu menu-horizontal px-1">
+                <li><a asp-page="/Index" class="font-medium">Home</a></li>
+                <li><a asp-page="/Products/Index" class="font-medium">Products</a></li>
+                <li><a asp-page="/Stores/Index" class="font-medium">Stores</a></li>
+                @if (User.Identity?.IsAuthenticated == true)
+                {
+                    <li><a asp-page="/ShoppingLists/Index" class="font-medium">My Lists</a></li>
+                }
+            </ul>
+        </div>
+        <div class="navbar-end gap-2">
+            @if (User.Identity?.IsAuthenticated == true)
+            {
+                <div class="dropdown dropdown-end">
+                    <div tabindex="0" role="button" class="btn btn-ghost btn-circle avatar placeholder">
+                        <div class="bg-primary text-primary-content rounded-full w-10">
+                            <span class="text-sm">@(User.Identity.Name?.Substring(0, 1).ToUpper() ?? "U")</span>
+                        </div>
+                    </div>
+                    <ul tabindex="0" class="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-52">
+                        <li><a asp-page="/Account/Settings">Settings</a></li>
+                        @if (User.IsInRole("admin"))
+                        {
+                            <li><a asp-page="/Admin/Scraping/Index">Admin</a></li>
+                        }
+                        <li>
+                            <form method="post" asp-page="/Account/Logout">
+                                <button type="submit" class="w-full text-left">Logout</button>
+                            </form>
                         </li>
                     </ul>
                 </div>
-            </div>
-        </nav>
-    </header>
-    <div class="container">
-        <main role="main" class="pb-3">
-            @RenderBody()
-        </main>
+            }
+            else
+            {
+                <a asp-page="/Account/Login" class="btn btn-ghost btn-sm">Login</a>
+                <a asp-page="/Account/Register" class="btn btn-primary btn-sm">Register</a>
+            }
+        </div>
     </div>
 
-    <footer class="border-top footer text-muted">
-        <div class="container">
-            &copy; 2025 - Savvori.WebApp - <a asp-area="" asp-page="/Privacy">Privacy</a>
-        </div>
+    <main class="flex-1 container mx-auto px-4 py-6 max-w-7xl">
+        @if (TempData["Success"] != null)
+        {
+            <div class="alert alert-success mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                <span>@TempData["Success"]</span>
+            </div>
+        }
+        @if (TempData["Error"] != null)
+        {
+            <div class="alert alert-error mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                <span>@TempData["Error"]</span>
+            </div>
+        }
+        @RenderBody()
+    </main>
+
+    <footer class="footer footer-center p-4 bg-base-200 text-base-content border-t border-base-300">
+        <aside>
+            <p>© 2026 Savvori — Compare grocery prices across Portugal 🇵🇹</p>
+        </aside>
     </footer>
 
-    <script src="~/lib/jquery/dist/jquery.min.js"></script>
-    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
-
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

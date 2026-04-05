@@ -309,13 +309,14 @@ public sealed class ShoppingOptimizer : IShoppingOptimizer
 
         var productIds = listItems.Select(i => i.ProductId).ToHashSet();
 
-        // 2. Determine which store IDs to consider
-        HashSet<Guid>? allowedStoreIds = null;
+        // 2. Determine which chain IDs to consider (prices are now chain-level)
+        HashSet<Guid>? allowedChainIds = null;
+        // storeDistances keyed by chain ID (min distance among the chain's nearby stores)
         var storeDistances = new Dictionary<Guid, double>();
 
         if (context.StoreIds.Count > 0)
         {
-            allowedStoreIds = context.StoreIds.ToHashSet();
+            allowedChainIds = context.StoreIds.ToHashSet();
         }
         else if (!string.IsNullOrWhiteSpace(context.PostalCode))
         {
@@ -323,7 +324,7 @@ public sealed class ShoppingOptimizer : IShoppingOptimizer
             if (coord is not null)
             {
                 var stores = await _db.Stores
-                    .Where(s => s.Latitude != null && s.Longitude != null)
+                    .Where(s => s.Latitude != null && s.Longitude != null && s.StoreChainId != null)
                     .ToListAsync(ct);
 
                 foreach (var store in stores)
@@ -332,57 +333,57 @@ public sealed class ShoppingOptimizer : IShoppingOptimizer
                         coord.Latitude, coord.Longitude,
                         store.Latitude!.Value, store.Longitude!.Value);
 
-                    if (dist <= context.RadiusKm)
+                    if (dist <= context.RadiusKm && store.StoreChainId.HasValue)
                     {
-                        storeDistances[store.Id] = dist;
+                        var chainId = store.StoreChainId.Value;
+                        // Keep the minimum distance per chain
+                        if (!storeDistances.TryGetValue(chainId, out var existing) || dist < existing)
+                            storeDistances[chainId] = dist;
                     }
                 }
 
                 if (storeDistances.Count > 0)
-                    allowedStoreIds = storeDistances.Keys.ToHashSet();
+                    allowedChainIds = storeDistances.Keys.ToHashSet();
             }
         }
 
-        // 3. Load current prices for those products
-        var priceQuery = _db.ProductPrices
-            .Include(p => p.Store)
-            .Where(p => productIds.Contains(p.ProductId) && p.IsLatest);
+        // 3. Load active StoreProducts for these canonical products
+        var storeProductQuery = _db.StoreProducts
+            .Include(sp => sp.StoreChain)
+            .Where(sp => sp.IsActive &&
+                         sp.CanonicalProductId != null &&
+                         productIds.Contains(sp.CanonicalProductId.Value));
 
-        if (allowedStoreIds is not null)
-            priceQuery = priceQuery.Where(p => allowedStoreIds.Contains(p.StoreId));
+        if (allowedChainIds is not null)
+            storeProductQuery = storeProductQuery.Where(sp => allowedChainIds.Contains(sp.StoreChainId));
 
-        var prices = await priceQuery.ToListAsync(ct);
+        var storeProducts = await storeProductQuery.ToListAsync(ct);
 
-        // 4. Build price map: ProductId → list of StorePrice entries
-        var priceMap = prices
-            .GroupBy(p => p.ProductId)
+        // 4. Load latest prices for those StoreProducts
+        var storeProductIds = storeProducts.Select(sp => sp.Id).ToList();
+        var latestPrices = await _db.StoreProductPrices
+            .Where(spp => storeProductIds.Contains(spp.StoreProductId) && spp.IsLatest)
+            .ToListAsync(ct);
+        var pricesBySp = latestPrices.ToDictionary(spp => spp.StoreProductId);
+
+        // 5. Build price map: CanonicalProductId -> list of StorePriceEntry (one per chain)
+        var priceMap = storeProducts
+            .Where(sp => pricesBySp.ContainsKey(sp.Id))
+            .GroupBy(sp => sp.CanonicalProductId!.Value)
             .ToDictionary(
                 g => g.Key,
-                g => g.Select(p => new StorePriceEntry(
-                    p.StoreId, p.Store?.Name ?? "Unknown", p.Store?.StoreChainId?.ToString() ?? string.Empty,
-                    p.Price, p.IsPromotion))
-                .ToList());
+                g => g.Select(sp =>
+                {
+                    var spp = pricesBySp[sp.Id];
+                    return new StorePriceEntry(
+                        sp.StoreChainId,
+                        sp.StoreChain?.Name ?? "Unknown",
+                        sp.StoreChain?.Slug ?? string.Empty,
+                        spp.Price,
+                        spp.IsPromotion);
+                }).ToList());
 
-        // Also add chain slug from StoreChain if available
-        var storeChainSlugs = await _db.Stores
-            .Include(s => s.StoreChain)
-            .Where(s => prices.Select(p => p.StoreId).Contains(s.Id))
-            .ToDictionaryAsync(s => s.Id, s => s.StoreChain?.Slug ?? string.Empty, ct);
-
-        // Re-build with correct chain slugs
-        priceMap = prices
-            .GroupBy(p => p.ProductId)
-            .ToDictionary(
-                g => g.Key,
-                g => g.Select(p => new StorePriceEntry(
-                    p.StoreId,
-                    p.Store?.Name ?? "Unknown",
-                    storeChainSlugs.GetValueOrDefault(p.StoreId, string.Empty),
-                    p.Price,
-                    p.IsPromotion))
-                .ToList());
-
-        // 5. Load true category alternatives (different ProductId, same CategoryId)
+        // 6. Load alternatives: other canonical products in same category
         var altsByCategory = new Dictionary<Guid, List<AltProductEntry>>();
 
         var categoryIds = listItems
@@ -392,44 +393,57 @@ public sealed class ShoppingOptimizer : IShoppingOptimizer
 
         if (categoryIds.Count > 0)
         {
-            var altPriceQuery = _db.ProductPrices
-                .Include(pp => pp.Product)
-                .Include(pp => pp.Store)
-                    .ThenInclude(s => s!.StoreChain)
-                .Where(pp => pp.IsLatest &&
-                             pp.Product != null &&
-                             pp.Product.CategoryId != null &&
-                             categoryIds.Contains(pp.Product.CategoryId!.Value) &&
-                             !productIds.Contains(pp.ProductId));
+            var altStoreProductQuery = _db.StoreProducts
+                .Include(sp => sp.StoreChain)
+                .Include(sp => sp.CanonicalProduct)
+                .Where(sp => sp.IsActive &&
+                             sp.CanonicalProductId != null &&
+                             !productIds.Contains(sp.CanonicalProductId.Value) &&
+                             sp.CanonicalProduct != null &&
+                             sp.CanonicalProduct.CategoryId != null &&
+                             categoryIds.Contains(sp.CanonicalProduct.CategoryId.Value));
 
-            if (allowedStoreIds is not null)
-                altPriceQuery = altPriceQuery.Where(pp => allowedStoreIds.Contains(pp.StoreId));
+            if (allowedChainIds is not null)
+                altStoreProductQuery = altStoreProductQuery.Where(sp => allowedChainIds.Contains(sp.StoreChainId));
 
-            var altPrices = await altPriceQuery.ToListAsync(ct);
+            var altStoreProducts = await altStoreProductQuery.ToListAsync(ct);
+            var altSpIds = altStoreProducts.Select(sp => sp.Id).ToList();
+            var altLatestPrices = await _db.StoreProductPrices
+                .Where(spp => altSpIds.Contains(spp.StoreProductId) && spp.IsLatest)
+                .ToListAsync(ct);
+            var altPricesBySp = altLatestPrices.ToDictionary(spp => spp.StoreProductId);
 
-            altsByCategory = altPrices
-                .GroupBy(pp => pp.Product!.CategoryId!.Value)
+            altsByCategory = altStoreProducts
+                .Where(sp => altPricesBySp.ContainsKey(sp.Id) && sp.CanonicalProduct?.CategoryId != null)
+                .GroupBy(sp => sp.CanonicalProduct!.CategoryId!.Value)
                 .ToDictionary(
                     g => g.Key,
-                    g => g.GroupBy(pp => pp.ProductId)
-                          .Select(pg => new AltProductEntry(
-                              pg.Key,
-                              pg.First().Product!.Name,
-                              pg.First().Product!.Brand,
-                              pg.First().Product!.CategoryId,
-                              pg.Select(pp => new StorePriceEntry(
-                                  pp.StoreId,
-                                  pp.Store?.Name ?? "Unknown",
-                                  pp.Store?.StoreChain?.Slug ?? string.Empty,
-                                  pp.Price,
-                                  pp.IsPromotion))
-                                .ToList()))
+                    g => g.GroupBy(sp => sp.CanonicalProductId!.Value)
+                          .Select(pg =>
+                          {
+                              var first = pg.First();
+                              return new AltProductEntry(
+                                  pg.Key,
+                                  first.CanonicalProduct!.Name,
+                                  first.CanonicalProduct!.Brand,
+                                  first.CanonicalProduct!.CategoryId,
+                                  pg.Where(sp => altPricesBySp.ContainsKey(sp.Id))
+                                    .Select(sp =>
+                                    {
+                                        var spp = altPricesBySp[sp.Id];
+                                        return new StorePriceEntry(
+                                            sp.StoreChainId,
+                                            sp.StoreChain?.Name ?? "Unknown",
+                                            sp.StoreChain?.Slug ?? string.Empty,
+                                            spp.Price,
+                                            spp.IsPromotion);
+                                    }).ToList());
+                          })
                           .ToList());
         }
 
         return (listItems, priceMap, storeDistances, [], altsByCategory);
     }
-
     private static OptimizedItem BuildOptimizedItem(
         ShoppingListItem item,
         StorePriceEntry cheapest,

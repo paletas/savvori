@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Savvori.Shared\Savvori.Shared.csproj" />
+    <ProjectReference Include="..\Savvori.ServiceDefaults\Savvori.ServiceDefaults.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -9,5 +10,10 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
+
+
+  <Target Name="BuildTailwindCSS" BeforeTargets="Build" Condition="'$(CI)' != 'true'">
+    <Exec Command="npm run build:css" WorkingDirectory="$(MSBuildProjectDirectory)" />
+  </Target>
 
 </Project>

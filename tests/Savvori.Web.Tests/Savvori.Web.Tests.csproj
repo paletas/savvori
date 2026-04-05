@@ -37,6 +37,7 @@
   <ItemGroup>
   <!-- Removed old reference to Savvori.Web.csproj -->
     <ProjectReference Include="..\..\src\Savvori.WebApi\Savvori.WebApi.csproj" />
+    <ProjectReference Include="..\..\src\Savvori.WebApp\Savvori.WebApp.csproj" />
   </ItemGroup>
 
 </Project>

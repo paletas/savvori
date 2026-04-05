@@ -94,86 +94,6 @@ namespace Savvori.WebApi.Migrations
                     b.ToTable("ProductCategories");
                 });
 
-            modelBuilder.Entity("Savvori.Shared.ProductPrice", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Currency")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("text")
-                        .HasDefaultValue("EUR");
-
-                    b.Property<bool>("IsLatest")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("IsPromotion")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTime>("LastUpdated")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<decimal>("Price")
-                        .HasColumnType("numeric");
-
-                    b.Property<Guid>("ProductId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("PromotionDescription")
-                        .HasColumnType("text");
-
-                    b.Property<string>("SourceUrl")
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("StoreId")
-                        .HasColumnType("uuid");
-
-                    b.Property<decimal?>("UnitPrice")
-                        .HasColumnType("numeric");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("StoreId");
-
-                    b.HasIndex("ProductId", "StoreId", "IsLatest");
-
-                    b.ToTable("ProductPrices");
-                });
-
-            modelBuilder.Entity("Savvori.Shared.ProductStoreLink", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("ExternalId")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTime>("LastSeen")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("ProductId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("SourceUrl")
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("StoreChainId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ProductId");
-
-                    b.HasIndex("StoreChainId", "ExternalId")
-                        .IsUnique();
-
-                    b.ToTable("ProductStoreLinks");
-                });
-
             modelBuilder.Entity("Savvori.Shared.ScrapingJob", b =>
                 {
                     b.Property<Guid>("Id")
@@ -320,6 +240,64 @@ namespace Savvori.WebApi.Migrations
                     b.ToTable("Stores");
                 });
 
+            modelBuilder.Entity("Savvori.Shared.StoreCategory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("LastScraped")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("ParentStoreCategoryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("StoreChainId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Url")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ParentStoreCategoryId");
+
+                    b.HasIndex("StoreChainId", "ExternalId")
+                        .IsUnique();
+
+                    b.ToTable("StoreCategories");
+                });
+
+            modelBuilder.Entity("Savvori.Shared.StoreCategoryMapping", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProductCategoryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("StoreCategoryId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductCategoryId");
+
+                    b.HasIndex("StoreCategoryId")
+                        .IsUnique();
+
+                    b.ToTable("StoreCategoryMappings");
+                });
+
             modelBuilder.Entity("Savvori.Shared.StoreChain", b =>
                 {
                     b.Property<Guid>("Id")
@@ -352,6 +330,126 @@ namespace Savvori.WebApi.Migrations
                     b.ToTable("StoreChains");
                 });
 
+            modelBuilder.Entity("Savvori.Shared.StoreProduct", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Brand")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("CanonicalProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EAN")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("FirstSeen")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ImageUrl")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("LastScraped")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MatchMethod")
+                        .HasColumnType("text");
+
+                    b.Property<int>("MatchStatus")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("MatchedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("NormalizedName")
+                        .HasColumnType("text");
+
+                    b.Property<decimal?>("SizeValue")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("SourceUrl")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("StoreCategoryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("StoreChainId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Unit")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EAN");
+
+                    b.HasIndex("NormalizedName");
+
+                    b.HasIndex("StoreCategoryId");
+
+                    b.HasIndex("CanonicalProductId", "IsActive");
+
+                    b.HasIndex("StoreChainId", "ExternalId")
+                        .IsUnique();
+
+                    b.ToTable("StoreProducts");
+                });
+
+            modelBuilder.Entity("Savvori.Shared.StoreProductPrice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("EUR");
+
+                    b.Property<bool>("IsLatest")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsPromotion")
+                        .HasColumnType("boolean");
+
+                    b.Property<decimal>("Price")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("PromotionDescription")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("ScrapedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("StoreProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("UnitPrice")
+                        .HasColumnType("numeric");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreProductId", "IsLatest");
+
+                    b.HasIndex("StoreProductId", "ScrapedAt");
+
+                    b.ToTable("StoreProductPrices");
+                });
+
             modelBuilder.Entity("Savvori.Shared.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -364,6 +462,9 @@ namespace Savvori.WebApi.Migrations
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<bool>("IsAdmin")
+                        .HasColumnType("boolean");
 
                     b.Property<double?>("Latitude")
                         .HasColumnType("double precision");
@@ -407,44 +508,6 @@ namespace Savvori.WebApi.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Parent");
-                });
-
-            modelBuilder.Entity("Savvori.Shared.ProductPrice", b =>
-                {
-                    b.HasOne("Savvori.Shared.Product", "Product")
-                        .WithMany("Prices")
-                        .HasForeignKey("ProductId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Savvori.Shared.Store", "Store")
-                        .WithMany("Prices")
-                        .HasForeignKey("StoreId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Product");
-
-                    b.Navigation("Store");
-                });
-
-            modelBuilder.Entity("Savvori.Shared.ProductStoreLink", b =>
-                {
-                    b.HasOne("Savvori.Shared.Product", "Product")
-                        .WithMany("StoreLinks")
-                        .HasForeignKey("ProductId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Savvori.Shared.StoreChain", "StoreChain")
-                        .WithMany()
-                        .HasForeignKey("StoreChainId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Product");
-
-                    b.Navigation("StoreChain");
                 });
 
             modelBuilder.Entity("Savvori.Shared.ScrapingJob", b =>
@@ -496,11 +559,82 @@ namespace Savvori.WebApi.Migrations
                     b.Navigation("StoreChain");
                 });
 
+            modelBuilder.Entity("Savvori.Shared.StoreCategory", b =>
+                {
+                    b.HasOne("Savvori.Shared.StoreCategory", "Parent")
+                        .WithMany("Children")
+                        .HasForeignKey("ParentStoreCategoryId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Savvori.Shared.StoreChain", "StoreChain")
+                        .WithMany("StoreCategories")
+                        .HasForeignKey("StoreChainId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Parent");
+
+                    b.Navigation("StoreChain");
+                });
+
+            modelBuilder.Entity("Savvori.Shared.StoreCategoryMapping", b =>
+                {
+                    b.HasOne("Savvori.Shared.ProductCategory", "ProductCategory")
+                        .WithMany()
+                        .HasForeignKey("ProductCategoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Savvori.Shared.StoreCategory", "StoreCategory")
+                        .WithOne("Mapping")
+                        .HasForeignKey("Savvori.Shared.StoreCategoryMapping", "StoreCategoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ProductCategory");
+
+                    b.Navigation("StoreCategory");
+                });
+
+            modelBuilder.Entity("Savvori.Shared.StoreProduct", b =>
+                {
+                    b.HasOne("Savvori.Shared.Product", "CanonicalProduct")
+                        .WithMany("StoreProducts")
+                        .HasForeignKey("CanonicalProductId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Savvori.Shared.StoreCategory", "StoreCategory")
+                        .WithMany("StoreProducts")
+                        .HasForeignKey("StoreCategoryId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Savvori.Shared.StoreChain", "StoreChain")
+                        .WithMany("StoreProducts")
+                        .HasForeignKey("StoreChainId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CanonicalProduct");
+
+                    b.Navigation("StoreCategory");
+
+                    b.Navigation("StoreChain");
+                });
+
+            modelBuilder.Entity("Savvori.Shared.StoreProductPrice", b =>
+                {
+                    b.HasOne("Savvori.Shared.StoreProduct", "StoreProduct")
+                        .WithMany("Prices")
+                        .HasForeignKey("StoreProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("StoreProduct");
+                });
+
             modelBuilder.Entity("Savvori.Shared.Product", b =>
                 {
-                    b.Navigation("Prices");
-
-                    b.Navigation("StoreLinks");
+                    b.Navigation("StoreProducts");
                 });
 
             modelBuilder.Entity("Savvori.Shared.ProductCategory", b =>
@@ -520,9 +654,13 @@ namespace Savvori.WebApi.Migrations
                     b.Navigation("Items");
                 });
 
-            modelBuilder.Entity("Savvori.Shared.Store", b =>
+            modelBuilder.Entity("Savvori.Shared.StoreCategory", b =>
                 {
-                    b.Navigation("Prices");
+                    b.Navigation("Children");
+
+                    b.Navigation("Mapping");
+
+                    b.Navigation("StoreProducts");
                 });
 
             modelBuilder.Entity("Savvori.Shared.StoreChain", b =>
@@ -530,6 +668,15 @@ namespace Savvori.WebApi.Migrations
                     b.Navigation("Locations");
 
                     b.Navigation("ScrapingJobs");
+
+                    b.Navigation("StoreCategories");
+
+                    b.Navigation("StoreProducts");
+                });
+
+            modelBuilder.Entity("Savvori.Shared.StoreProduct", b =>
+                {
+                    b.Navigation("Prices");
                 });
 #pragma warning restore 612, 618
         }

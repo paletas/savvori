@@ -1,0 +1,115 @@
+@page
+@model ShoppingListsIndexModel
+@{
+    ViewData["Title"] = "My Shopping Lists";
+}
+
+<div class="flex justify-between items-center mb-6">
+    <div>
+        <h1 class="text-2xl font-bold">My Shopping Lists</h1>
+        <p class="text-base-content/60 text-sm mt-1">Manage your grocery lists and find the best prices</p>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="document.getElementById('create-modal').showModal()">
+        + New list
+    </button>
+</div>
+
+@if (!Model.Lists.Any())
+{
+    <div class="hero min-h-[40vh] bg-base-200 rounded-2xl">
+        <div class="hero-content text-center flex-col">
+            <div class="text-5xl mb-4">🛒</div>
+            <h2 class="text-xl font-bold">No shopping lists yet</h2>
+            <p class="text-base-content/60 text-sm max-w-xs">Create your first list to start comparing prices and saving money.</p>
+            <button class="btn btn-primary mt-4" onclick="document.getElementById('create-modal').showModal()">
+                Create your first list
+            </button>
+        </div>
+    </div>
+}
+else
+{
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        @foreach (var list in Model.Lists)
+        {
+            <div class="card bg-base-100 shadow border border-base-200 hover:border-primary transition-colors">
+                <div class="card-body py-4 px-5">
+                    <div class="flex justify-between items-start">
+                        <a asp-page="/ShoppingLists/Detail" asp-route-id="@list.Id"
+                           class="font-bold text-base hover:text-primary transition-colors flex-1 mr-2">
+                            @list.Name
+                        </a>
+                        <div class="dropdown dropdown-end">
+                            <div tabindex="0" role="button" class="btn btn-ghost btn-xs btn-circle">⋮</div>
+                            <ul tabindex="0" class="dropdown-content menu menu-sm bg-base-100 rounded-box z-[1] shadow border border-base-200 w-36">
+                                <li>
+                                    <button onclick="startRename('@list.Id', '@Html.Encode(list.Name)')" class="text-sm">Rename</button>
+                                </li>
+                                <li>
+                                    <form method="post" asp-page-handler="Delete" asp-route-id="@list.Id"
+                                          onsubmit="return confirm('Delete \'@Html.Encode(list.Name)\'?')">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit" class="text-sm text-error">Delete</button>
+                                    </form>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                    <p class="text-base-content/50 text-xs mt-1">
+                        @list.Items.Count item@(list.Items.Count != 1 ? "s" : "") ·
+                        Updated @list.UpdatedAt.ToString("dd MMM yyyy")
+                    </p>
+                    <div class="card-actions mt-3">
+                        <a asp-page="/ShoppingLists/Detail" asp-route-id="@list.Id"
+                           class="btn btn-ghost btn-xs flex-1">View</a>
+                        <a asp-page="/ShoppingLists/Optimize" asp-route-id="@list.Id"
+                           class="btn btn-primary btn-xs flex-1">⚡ Optimize</a>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+<!-- Rename modal -->
+<dialog id="rename-modal" class="modal">
+    <div class="modal-box">
+        <h3 class="font-bold text-lg mb-4">Rename list</h3>
+        <form method="post" asp-page-handler="Rename">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="id" id="rename-id" />
+            <input type="text" name="name" id="rename-name" class="input input-bordered w-full" required />
+            <div class="modal-action">
+                <button type="button" class="btn btn-ghost" onclick="document.getElementById('rename-modal').close()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </div>
+        </form>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<!-- Create modal -->
+<dialog id="create-modal" class="modal">
+    <div class="modal-box">
+        <h3 class="font-bold text-lg mb-4">New shopping list</h3>
+        <form method="post" asp-page-handler="Create">
+            @Html.AntiForgeryToken()
+            <input type="text" name="name" class="input input-bordered w-full" placeholder="e.g. Weekly groceries" required autofocus />
+            <div class="modal-action">
+                <button type="button" class="btn btn-ghost" onclick="document.getElementById('create-modal').close()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Create</button>
+            </div>
+        </form>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+@section Scripts {
+<script>
+function startRename(id, name) {
+    document.getElementById('rename-id').value = id;
+    document.getElementById('rename-name').value = name;
+    document.getElementById('rename-modal').showModal();
+}
+</script>
+}

@@ -61,5 +61,11 @@ public static class CategoryTaxonomy
         // ── Limpeza ──────────────────────────────────────────────────────────
         new("Detergentes",        "detergentes",        "limpeza"),
         new("Limpeza do Lar",     "limpeza-lar",        "limpeza"),
+
+        // ── Bebé e Puericultura ───────────────────────────────────────────────
+        new("Bebé e Puericultura", "bebe-puericultura", null),
+
+        // ── Saúde e Bem-Estar ─────────────────────────────────────────────────
+        new("Saúde e Bem-Estar",   "saude-bem-estar",   null),
     ];
 }

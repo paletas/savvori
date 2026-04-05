@@ -1,0 +1,117 @@
+@page
+@model ProductsIndexModel
+@{
+    ViewData["Title"] = "Products";
+    Layout = "_AdminLayout";
+}
+
+<div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold">Products</h1>
+    @if (Model.Result is not null)
+    {
+        <div class="badge badge-neutral">@Model.Result.Total total</div>
+    }
+</div>
+
+<form method="get" class="flex gap-2 mb-6">
+    <input type="text" name="search" value="@Model.Search"
+           placeholder="Search by name, brand, EAN…"
+           class="input input-bordered flex-1 max-w-md" />
+    <button type="submit" class="btn btn-primary">Search</button>
+    @if (!string.IsNullOrWhiteSpace(Model.Search))
+    {
+        <a asp-page="/Admin/Products/Index" class="btn btn-ghost">Clear</a>
+    }
+</form>
+
+@if (Model.Result is null)
+{
+    <div class="alert alert-error">Failed to load products.</div>
+}
+else if (!Model.Result.Items.Any())
+{
+    <div class="alert alert-info">
+        <span>
+            No products found
+            @if (!string.IsNullOrWhiteSpace(Model.Search))
+            {
+                <text> matching &ldquo;@Model.Search&rdquo;</text>
+            }.
+            Products are created automatically when scrapers run.
+        </span>
+    </div>
+}
+else
+{
+    <div class="overflow-x-auto">
+        <table class="table table-zebra w-full">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Brand</th>
+                    <th>Category</th>
+                    <th>EAN</th>
+                    <th class="text-right">Lowest Price</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var p in Model.Result.Items)
+                {
+                    <tr>
+                        <td>
+                            <div class="flex items-center gap-3">
+                                @if (!string.IsNullOrEmpty(p.ImageUrl))
+                                {
+                                    <img src="@p.ImageUrl" alt="@p.Name"
+                                         class="w-10 h-10 object-contain rounded" />
+                                }
+                                <span class="font-medium">@p.Name</span>
+                            </div>
+                        </td>
+                        <td class="text-sm">@(p.Brand ?? "—")</td>
+                        <td class="text-sm">@(p.Category ?? "—")</td>
+                        <td><span class="font-mono text-xs">@(p.EAN ?? "—")</span></td>
+                        <td class="text-right font-medium">
+                            @if (p.LowestPrice.HasValue)
+                            {
+                                <span>@p.LowestPrice.Value.ToString("F2") €</span>
+                            }
+                            else
+                            {
+                                <span class="text-base-content/40">—</span>
+                            }
+                        </td>
+                        <td>
+                            <a asp-page="/Products/Detail" asp-route-id="@p.Id"
+                               class="btn btn-ghost btn-xs" target="_blank">View →</a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @if (Model.Result.TotalPages > 1)
+    {
+        <div class="flex justify-center gap-2 mt-6">
+            @if (Model.Result.Page > 1)
+            {
+                <a asp-page="/Admin/Products/Index"
+                   asp-route-search="@Model.Search"
+                   asp-route-page="@(Model.Result.Page - 1)"
+                   class="btn btn-sm btn-ghost">← Prev</a>
+            }
+            <span class="btn btn-sm btn-disabled no-animation">
+                Page @Model.Result.Page of @Model.Result.TotalPages
+            </span>
+            @if (Model.Result.Page < Model.Result.TotalPages)
+            {
+                <a asp-page="/Admin/Products/Index"
+                   asp-route-search="@Model.Search"
+                   asp-route-page="@(Model.Result.Page + 1)"
+                   class="btn btn-sm btn-ghost">Next →</a>
+            }
+        </div>
+    }
+}

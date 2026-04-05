@@ -111,6 +111,37 @@ The `/api/shoppinglists/{id}/optimize` endpoint supports four modes via `?mode=`
 - Both endpoints require the `admin` role.
 - Supported `chainSlug` values: `continente`, `pingo-doce`, `auchan`, `minipreco` (stubs: `lidl`, `intermarche`, `mercadona`).
 
+## 9. Web Application (Frontend UI)
+
+### User Stories
+- As a user, I want a web interface so I can use Savvori without writing API calls.
+- As a user, I want to browse and search products visually, compare prices, and manage shopping lists in a browser.
+- As an administrator, I want an admin section within the web app where I can view and trigger scraping jobs.
+
+### Acceptance Criteria
+
+**Public pages (no login required):**
+- The home page displays a product search bar and a category grid.
+- `/Products` shows a browseable, searchable product catalog with live HTMX search (no page reload).
+- `/Products/Detail/{id}` shows full product details: prices across all stores, price history, and alternative suggestions.
+- `/Categories` shows the full category tree; `/Categories/Detail/{slug}` shows paginated products in that category.
+- `/Stores` lets users search for nearby stores by Portuguese postal code (XXXX-XXX format).
+
+**Authentication pages:**
+- `/Account/Login` and `/Account/Register` are accessible to unauthenticated users.
+- After login, the user is redirected to the home page with a persistent session (7-day sliding cookie).
+- `/Account/Settings` (authenticated) allows users to view their account details and delete their account.
+
+**Shopping list pages (authentication required):**
+- `/ShoppingLists` shows all lists for the logged-in user with create, rename, and delete actions.
+- `/ShoppingLists/Detail/{id}` allows adding/removing products via HTMX product search (no page reload).
+- `/ShoppingLists/Optimize` displays optimization results (cheapest-total, cheapest-store, balanced) and a full store comparison matrix.
+
+**Admin pages (admin role required):**
+- `/Admin` is the admin dashboard, accessible only to users with the `admin` role.
+- `/Admin/Scraping` shows a live auto-refreshing (every 30 s) grid of scraping job statuses.
+- `/Admin/Scraping/Detail/{chainSlug}` shows per-chain job history, recent logs, and a manual trigger button.
+
 ---
 
 This document describes the functional requirements for the Savvori project. See `TECHNICAL_ARCHITECTURE.md` for implementation details.

@@ -1,0 +1,31 @@
+@page
+@model ScrapingIndexModel
+@using Savvori.WebApp.Pages.Admin.Scraping
+@{
+    ViewData["Title"] = "Scraping Jobs";
+    Layout = "../_AdminLayout";
+}
+
+<div class="flex justify-between items-center mb-6">
+    <div>
+        <h1 class="text-2xl font-bold">Scraping Jobs</h1>
+        <p class="text-base-content/60 text-sm mt-1">Monitor product price scraping across all store chains</p>
+    </div>
+    <button class="btn btn-ghost btn-sm"
+            hx-get="/Admin/Scraping?handler=Refresh"
+            hx-target="#jobs-table"
+            hx-swap="innerHTML">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+        Refresh
+    </button>
+</div>
+
+<!-- Status cards grid -->
+<div id="jobs-table"
+     hx-get="/Admin/Scraping?handler=Refresh"
+     hx-trigger="every 30s"
+     hx-swap="innerHTML">
+    <partial name="_ScrapingStatusTable" model="Model.Jobs" />
+</div>

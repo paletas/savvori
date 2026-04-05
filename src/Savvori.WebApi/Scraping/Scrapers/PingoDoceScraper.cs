@@ -10,17 +10,34 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
 {
     public override string StoreChainSlug => "pingodoce";
 
+    private const string BaseUrl = "https://www.pingodoce.pt";
     private const string SearchUrl =
         "https://www.pingodoce.pt/on/demandware.store/Sites-pingo-doce-Site/default/Search-Show";
+    private const string StoreFinderUrl =
+        "https://www.pingodoce.pt/on/demandware.store/Sites-pingo-doce-Site/default/Stores-FindStores";
     private const int PageSize = 24;
 
-    // Browse all grocery-relevant Pingo Doce categories
+    // Geographic sweep centres — 300 km radius covers all of mainland Portugal from two points.
+    private static readonly (double Lat, double Lng)[] SweepCentres =
+    [
+        (41.15, -8.61),   // Porto  — covers north + centre
+        (37.02, -7.93),   // Faro   — covers Algarve + Alentejo south
+    ];
+
+    // Browse all grocery-relevant Pingo Doce categories using the site's actual category IDs
     private static readonly string[] GroceryCategories =
     [
-        "leite-e-bebidas-vegetais", "iogurtes-e-sobremesas", "queijos-e-charcutaria", "ovos",
-        "carne", "peixe-e-marisco", "frutas-e-legumes",
-        "mercearia", "congelados", "bebidas",
-        "padaria-e-pastelaria", "bio-e-saudavel"
+        "ec_frutasevegetais_100",         // fruits & vegetables
+        "ec_talho_200",                   // meat
+        "ec_charcutariaqueijos_500",       // charcuterie & cheese
+        "ec_ovos_600",                    // eggs
+        "ec_leitebebidasvegetais_900",     // milk & plant drinks
+        "ec_iogurtessobremesas_800",       // yogurts & desserts
+        "ec_congelados_1000",             // frozen
+        "ec_cafechaachocolatados_1100",    // coffee, tea & hot drinks
+        "ec_bolachascereaisguloseimas_1200", // cookies, cereals & sweets
+        "ec_mercearia_1300",              // grocery staples (pasta, rice, sauces…)
+        "ec_aguassumosrefrigerantes_1400", // water, juices & soft drinks
     ];
 
     public PingoDoceScraper(
@@ -38,14 +55,14 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
 
         if (category is not null)
         {
-            await ScrapeSearch(category, seen, products, ct);
+            await ScrapeCategory(category, seen, products, ct);
         }
         else
         {
             foreach (var cat in GroceryCategories)
             {
                 ct.ThrowIfCancellationRequested();
-                await ScrapeSearch(cat, seen, products, ct);
+                await ScrapeCategory(cat, seen, products, ct);
                 await Task.Delay(800, ct);
             }
         }
@@ -54,14 +71,56 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
         return products;
     }
 
-    public override Task<IReadOnlyList<ScrapedStoreLocation>> ScrapeStoreLocationsAsync(
+    public override async Task<IReadOnlyList<ScrapedStoreLocation>> ScrapeStoreLocationsAsync(
         CancellationToken ct = default)
     {
-        return Task.FromResult<IReadOnlyList<ScrapedStoreLocation>>([]);
+        var seen = new HashSet<string>();
+        var locations = new List<ScrapedStoreLocation>();
+
+        foreach (var (lat, lng) in SweepCentres)
+        {
+            ct.ThrowIfCancellationRequested();
+            var url = $"{StoreFinderUrl}?lat={lat.ToString(CultureInfo.InvariantCulture)}" +
+                      $"&long={lng.ToString(CultureInfo.InvariantCulture)}&radius=300&countryCode=PT&distanceUnit=km";
+
+            try
+            {
+                var response = await GetJsonAsync<PingoDoceStoreFinderResponse>(url, ct);
+                if (response?.Stores is null) continue;
+
+                foreach (var store in response.Stores)
+                {
+                    if (string.IsNullOrEmpty(store.Id) || !seen.Add(store.Id)) continue;
+                    if (string.IsNullOrEmpty(store.Name)) continue;
+
+                    locations.Add(new ScrapedStoreLocation(
+                        Name: store.Name,
+                        Address: store.Address1,
+                        PostalCode: store.PostalCode,
+                        City: store.City,
+                        Latitude: store.Latitude,
+                        Longitude: store.Longitude
+                    ));
+                }
+
+                Logger.LogInformation(
+                    "PingoDoce: centre ({Lat},{Lng}) returned {Count} stores (total: {Total})",
+                    lat, lng, response.Stores.Count, locations.Count);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "PingoDoce: failed to fetch store locations (centre {Lat},{Lng})", lat, lng);
+            }
+
+            await Task.Delay(500, ct);
+        }
+
+        Logger.LogInformation("PingoDoce: {Count} distinct store locations scraped", locations.Count);
+        return locations;
     }
 
-    private async Task ScrapeSearch(
-        string query,
+    private async Task ScrapeCategory(
+        string categoryId,
         HashSet<string> seen,
         List<ScrapedProduct> products,
         CancellationToken ct)
@@ -71,7 +130,8 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
 
         do
         {
-            var url = $"{SearchUrl}?q={Uri.EscapeDataString(query)}&start={start}&sz={PageSize}";
+            // Use category browse (cgid=) with ajax format — server-renders product tiles
+            var url = $"{SearchUrl}?cgid={Uri.EscapeDataString(categoryId)}&format=ajax&start={start}&sz={PageSize}";
             IDocument document;
 
             try
@@ -80,7 +140,7 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
             }
             catch (Exception ex)
             {
-                Logger.LogError(ex, "PingoDoce: failed to fetch query='{Query}' start={Start}", query, start);
+                Logger.LogError(ex, "PingoDoce: failed to fetch category='{Category}' start={Start}", categoryId, start);
                 break;
             }
 
@@ -101,12 +161,15 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
                 total = ParseCount(countText);
             }
 
+            // Fewer tiles than requested means this is the last page
+            if (tiles.Count < PageSize) break;
+
             start += PageSize;
 
             if (start < (total ?? int.MaxValue))
                 await Task.Delay(500, ct);
 
-        } while (start < (total ?? 0) + PageSize);
+        } while (start < (total ?? int.MaxValue));
     }
 
     private static ScrapedProduct? ParseTile(IElement tile)
@@ -155,7 +218,7 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
         // Product URL
         var linkHref = tile.QuerySelector("a")?.GetAttribute("href");
         var sourceUrl = linkHref is not null
-            ? (linkHref.StartsWith("http") ? linkHref : $"https://www.pingodoce.pt{linkHref}")
+            ? (linkHref.StartsWith("http") ? linkHref : $"{BaseUrl}{linkHref}")
             : null;
 
         return new ScrapedProduct(
@@ -215,7 +278,9 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
     {
         if (string.IsNullOrWhiteSpace(text)) return null;
         var match = CountDigits().Match(text);
-        return match.Success ? int.Parse(match.Value) : null;
+        if (!match.Success) return null;
+        var digits = match.Value.Replace(",", "").Replace(".", "");
+        return int.TryParse(digits, out var val) ? val : null;
     }
 
     // Matches patterns like "1 L | 0,86 €/L" or "500 g | 2,50 €/kg"
@@ -224,6 +289,26 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex SizeUnitPricePattern();
 
-    [GeneratedRegex(@"\d+")]
+    // Matches a number that may use comma/dot as thousand separators (e.g., "11,028" or "5.576")
+    [GeneratedRegex(@"[\d,.]+")]
     private static partial Regex CountDigits();
+
+    // ---- DTOs for SFCC store finder response -----------------------------------
+
+    private sealed class PingoDoceStoreFinderResponse
+    {
+        public List<PingoDoceStoreDto> Stores { get; set; } = [];
+    }
+
+    private sealed class PingoDoceStoreDto
+    {
+        public string? Id { get; set; }
+        public string? Name { get; set; }
+        public string? Address1 { get; set; }
+        public string? City { get; set; }
+        public string? PostalCode { get; set; }
+        public double? Latitude { get; set; }
+        public double? Longitude { get; set; }
+    }
 }
+

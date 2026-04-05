@@ -1,0 +1,44 @@
+@page
+@model AdminIndexModel
+@{
+    ViewData["Title"] = "Admin Dashboard";
+    Layout = "_AdminLayout";
+}
+
+<h1 class="text-2xl font-bold mb-6">Admin Dashboard</h1>
+
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    <a asp-page="/Admin/Scraping/Index" class="card bg-base-100 shadow hover:shadow-md transition-shadow cursor-pointer">
+        <div class="card-body">
+            <div class="flex items-center gap-3">
+                <div class="text-3xl">🔄</div>
+                <div>
+                    <h2 class="card-title text-lg">Scraping Jobs</h2>
+                    <p class="text-base-content/60 text-sm">Monitor and trigger product price scrapers</p>
+                </div>
+            </div>
+        </div>
+    </a>
+    <a asp-page="/Admin/Stores/Index" class="card bg-base-100 shadow hover:shadow-md transition-shadow cursor-pointer">
+        <div class="card-body">
+            <div class="flex items-center gap-3">
+                <div class="text-3xl">🏪</div>
+                <div>
+                    <h2 class="card-title text-lg">Stores</h2>
+                    <p class="text-base-content/60 text-sm">View store chains and their locations</p>
+                </div>
+            </div>
+        </div>
+    </a>
+    <a asp-page="/Admin/Products/Index" class="card bg-base-100 shadow hover:shadow-md transition-shadow cursor-pointer">
+        <div class="card-body">
+            <div class="flex items-center gap-3">
+                <div class="text-3xl">📦</div>
+                <div>
+                    <h2 class="card-title text-lg">Products</h2>
+                    <p class="text-base-content/60 text-sm">Browse all products in the catalogue</p>
+                </div>
+            </div>
+        </div>
+    </a>
+</div>

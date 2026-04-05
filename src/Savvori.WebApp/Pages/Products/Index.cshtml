@@ -1,0 +1,127 @@
+@page
+@model ProductsIndexModel
+@{
+    ViewData["Title"] = "Products";
+}
+
+<div class="flex flex-col md:flex-row gap-6">
+    <!-- Sidebar: categories -->
+    <aside class="md:w-56 shrink-0">
+        <div class="card bg-base-100 shadow">
+            <div class="card-body py-4 px-4">
+                <h2 class="font-bold text-sm mb-3">Categories</h2>
+                <ul class="menu menu-sm p-0">
+                    <li>
+                        <a asp-page="/Products/Index"
+                           class="@(Model.SelectedCategory == null ? "active" : "")">
+                            All products
+                        </a>
+                    </li>
+                    @foreach (var cat in Model.Categories)
+                    {
+                        <li>
+                            <a asp-page="/Products/Index" asp-route-category="@cat.Id"
+                               class="@(Model.SelectedCategory == cat.Id ? "active" : "")">
+                                @cat.Name
+                            </a>
+                            @if (cat.Children.Any())
+                            {
+                                <ul>
+                                    @foreach (var child in cat.Children)
+                                    {
+                                        <li>
+                                            <a asp-page="/Products/Index" asp-route-category="@child.Id"
+                                               class="text-xs @(Model.SelectedCategory == child.Id ? "active" : "")">
+                                                @child.Name
+                                            </a>
+                                        </li>
+                                    }
+                                </ul>
+                            }
+                        </li>
+                    }
+                </ul>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main content -->
+    <div class="flex-1 min-w-0">
+        <!-- Search bar -->
+        <div class="flex gap-2 mb-4">
+            <form method="get" class="flex gap-2 flex-1">
+                @if (Model.SelectedCategory.HasValue)
+                {
+                    <input type="hidden" name="category" value="@Model.SelectedCategory" />
+                }
+                <input asp-for="Search" type="text" placeholder="Search products..."
+                       class="input input-bordered flex-1" />
+                <button type="submit" class="btn btn-primary">Search</button>
+            </form>
+            @if (!string.IsNullOrEmpty(Model.Search) || Model.SelectedCategory.HasValue)
+            {
+                <a asp-page="/Products/Index" class="btn btn-ghost">Clear</a>
+            }
+        </div>
+
+        <!-- Results header -->
+        <div class="flex justify-between items-center mb-4 text-sm text-base-content/60">
+            <span>
+                @if (Model.Products != null)
+                {
+                    <text>@Model.Products.Total.ToString("N0") product@(Model.Products.Total != 1 ? "s" : "")</text>
+                    if (!string.IsNullOrEmpty(Model.Search))
+                    {
+                        <text> matching "@Model.Search"</text>
+                    }
+                }
+            </span>
+        </div>
+
+        <!-- Product grid -->
+        @if (Model.Products is null || !Model.Products.Items.Any())
+        {
+            <div class="alert alert-info">No products found. Try a different search or category.</div>
+        }
+        else
+        {
+            <div id="products-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mb-6">
+                @foreach (var product in Model.Products.Items)
+                {
+                    <partial name="_ProductCard" model="product" />
+                }
+            </div>
+
+            <!-- Pagination -->
+            @if (Model.Products.TotalPages > 1)
+            {
+                <div class="flex justify-center flex-wrap gap-1">
+                    @if (Model.Products.Page > 1)
+                    {
+                        <a asp-page="/Products/Index"
+                           asp-route-search="@Model.Search"
+                           asp-route-category="@Model.SelectedCategory"
+                           asp-route-page="@(Model.Products.Page - 1)"
+                           class="btn btn-sm btn-ghost">← Prev</a>
+                    }
+                    @for (var i = Math.Max(1, Model.Products.Page - 2); i <= Math.Min(Model.Products.TotalPages, Model.Products.Page + 2); i++)
+                    {
+                        <a asp-page="/Products/Index"
+                           asp-route-search="@Model.Search"
+                           asp-route-category="@Model.SelectedCategory"
+                           asp-route-page="@i"
+                           class="btn btn-sm @(i == Model.Products.Page ? "btn-primary" : "btn-ghost")">@i</a>
+                    }
+                    @if (Model.Products.Page < Model.Products.TotalPages)
+                    {
+                        <a asp-page="/Products/Index"
+                           asp-route-search="@Model.Search"
+                           asp-route-category="@Model.SelectedCategory"
+                           asp-route-page="@(Model.Products.Page + 1)"
+                           class="btn btn-sm btn-ghost">Next →</a>
+                    }
+                </div>
+            }
+        }
+    </div>
+</div>

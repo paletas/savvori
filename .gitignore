@@ -114,6 +114,11 @@ package-lock.json
 yarn.lock
 
 ############################
+# Tailwind generated CSS (built at compile time)
+############################
+src/Savvori.WebApp/wwwroot/css/site.css
+
+############################
 # EF Core / scaffolding
 ############################
 ScaffoldingReadMe.txt

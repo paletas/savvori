@@ -1,0 +1,219 @@
+@page "{id:guid}"
+@model OptimizeModel
+@{
+    ViewData["Title"] = "Optimize List";
+}
+
+<div class="mb-6">
+    <div class="breadcrumbs text-sm mb-1">
+        <ul>
+            <li><a asp-page="/ShoppingLists/Index">My Lists</a></li>
+            <li><a asp-page="/ShoppingLists/Detail" asp-route-id="@Model.ListId">@Model.ListName</a></li>
+            <li>Optimize</li>
+        </ul>
+    </div>
+    <h1 class="text-2xl font-bold">⚡ Price Optimization</h1>
+    <p class="text-base-content/60 text-sm mt-1">Find the cheapest way to buy everything on your list</p>
+</div>
+
+<!-- Controls -->
+<div class="card bg-base-100 shadow mb-6">
+    <div class="card-body py-4">
+        <form method="get" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <input type="hidden" name="id" value="@Model.ListId" />
+
+            <div>
+                <label class="label label-text text-xs font-medium">Optimization mode</label>
+                <select name="mode" class="select select-bordered select-sm w-full">
+                    <option value="cheapest-total" selected="@(Model.Mode == "cheapest-total" ? "selected" : null)">Cheapest total</option>
+                    <option value="cheapest-store" selected="@(Model.Mode == "cheapest-store" ? "selected" : null)">Single cheapest store</option>
+                    <option value="balanced" selected="@(Model.Mode == "balanced" ? "selected" : null)">Balanced</option>
+                    <option value="compare" selected="@(Model.Mode == "compare" ? "selected" : null)">Compare all stores</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="label label-text text-xs font-medium">Postal code (optional)</label>
+                <input type="text" name="postalCode" value="@Model.PostalCode"
+                       class="input input-bordered input-sm w-full" placeholder="e.g. 1000-001" maxlength="8" />
+            </div>
+
+            <div>
+                <label class="label label-text text-xs font-medium">Radius</label>
+                <select name="radiusKm" class="select select-bordered select-sm w-full">
+                    <option value="10" selected="@(Model.RadiusKm == 10 ? "selected" : null)">10 km</option>
+                    <option value="15" selected="@(Model.RadiusKm == 15 || Model.RadiusKm == 0 ? "selected" : null)">15 km</option>
+                    <option value="25" selected="@(Model.RadiusKm == 25 ? "selected" : null)">25 km</option>
+                </select>
+            </div>
+
+            <div class="flex items-end">
+                <button type="submit" class="btn btn-primary btn-sm w-full">Apply</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@if (Model.Error != null)
+{
+    <div class="alert alert-error mb-4"><span>@Model.Error</span></div>
+}
+
+<!-- Compare mode: matrix table -->
+@if (Model.Mode == "compare" && Model.Matrix != null)
+{
+    <div class="card bg-base-100 shadow overflow-x-auto">
+        <div class="card-body p-0">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th class="sticky left-0 bg-base-100 min-w-48">Product</th>
+                        @foreach (var store in Model.Matrix.Stores)
+                        {
+                            <th class="text-center text-xs">
+                                <div class="font-bold capitalize">@store.Name</div>
+                                <div class="text-primary font-mono">€@store.Total.ToString("F2")</div>
+                            </th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in Model.Matrix.Rows)
+                    {
+                        <tr>
+                            <td class="sticky left-0 bg-base-100">
+                                <p class="font-medium text-xs">@row.ProductName</p>
+                                <p class="text-xs text-base-content/50">×@row.Quantity</p>
+                            </td>
+                            @foreach (var store in Model.Matrix.Stores)
+                            {
+                                var price = row.PricesByStore.TryGetValue(store.StoreId, out var p) ? p : null;
+                                var isCheapest = store.StoreId == row.CheapestStoreId;
+                                <td class="text-center text-xs @(isCheapest ? "bg-success/10 font-bold text-success" : "")">
+                                    @(price.HasValue ? $"€{price.Value:F2}" : "—")
+                                    @if (isCheapest && price.HasValue) { <span class="block text-[10px]">✓ best</span> }
+                                </td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr class="font-bold">
+                        <td class="sticky left-0 bg-base-100 text-sm">Total</td>
+                        @foreach (var store in Model.Matrix.Stores)
+                        {
+                            <td class="text-center text-primary">€@store.Total.ToString("F2")</td>
+                        }
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+}
+
+<!-- Optimization result -->
+@if (Model.Mode != "compare" && Model.Result != null)
+{
+    <div class="space-y-4">
+        <!-- Summary bar -->
+        <div class="stats shadow w-full bg-base-100">
+            <div class="stat">
+                <div class="stat-title text-xs">Total cost</div>
+                <div class="stat-value text-primary text-2xl">€@Model.Result.TotalCost.ToString("F2")</div>
+            </div>
+            <div class="stat">
+                <div class="stat-title text-xs">Stores needed</div>
+                <div class="stat-value text-2xl">@Model.Result.StoreCount</div>
+            </div>
+            <div class="stat">
+                <div class="stat-title text-xs">Items</div>
+                <div class="stat-value text-2xl">@Model.Result.Items.Count</div>
+                @if (Model.Result.MissingItems.Any())
+                {
+                    <div class="stat-desc text-warning">@Model.Result.MissingItems.Count unavailable</div>
+                }
+            </div>
+        </div>
+
+        <!-- Missing items alert -->
+        @if (Model.Result.MissingItems.Any())
+        {
+            <div class="alert alert-warning">
+                <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div>
+                    <p class="font-medium">Some items are not available at nearby stores:</p>
+                    <ul class="list-disc list-inside text-sm mt-1">
+                        @foreach (var missing in Model.Result.MissingItems)
+                        {
+                            <li>@missing.ProductName</li>
+                        }
+                    </ul>
+                </div>
+            </div>
+        }
+
+        <!-- Items grouped by store -->
+        @foreach (var store in Model.Result.Stores.OrderByDescending(s => s.Subtotal))
+        {
+            var storeItems = Model.Result.Items.Where(i => i.StoreId == store.StoreId).ToList();
+            <div class="card bg-base-100 shadow">
+                <div class="card-body py-3 px-5">
+                    <div class="flex justify-between items-center mb-3">
+                        <div>
+                            <h2 class="font-bold capitalize">@store.Name</h2>
+                            <p class="text-xs text-base-content/50">@store.ItemCount item@(store.ItemCount != 1 ? "s" : "")
+                                @if (store.DistanceKm.HasValue) { <text> · @store.DistanceKm.Value.ToString("F1") km away</text> }
+                            </p>
+                        </div>
+                        <div class="text-right">
+                            <p class="font-bold text-primary text-lg">€@store.Subtotal.ToString("F2")</p>
+                        </div>
+                    </div>
+                    <div class="space-y-2">
+                        @foreach (var item in storeItems)
+                        {
+                            <div class="flex justify-between items-start text-sm border-b border-base-200 pb-2 last:border-0 last:pb-0">
+                                <div class="flex-1 mr-4">
+                                    <p class="font-medium leading-snug">@item.ProductName</p>
+                                    <p class="text-xs text-base-content/50">×@item.Quantity
+                                        @if (item.IsPromotion) { <span class="badge badge-success badge-xs ml-1">Promo</span> }
+                                    </p>
+                                    @if (item.Alternatives.Any())
+                                    {
+                                        <details class="mt-1">
+                                            <summary class="text-xs text-primary cursor-pointer">@item.Alternatives.Count cheaper alternative@(item.Alternatives.Count != 1 ? "s" : "")</summary>
+                                            <div class="mt-1 space-y-1">
+                                                @foreach (var alt in item.Alternatives)
+                                                {
+                                                    <div class="flex justify-between items-center text-xs bg-base-200 rounded px-2 py-1">
+                                                        <span class="truncate mr-2">@alt.Name</span>
+                                                        <span class="text-success font-medium shrink-0">€@alt.Price.ToString("F2")
+                                                            @if (alt.Savings.HasValue && alt.Savings > 0) { <text> (save €@alt.Savings.Value.ToString("F2"))</text> }
+                                                        </span>
+                                                    </div>
+                                                }
+                                            </div>
+                                        </details>
+                                    }
+                                </div>
+                                <div class="text-right shrink-0">
+                                    <p class="font-bold">€@item.TotalPrice.ToString("F2")</p>
+                                    <p class="text-xs text-base-content/50">€@item.UnitPrice.ToString("F2") each</p>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@if (Model.Result is null && Model.Matrix is null && Model.Error is null)
+{
+    <div class="alert alert-info">
+        <span>Select options above and click Apply to optimize your list.</span>
+    </div>
+}

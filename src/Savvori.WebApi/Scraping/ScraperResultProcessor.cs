@@ -4,24 +4,29 @@ using Savvori.Shared;
 namespace Savvori.WebApi.Scraping;
 
 /// <summary>
-/// Normalizes scraped data and upserts products, prices, and store locations into the database.
+/// Normalizes scraped data and upserts StoreProducts, StoreProductPrices,
+/// and canonical Products into the database.
 /// </summary>
 public sealed class ScraperResultProcessor
 {
     private readonly SavvoriDbContext _db;
     private readonly ILogger<ScraperResultProcessor> _logger;
+    private readonly ProductMatcher _matcher;
 
-    // In-memory cache populated once per ProcessProductsAsync call: slug → Guid
+    // In-memory cache populated once per ProcessProductsAsync call: slug -> Guid
     private Dictionary<string, Guid> _categoryCache = [];
 
     public ScraperResultProcessor(SavvoriDbContext db, ILogger<ScraperResultProcessor> logger)
     {
         _db = db;
         _logger = logger;
+        _matcher = new ProductMatcher(db);
     }
 
     /// <summary>
-    /// Processes scraped products for a given store chain, upserting canonical products and prices.
+    /// Processes scraped products for a given store chain.
+    /// Upserts StoreProduct records, adds StoreProductPrice history,
+    /// and runs canonical product matching.
     /// </summary>
     public async Task<int> ProcessProductsAsync(
         string storeChainSlug,
@@ -35,33 +40,61 @@ public sealed class ScraperResultProcessor
             return 0;
         }
 
-        var stores = await _db.Stores
-            .Where(s => s.StoreChainId == chain.Id && s.IsActive)
-            .ToListAsync(ct);
-
         // Cache category slugs for fast lookup during this processing run
         _categoryCache = await _db.ProductCategories
             .ToDictionaryAsync(pc => pc.Slug, pc => pc.Id, ct);
 
+        var scrapedExternalIds = scraped.Select(s => s.ExternalId).ToHashSet();
+        var chainId = chain.Id;
         var processedCount = 0;
+        var skippedCount = 0;
 
         foreach (var item in scraped)
         {
             try
             {
-                await ProcessOneProductAsync(item, chain, stores, ct);
+                await ProcessOneProductAsync(item, chain, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Failed to process product '{Name}' (ExternalId: {ExternalId}) from {Chain}",
+                    item.Name, item.ExternalId, storeChainSlug);
+                _db.ChangeTracker.Clear();
+                skippedCount++;
+                continue;
+            }
+
+            try
+            {
+                await _db.SaveChangesAsync(ct);
+                _db.ChangeTracker.Clear();
                 processedCount++;
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to process product '{Name}' from {Chain}",
-                    item.Name, storeChainSlug);
+                _logger.LogWarning(ex,
+                    "Save failed for product '{Name}' (ExternalId: {ExternalId}) from {Chain}",
+                    item.Name, item.ExternalId, storeChainSlug);
+                _db.ChangeTracker.Clear();
+                skippedCount++;
             }
         }
 
+        // Mark StoreProducts not seen in this scrape as inactive.
+        // ChangeTracker is clear here so queries go straight to the DB.
+        var staleProducts = await _db.StoreProducts
+            .Where(sp => sp.StoreChainId == chainId &&
+                         sp.IsActive &&
+                         !scrapedExternalIds.Contains(sp.ExternalId))
+            .ToListAsync(ct);
+        foreach (var stale in staleProducts)
+            stale.IsActive = false;
+
         await _db.SaveChangesAsync(ct);
-        _logger.LogInformation("Processed {Count}/{Total} products for {Chain}",
-            processedCount, scraped.Count, storeChainSlug);
+        _logger.LogInformation(
+            "Processed {Count}/{Total} products for {Chain}. Skipped {Skipped}. Marked {Stale} inactive.",
+            processedCount, scraped.Count, storeChainSlug, skippedCount, staleProducts.Count);
         return processedCount;
     }
 
@@ -121,7 +154,6 @@ public sealed class ScraperResultProcessor
     private async Task ProcessOneProductAsync(
         ScrapedProduct scraped,
         StoreChain chain,
-        IReadOnlyList<Store> chainStores,
         CancellationToken ct)
     {
         var normalized = ProductNormalizer.Normalize(scraped.Name);
@@ -129,45 +161,95 @@ public sealed class ScraperResultProcessor
         var sizeValue = scraped.SizeValue ?? sizeUnit?.SizeValue;
         var unit = sizeUnit?.Unit ?? scraped.Unit;
         var unitPrice = scraped.UnitPrice ?? ProductNormalizer.ComputeUnitPrice(scraped.Price, unit, sizeValue);
+        var now = DateTime.UtcNow;
 
-        // Resolve CategoryId from the scraped category string
-        var categoryId = ResolveCategoryId(scraped.Category);
+        // Upsert StoreProduct by (StoreChainId, ExternalId)
+        var storeProduct = await _db.StoreProducts
+            .FirstOrDefaultAsync(sp => sp.StoreChainId == chain.Id && sp.ExternalId == scraped.ExternalId, ct);
 
-        // Resolve canonical product
-        var product = await FindOrCreateProductAsync(scraped, normalized, sizeValue, unit, categoryId, ct);
-
-        // If an existing product has no CategoryId but we now have one, backfill it
-        if (product.CategoryId is null && categoryId is not null)
-            product.CategoryId = categoryId;
-
-        // Upsert ProductStoreLink so we can map back to scraped product later
-        await UpsertStoreLinkAsync(product, chain, scraped, ct);
-
-        // Mark existing latest prices as historical for this product + all chain stores
-        var chainStoreIds = chainStores.Select(s => s.Id).ToHashSet();
-        var latestPrices = await _db.ProductPrices
-            .Where(pp => pp.ProductId == product.Id && chainStoreIds.Contains(pp.StoreId) && pp.IsLatest)
-            .ToListAsync(ct);
-        foreach (var old in latestPrices) old.IsLatest = false;
-
-        // Add a new price record per active store of this chain (scraped price applies chain-wide)
-        foreach (var store in chainStores)
+        if (storeProduct is null)
         {
-            _db.ProductPrices.Add(new ProductPrice
+            storeProduct = new StoreProduct
             {
                 Id = Guid.NewGuid(),
-                ProductId = product.Id,
-                StoreId = store.Id,
-                Price = scraped.Price,
-                UnitPrice = unitPrice,
-                Currency = "EUR",
-                IsPromotion = scraped.IsPromotion,
-                PromotionDescription = scraped.PromotionDescription,
+                StoreChainId = chain.Id,
+                ExternalId = scraped.ExternalId,
+                Name = scraped.Name,
+                NormalizedName = normalized,
+                Brand = scraped.Brand,
+                EAN = scraped.EAN,
+                ImageUrl = scraped.ImageUrl,
                 SourceUrl = scraped.SourceUrl,
-                IsLatest = true,
-                LastUpdated = DateTime.UtcNow
-            });
+                Unit = unit,
+                SizeValue = sizeValue,
+                FirstSeen = now,
+                LastScraped = now,
+                IsActive = true,
+                MatchStatus = MatchStatus.Unmatched
+            };
+            _db.StoreProducts.Add(storeProduct);
         }
+        else
+        {
+            storeProduct.Name = scraped.Name;
+            storeProduct.NormalizedName = normalized;
+            storeProduct.Brand = scraped.Brand;
+            if (!string.IsNullOrEmpty(scraped.EAN))
+                storeProduct.EAN = scraped.EAN;
+            storeProduct.ImageUrl = scraped.ImageUrl;
+            storeProduct.SourceUrl = scraped.SourceUrl;
+            storeProduct.Unit = unit;
+            storeProduct.SizeValue = sizeValue;
+            storeProduct.LastScraped = now;
+            storeProduct.IsActive = true;
+        }
+
+        // Run or re-run canonical matching:
+        // - If unmatched, always try to match.
+        // - If auto-matched by name but we now have an EAN, re-evaluate (self-healing).
+        var needsMatch = storeProduct.MatchStatus == MatchStatus.Unmatched ||
+                         (storeProduct.MatchStatus == MatchStatus.AutoMatched &&
+                          storeProduct.MatchMethod != "ean" &&
+                          !string.IsNullOrEmpty(storeProduct.EAN));
+
+        if (needsMatch)
+        {
+            var categoryId = ResolveCategoryId(scraped.Category);
+            await MatchCanonicalProductAsync(storeProduct, scraped, normalized, sizeValue, unit, categoryId, ct);
+        }
+
+        // Backfill CategoryId on canonical product if it was created without one
+        if (storeProduct.CanonicalProductId is not null)
+        {
+            var canonical = storeProduct.CanonicalProduct ??
+                            await _db.Products.FindAsync([storeProduct.CanonicalProductId.Value], ct);
+            if (canonical is not null && canonical.CategoryId is null)
+            {
+                var catId = ResolveCategoryId(scraped.Category);
+                if (catId is not null)
+                    canonical.CategoryId = catId;
+            }
+        }
+
+        // Mark previous latest price as historical
+        var latestPrice = await _db.StoreProductPrices
+            .FirstOrDefaultAsync(spp => spp.StoreProductId == storeProduct.Id && spp.IsLatest, ct);
+        if (latestPrice is not null)
+            latestPrice.IsLatest = false;
+
+        // Add new price snapshot
+        _db.StoreProductPrices.Add(new StoreProductPrice
+        {
+            Id = Guid.NewGuid(),
+            StoreProductId = storeProduct.Id,
+            Price = scraped.Price,
+            UnitPrice = unitPrice,
+            Currency = "EUR",
+            IsPromotion = scraped.IsPromotion,
+            PromotionDescription = scraped.PromotionDescription,
+            IsLatest = true,
+            ScrapedAt = now
+        });
     }
 
     private Guid? ResolveCategoryId(string? scrapedCategory)
@@ -177,7 +259,8 @@ public sealed class ScraperResultProcessor
         return _categoryCache.TryGetValue(slug, out var id) ? id : null;
     }
 
-    private async Task<Product> FindOrCreateProductAsync(
+    private async Task MatchCanonicalProductAsync(
+        StoreProduct storeProduct,
         ScrapedProduct scraped,
         string normalized,
         decimal? sizeValue,
@@ -185,64 +268,14 @@ public sealed class ScraperResultProcessor
         Guid? categoryId,
         CancellationToken ct)
     {
-        // Tier 1: EAN match (most reliable)
-        if (!string.IsNullOrEmpty(scraped.EAN))
-        {
-            var byEan = await _db.Products.FirstOrDefaultAsync(p => p.EAN == scraped.EAN, ct);
-            if (byEan is not null) return byEan;
-        }
+        // Tier 1 + 2 via shared matcher
+        var matched = await _matcher.TryMatchAsync(storeProduct, scraped.EAN, normalized, sizeValue, unit, ct);
+        if (matched) return;
 
-        // Tier 2: Normalized name + brand + size match
-        var byName = await _db.Products.FirstOrDefaultAsync(p =>
-            p.NormalizedName == normalized &&
-            p.SizeValue == sizeValue &&
-            p.Unit == unit, ct);
-        if (byName is not null) return byName;
-
-        // Tier 3: Create new product
-        var product = new Product
-        {
-            Id = Guid.NewGuid(),
-            Name = scraped.Name,
-            Brand = scraped.Brand,
-            Category = scraped.Category,
-            CategoryId = categoryId,
-            NormalizedName = normalized,
-            EAN = scraped.EAN,
-            Unit = unit,
-            SizeValue = sizeValue,
-            ImageUrl = scraped.ImageUrl
-        };
-        _db.Products.Add(product);
-        return product;
-    }
-
-    private async Task UpsertStoreLinkAsync(
-        Product product,
-        StoreChain chain,
-        ScrapedProduct scraped,
-        CancellationToken ct)
-    {
-        var link = await _db.ProductStoreLinks.FirstOrDefaultAsync(psl =>
-            psl.StoreChainId == chain.Id && psl.ExternalId == scraped.ExternalId, ct);
-
-        if (link is not null)
-        {
-            link.ProductId = product.Id;
-            link.SourceUrl = scraped.SourceUrl;
-            link.LastSeen = DateTime.UtcNow;
-        }
-        else
-        {
-            _db.ProductStoreLinks.Add(new ProductStoreLink
-            {
-                Id = Guid.NewGuid(),
-                ProductId = product.Id,
-                StoreChainId = chain.Id,
-                ExternalId = scraped.ExternalId,
-                SourceUrl = scraped.SourceUrl,
-                LastSeen = DateTime.UtcNow
-            });
-        }
+        // Tier 3: Create new canonical product (only during scraping, not admin rematch)
+        _matcher.CreateCanonical(
+            storeProduct,
+            scraped.Name, scraped.Brand, scraped.Category,
+            normalized, sizeValue, unit, categoryId, scraped.ImageUrl);
     }
 }

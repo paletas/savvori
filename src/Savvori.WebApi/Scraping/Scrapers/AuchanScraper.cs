@@ -21,9 +21,10 @@ public sealed partial class AuchanScraper : BaseHttpScraper
 
     private static readonly string[] GrocerySearchTerms =
     [
-        "leite-e-laticínios", "frutas-e-legumes", "carne-e-charcutaria", "peixe-e-marisco",
-        "mercearia", "congelados", "bebidas", "padaria-e-pastelaria",
-        "ovos", "bio-e-naturais"
+        "leite", "iogurte", "queijo", "fruta", "legumes",
+        "carne", "charcutaria", "peixe", "marisco",
+        "mercearia", "congelados", "bebidas", "pão", "pastelaria",
+        "ovos", "bio", "arroz", "massa", "azeite"
     ];
 
     public AuchanScraper(

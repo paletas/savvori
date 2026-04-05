@@ -1,0 +1,6 @@
+{
+  "appHost": {
+    "language": "csharp",
+    "path": "src/Savvori.AppHost/Savvori.AppHost.csproj"
+  }
+}

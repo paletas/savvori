@@ -1,0 +1,63 @@
+@model List<Savvori.WebApp.Services.ApiModels.ScrapingStatusDto>
+
+@if (Model == null || !Model.Any())
+{
+    <div class="alert alert-info">No store chains configured. Add chains to <code>Scraping:Chains</code> in appsettings.</div>
+}
+else
+{
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        @foreach (var job in Model)
+        {
+            var statusBadge = job.LastStatus switch
+            {
+                null  => ("badge-ghost",   "Never run"),
+                0     => ("badge-ghost",   "Pending"),
+                1     => ("badge-warning", "Running"),
+                2     => ("badge-success", "Completed"),
+                3     => ("badge-error",   "Failed"),
+                _     => ("badge-ghost",   "Unknown")
+            };
+            <div class="card bg-base-100 shadow border border-base-200">
+                <div class="card-body py-4 px-5">
+                    <div class="flex justify-between items-start">
+                        <h3 class="font-bold text-base">@(job.ChainName ?? job.ChainSlug)</h3>
+                        <span class="badge @statusBadge.Item1 badge-sm">@statusBadge.Item2</span>
+                    </div>
+                    <div class="text-xs text-base-content/60 space-y-1 mt-2">
+                        <div>Last run: <span class="font-medium text-base-content">@(job.LastRunAt.HasValue ? job.LastRunAt.Value.ToString("dd/MM/yy HH:mm") : "Never")</span></div>
+                        @if (job.CompletedAt.HasValue)
+                        {
+                            <div>Completed: <span class="font-medium text-base-content">@job.CompletedAt.Value.ToString("dd/MM/yy HH:mm")</span></div>
+                        }
+                        <div>Products scraped: <span class="font-medium text-base-content">@job.ProductsScraped.ToString("N0")</span></div>
+                        @if (job.IsScheduled && job.NextFireTime.HasValue)
+                        {
+                            <div>Next run: <span class="font-medium text-base-content">@job.NextFireTime.Value.ToString("dd/MM/yy HH:mm") UTC</span></div>
+                        }
+                        else if (!job.IsScheduled)
+                        {
+                            <div class="text-base-content/40 italic">Not scheduled</div>
+                        }
+                        @if (!string.IsNullOrEmpty(job.ErrorMessage))
+                        {
+                            <div class="text-error truncate" title="@job.ErrorMessage">Error: @job.ErrorMessage</div>
+                        }
+                    </div>
+                    <div class="card-actions justify-end mt-3">
+                        <a asp-page="/Admin/Scraping/Detail" asp-route-slug="@job.ChainSlug"
+                           class="btn btn-ghost btn-xs">Details</a>
+                        <form method="post" asp-page="/Admin/Scraping/Detail" asp-route-slug="@job.ChainSlug"
+                              asp-page-handler="Trigger" style="display:inline">
+                            @Html.AntiForgeryToken()
+                            <button type="submit" class="btn btn-primary btn-xs"
+                                    onclick="return confirm('Trigger scrape for @(job.ChainName ?? job.ChainSlug)?')">
+                                ▶ Trigger
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}

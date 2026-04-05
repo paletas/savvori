@@ -18,16 +18,22 @@ public class GeoApiLocationServiceTests
     {
         handler ??= new FakeHttpMessageHandler();
         var factory = Substitute.For<IHttpClientFactory>();
-        factory.CreateClient("geoapi").Returns(new HttpClient(handler) { BaseAddress = new Uri("https://geo.iotech.pt") });
+        factory.CreateClient("geoapi").Returns(new HttpClient(handler) { BaseAddress = new Uri("https://geoapi.pt") });
         cache ??= new MemoryCache(new MemoryCacheOptions());
         var logger = Substitute.For<ILogger<GeoApiLocationService>>();
         return new GeoApiLocationService(factory, cache, logger);
     }
 
-    private static FakeHttpMessageHandler MakeGeoHandler(string lat, string lng, HttpStatusCode status = HttpStatusCode.OK)
+    private static FakeHttpMessageHandler MakeGeoHandler(double lat, double lng, HttpStatusCode status = HttpStatusCode.OK)
     {
         var handler = new FakeHttpMessageHandler();
-        var json = JsonSerializer.Serialize(new { lat, lng, localidade = "Lisboa", concelho = "Lisboa", distrito = "Lisboa" });
+        var json = JsonSerializer.Serialize(new
+        {
+            centro = new[] { lat, lng },
+            Localidade = "Lisboa",
+            Concelho = "Lisboa",
+            Distrito = "Lisboa"
+        });
         handler.SetupRoute("cp/", json, status);
         return handler;
     }
@@ -37,7 +43,7 @@ public class GeoApiLocationServiceTests
     [Fact]
     public async Task ResolvePostalCode_ValidCode_ReturnsCoordinates()
     {
-        var service = CreateService(MakeGeoHandler("38.7167", "-9.1333"));
+        var service = CreateService(MakeGeoHandler(38.7167, -9.1333));
         var coord = await service.ResolvePostalCodeAsync("1000-001", CancellationToken.None);
 
         Assert.NotNull(coord);
@@ -48,7 +54,7 @@ public class GeoApiLocationServiceTests
     [Fact]
     public async Task ResolvePostalCode_AcceptsCodeWithoutHyphen()
     {
-        var service = CreateService(MakeGeoHandler("38.7167", "-9.1333"));
+        var service = CreateService(MakeGeoHandler(38.7167, -9.1333));
         var coord = await service.ResolvePostalCodeAsync("1000001", CancellationToken.None);
 
         Assert.NotNull(coord);
@@ -59,7 +65,7 @@ public class GeoApiLocationServiceTests
     {
         // "1000-001" and "1000001" should resolve to same cache key
         var cache = new MemoryCache(new MemoryCacheOptions());
-        var service = CreateService(MakeGeoHandler("38.7167", "-9.1333"), cache);
+        var service = CreateService(MakeGeoHandler(38.7167, -9.1333), cache);
 
         var coord1 = await service.ResolvePostalCodeAsync("1000-001", CancellationToken.None);
         var coord2 = await service.ResolvePostalCodeAsync("1000001", CancellationToken.None);
@@ -87,7 +93,7 @@ public class GeoApiLocationServiceTests
     [Fact]
     public async Task ResolvePostalCode_ApiReturnsError_ReturnsNull()
     {
-        var service = CreateService(MakeGeoHandler("", "", HttpStatusCode.NotFound));
+        var service = CreateService(MakeGeoHandler(0, 0, HttpStatusCode.NotFound));
         var coord = await service.ResolvePostalCodeAsync("1000-001", CancellationToken.None);
         Assert.Null(coord);
     }
@@ -95,7 +101,7 @@ public class GeoApiLocationServiceTests
     [Fact]
     public async Task ResolvePostalCode_CachesResult_SecondCallUsesCache()
     {
-        var handler = MakeGeoHandler("38.7167", "-9.1333");
+        var handler = MakeGeoHandler(38.7167, -9.1333);
         var service = CreateService(handler);
 
         var coord1 = await service.ResolvePostalCodeAsync("1000-001", CancellationToken.None);

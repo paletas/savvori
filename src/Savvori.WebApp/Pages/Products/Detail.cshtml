@@ -1,0 +1,170 @@
+@page "{id:guid}"
+@model ProductDetailPageModel
+@{
+    ViewData["Title"] = Model.Product?.Name ?? "Product";
+}
+
+@if (Model.Product is null)
+{
+    <div class="alert alert-error">Product not found.</div>
+    return;
+}
+
+<!-- Breadcrumb -->
+<div class="breadcrumbs text-sm mb-6">
+    <ul>
+        <li><a asp-page="/Index">Home</a></li>
+        <li><a asp-page="/Products/Index">Products</a></li>
+        @if (!string.IsNullOrEmpty(Model.Product.CategoryName))
+        {
+            <li>@Model.Product.CategoryName</li>
+        }
+        <li class="truncate max-w-xs">@Model.Product.Name</li>
+    </ul>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-10">
+    <!-- Product image -->
+    <div class="flex items-center justify-center bg-base-100 rounded-2xl shadow p-8 h-64">
+        @if (!string.IsNullOrEmpty(Model.Product.ImageUrl))
+        {
+            <img src="@Model.Product.ImageUrl" alt="@Model.Product.Name"
+                 class="max-h-full max-w-full object-contain" />
+        }
+        else
+        {
+            <div class="text-7xl text-base-content/20">🛒</div>
+        }
+    </div>
+
+    <!-- Product info -->
+    <div class="md:col-span-2">
+        <h1 class="text-2xl font-bold mb-1">@Model.Product.Name</h1>
+        @if (!string.IsNullOrEmpty(Model.Product.Brand))
+        {
+            <p class="text-base-content/60 text-sm mb-3">by @Model.Product.Brand</p>
+        }
+
+        <div class="flex flex-wrap gap-2 mb-4">
+            @if (!string.IsNullOrEmpty(Model.Product.CategoryName))
+            {
+                <span class="badge badge-outline badge-sm">@Model.Product.CategoryName</span>
+            }
+            @if (Model.Product.SizeValue.HasValue)
+            {
+                <span class="badge badge-ghost badge-sm">@Model.Product.SizeValue @GetUnitLabel(Model.Product.Unit)</span>
+            }
+        </div>
+
+        @if (Model.Product.Prices.Any())
+        {
+            var lowestPrice = Model.Product.Prices.Min(p => p.Price);
+            <div class="text-3xl font-extrabold text-primary mb-1">from €@lowestPrice.ToString("F2")</div>
+            <p class="text-xs text-base-content/50 mb-4">Lowest price across @Model.Product.Prices.Count store@(Model.Product.Prices.Count != 1 ? "s" : "")</p>
+        }
+
+        @if (User.Identity?.IsAuthenticated == true)
+        {
+            <!-- Add to list -->
+            <div class="flex gap-2 flex-wrap">
+                <div class="dropdown">
+                    <div tabindex="0" role="button" class="btn btn-primary btn-sm">+ Add to list</div>
+                    <ul tabindex="0" class="dropdown-content menu menu-sm bg-base-100 rounded-box z-[1] shadow border border-base-200 w-52 mt-1">
+                        @foreach (var list in Model.ShoppingLists)
+                        {
+                            <li>
+                                <form method="post" asp-page-handler="AddToList">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="listId" value="@list.Id" />
+                                    <input type="hidden" name="productId" value="@Model.Product.Id" />
+                                    <input type="hidden" name="quantity" value="1" />
+                                    <button type="submit" class="w-full text-left text-sm">@list.Name</button>
+                                </form>
+                            </li>
+                        }
+                        @if (!Model.ShoppingLists.Any())
+                        {
+                            <li class="disabled"><a>No lists yet</a></li>
+                        }
+                    </ul>
+                </div>
+                <a asp-page="/ShoppingLists/Index" class="btn btn-ghost btn-sm">View my lists</a>
+            </div>
+        }
+        else
+        {
+            <a asp-page="/Account/Login" class="btn btn-primary btn-sm">Sign in to add to list</a>
+        }
+    </div>
+</div>
+
+<!-- Price comparison table -->
+@if (Model.Product.Prices.Any())
+{
+    <div class="card bg-base-100 shadow mb-8">
+        <div class="card-body">
+            <h2 class="card-title text-lg mb-4">Price comparison</h2>
+            <div class="overflow-x-auto">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Store</th>
+                            <th class="text-right">Price</th>
+                            <th class="text-right">Unit price</th>
+                            <th>Promo</th>
+                            <th>Updated</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var price in Model.Product.Prices.OrderBy(p => p.Price))
+                        {
+                            <tr class="@(price.Price == Model.Product.Prices.Min(p => p.Price) ? "bg-success/5" : "")">
+                                <td>
+                                    <div class="font-medium text-sm capitalize">@(price.StoreName ?? price.ChainSlug ?? "Unknown")</div>
+                                    @if (!string.IsNullOrEmpty(price.ChainSlug))
+                                    {
+                                        <div class="text-xs text-base-content/50">@price.ChainSlug</div>
+                                    }
+                                </td>
+                                <td class="text-right font-bold @(price.Price == Model.Product.Prices.Min(p => p.Price) ? "text-success" : "")">
+                                    €@price.Price.ToString("F2")
+                                </td>
+                                <td class="text-right text-xs text-base-content/60">
+                                    @(price.UnitPrice.HasValue ? $"€{price.UnitPrice.Value:F3}" : "—")
+                                </td>
+                                <td>
+                                    @if (price.IsPromotion)
+                                    {
+                                        <span class="badge badge-success badge-xs">Promo</span>
+                                    }
+                                </td>
+                                <td class="text-xs text-base-content/50">@price.LastUpdated.ToString("dd/MM/yy")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Alternatives -->
+@if (Model.Alternatives.Any())
+{
+    <div class="mb-8">
+        <h2 class="text-xl font-bold mb-4">Similar products</h2>
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            @foreach (var alt in Model.Alternatives.Take(5))
+            {
+                <partial name="_ProductCard" model="alt" />
+            }
+        </div>
+    </div>
+}
+
+@functions {
+    static string GetUnitLabel(int unit) => unit switch
+    {
+        1 => "kg", 2 => "g", 3 => "L", 4 => "mL", 5 => "pack", _ => "un"
+    };
+}

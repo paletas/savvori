@@ -87,6 +87,13 @@ public abstract class BaseHttpScraper : IStoreScraper
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true }, ct);
     }
 
+    protected async Task<string> GetStringAsync(string url, CancellationToken ct = default)
+    {
+        var response = await GetAsync(url, ct);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsStringAsync(ct);
+    }
+
     protected async Task<IDocument> GetHtmlAsync(string url, CancellationToken ct = default)
     {
         var response = await GetAsync(url, ct);

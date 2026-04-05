@@ -1,10 +1,134 @@
 ﻿@page
 @model IndexModel
 @{
-    ViewData["Title"] = "Home page";
+    ViewData["Title"] = "Home";
 }
 
-<div class="text-center">
-    <h1 class="display-4">Welcome</h1>
-    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
+<!-- Hero Section -->
+<div class="hero bg-gradient-to-br from-primary/10 to-secondary/10 rounded-3xl py-16 px-8 mb-12">
+    <div class="hero-content text-center flex-col max-w-2xl">
+        <div class="text-5xl mb-4">🛒</div>
+        <h1 class="text-4xl md:text-5xl font-extrabold text-base-content mb-4">
+            Save money on <span class="text-primary">every shop</span>
+        </h1>
+        <p class="text-lg text-base-content/70 mb-8">
+            Compare grocery prices across Continente, Pingo Doce, Auchan, Minipreço and more.
+            Build your shopping list and we'll find the cheapest way to fill it.
+        </p>
+
+        <!-- Search Bar -->
+        <div class="w-full max-w-lg relative">
+            <div class="join w-full shadow-lg">
+                <input id="hero-search"
+                       type="text"
+                       placeholder="Search products... (e.g. leite, arroz)"
+                       class="input input-bordered join-item flex-1 text-base"
+                       hx-get="/Products?handler=Search"
+                       hx-trigger="keyup changed delay:400ms"
+                       hx-target="#search-suggestions"
+                       hx-include="[name='search']"
+                       name="search"
+                       autocomplete="off" />
+                <a id="search-btn" class="btn btn-primary join-item"
+                   onclick="window.location='/Products?search='+encodeURIComponent(document.getElementById('hero-search').value)">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                </a>
+            </div>
+            <div id="search-suggestions" class="absolute z-10 w-full mt-1 bg-base-100 rounded-box shadow-lg border border-base-200"></div>
+        </div>
+
+        @if (User.Identity?.IsAuthenticated != true)
+        {
+            <div class="flex gap-3 mt-6">
+                <a asp-page="/Account/Register" class="btn btn-primary">Get started free</a>
+                <a asp-page="/Account/Login" class="btn btn-ghost">Sign in</a>
+            </div>
+        }
+        else
+        {
+            <a asp-page="/ShoppingLists/Index" class="btn btn-primary mt-6">My Shopping Lists</a>
+        }
+    </div>
 </div>
+
+<!-- How it works -->
+<div class="mb-12">
+    <h2 class="text-2xl font-bold text-center mb-8">How it works</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="card bg-base-100 shadow hover:shadow-md transition-shadow">
+            <div class="card-body text-center">
+                <div class="text-4xl mb-3">🔍</div>
+                <h3 class="card-title justify-center text-lg">1. Add products</h3>
+                <p class="text-base-content/60 text-sm">Search our catalog of thousands of grocery products and add them to your list.</p>
+            </div>
+        </div>
+        <div class="card bg-base-100 shadow hover:shadow-md transition-shadow">
+            <div class="card-body text-center">
+                <div class="text-4xl mb-3">⚡</div>
+                <h3 class="card-title justify-center text-lg">2. Optimize</h3>
+                <p class="text-base-content/60 text-sm">We analyze prices across all supermarkets and find the cheapest combination for you.</p>
+            </div>
+        </div>
+        <div class="card bg-base-100 shadow hover:shadow-md transition-shadow">
+            <div class="card-body text-center">
+                <div class="text-4xl mb-3">💰</div>
+                <h3 class="card-title justify-center text-lg">3. Save money</h3>
+                <p class="text-base-content/60 text-sm">Shop smarter. Know exactly where to buy each item for the best total price.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Categories Grid -->
+@if (Model.Categories.Any())
+{
+    <div class="mb-12">
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-2xl font-bold">Browse by category</h2>
+            <a asp-page="/Products/Index" class="btn btn-ghost btn-sm">All products →</a>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+            @foreach (var cat in Model.Categories.Take(8))
+            {
+                <a asp-page="/Categories/Detail" asp-route-slug="@cat.Slug"
+                   class="card bg-base-100 shadow hover:shadow-md hover:border-primary border border-base-200 transition-all cursor-pointer">
+                    <div class="card-body items-center text-center py-4 px-2">
+                        <span class="text-3xl">@GetCategoryEmoji(cat.Slug)</span>
+                        <span class="font-medium text-sm mt-1">@cat.Name</span>
+                    </div>
+                </a>
+            }
+        </div>
+    </div>
+}
+
+<!-- Supported Stores -->
+<div class="mb-8">
+    <h2 class="text-2xl font-bold text-center mb-6">Supported stores</h2>
+    <div class="flex flex-wrap justify-center gap-4">
+        @foreach (var storeName in new[] { "Continente", "Pingo Doce", "Auchan", "Minipreço" })
+        {
+            <div class="badge badge-lg badge-outline py-4 px-5 text-sm font-medium">@storeName</div>
+        }
+        <div class="badge badge-lg badge-ghost py-4 px-5 text-sm">+ more coming soon</div>
+    </div>
+</div>
+
+@functions {
+    static string GetCategoryEmoji(string slug) => slug switch
+    {
+        var s when s.Contains("leite") || s.Contains("lacticin") || s.Contains("laticin") => "🥛",
+        var s when s.Contains("frut") || s.Contains("legum") || s.Contains("fresc") => "🥦",
+        var s when s.Contains("carne") || s.Contains("talho") => "🥩",
+        var s when s.Contains("peixe") || s.Contains("marisco") => "🐟",
+        var s when s.Contains("padari") || s.Contains("pastel") => "🍞",
+        var s when s.Contains("bebid") => "🥤",
+        var s when s.Contains("congel") => "🧊",
+        var s when s.Contains("mercearia") || s.Contains("conserv") => "🥫",
+        var s when s.Contains("higiene") || s.Contains("beleza") => "🧴",
+        var s when s.Contains("limpez") => "🧹",
+        _ => "🛒"
+    };
+}

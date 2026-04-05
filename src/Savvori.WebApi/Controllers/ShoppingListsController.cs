@@ -91,7 +91,6 @@ public class ShoppingListsController : ControllerBase
     {
         var userId = GetUserId();
         var item = await _db.ShoppingListItems
-            .Include(i => i.ShoppingListId)
             .FirstOrDefaultAsync(i => i.Id == itemId && i.ShoppingListId == id);
         if (item == null) return NotFound();
         var list = await _db.ShoppingLists.FirstOrDefaultAsync(l => l.Id == id && l.UserId == userId);

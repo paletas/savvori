@@ -61,11 +61,19 @@ public class ShoppingOptimizerTests : IDisposable
         _db.Stores.AddRange(store1, store2);
         _db.Products.AddRange(product1, product2);
 
-        _db.ProductPrices.AddRange(
-            new ProductPrice { Id = Guid.NewGuid(), ProductId = Product1Id, StoreId = Store1Id, Price = 1.09m, IsLatest = true, IsPromotion = false, LastUpdated = DateTime.UtcNow },
-            new ProductPrice { Id = Guid.NewGuid(), ProductId = Product1Id, StoreId = Store2Id, Price = 0.89m, IsLatest = true, IsPromotion = true, LastUpdated = DateTime.UtcNow },
-            new ProductPrice { Id = Guid.NewGuid(), ProductId = Product2Id, StoreId = Store1Id, Price = 2.49m, IsLatest = true, IsPromotion = false, LastUpdated = DateTime.UtcNow },
-            new ProductPrice { Id = Guid.NewGuid(), ProductId = Product2Id, StoreId = Store2Id, Price = 2.79m, IsLatest = true, IsPromotion = false, LastUpdated = DateTime.UtcNow }
+        // StoreProducts: one per chain per product
+        var sp1Chain1 = new StoreProduct { Id = Guid.NewGuid(), StoreChainId = Chain1Id, ExternalId = "leite-c", Name = "Leite Mimosa 1L", Unit = ProductUnit.L, SizeValue = 1m, CanonicalProductId = Product1Id, IsActive = true, MatchStatus = MatchStatus.AutoMatched, FirstSeen = DateTime.UtcNow, LastScraped = DateTime.UtcNow };
+        var sp1Chain2 = new StoreProduct { Id = Guid.NewGuid(), StoreChainId = Chain2Id, ExternalId = "leite-p", Name = "Leite Mimosa 1L", Unit = ProductUnit.L, SizeValue = 1m, CanonicalProductId = Product1Id, IsActive = true, MatchStatus = MatchStatus.AutoMatched, FirstSeen = DateTime.UtcNow, LastScraped = DateTime.UtcNow };
+        var sp2Chain1 = new StoreProduct { Id = Guid.NewGuid(), StoreChainId = Chain1Id, ExternalId = "iog-c", Name = "Iogurte Yoplait 500g", Unit = ProductUnit.G, SizeValue = 500m, CanonicalProductId = Product2Id, IsActive = true, MatchStatus = MatchStatus.AutoMatched, FirstSeen = DateTime.UtcNow, LastScraped = DateTime.UtcNow };
+        var sp2Chain2 = new StoreProduct { Id = Guid.NewGuid(), StoreChainId = Chain2Id, ExternalId = "iog-p", Name = "Iogurte Yoplait 500g", Unit = ProductUnit.G, SizeValue = 500m, CanonicalProductId = Product2Id, IsActive = true, MatchStatus = MatchStatus.AutoMatched, FirstSeen = DateTime.UtcNow, LastScraped = DateTime.UtcNow };
+
+        _db.StoreProducts.AddRange(sp1Chain1, sp1Chain2, sp2Chain1, sp2Chain2);
+
+        _db.StoreProductPrices.AddRange(
+            new StoreProductPrice { Id = Guid.NewGuid(), StoreProductId = sp1Chain1.Id, Price = 1.09m, IsLatest = true, IsPromotion = false, ScrapedAt = DateTime.UtcNow },
+            new StoreProductPrice { Id = Guid.NewGuid(), StoreProductId = sp1Chain2.Id, Price = 0.89m, IsLatest = true, IsPromotion = true, ScrapedAt = DateTime.UtcNow },
+            new StoreProductPrice { Id = Guid.NewGuid(), StoreProductId = sp2Chain1.Id, Price = 2.49m, IsLatest = true, IsPromotion = false, ScrapedAt = DateTime.UtcNow },
+            new StoreProductPrice { Id = Guid.NewGuid(), StoreProductId = sp2Chain2.Id, Price = 2.79m, IsLatest = true, IsPromotion = false, ScrapedAt = DateTime.UtcNow }
         );
 
         _db.ShoppingListItems.AddRange(
@@ -101,12 +109,12 @@ public class ShoppingOptimizerTests : IDisposable
 
         // Leite is cheaper at Pingo Doce (0.89)
         var leiteItem = result.Items.First(i => i.ShoppingListItemId == Item1Id);
-        Assert.Equal(Store2Id, leiteItem.StoreId);
+        Assert.Equal(Chain2Id, leiteItem.StoreId);
         Assert.Equal(0.89m, leiteItem.UnitPrice);
 
         // Iogurte is cheaper at Continente (2.49)
         var iogurteItem = result.Items.First(i => i.ShoppingListItemId == Item2Id);
-        Assert.Equal(Store1Id, iogurteItem.StoreId);
+        Assert.Equal(Chain1Id, iogurteItem.StoreId);
         Assert.Equal(2.49m, iogurteItem.UnitPrice);
     }
 
@@ -175,7 +183,7 @@ public class ShoppingOptimizerTests : IDisposable
         // Pingo Doce should win
         var result = await _optimizer.OptimizeCheapestStoreAsync(ListId, new OptimizationContext(), CancellationToken.None);
 
-        Assert.All(result.Items, item => Assert.Equal(Store2Id, item.StoreId));
+        Assert.All(result.Items, item => Assert.Equal(Chain2Id, item.StoreId));
     }
 
     // ─── CompareAllStoresAsync ─────────────────────────────────────────────────
@@ -213,7 +221,7 @@ public class ShoppingOptimizerTests : IDisposable
 
         var leiteRow = matrix.Rows.First(r => r.ShoppingListItemId == Item1Id);
         Assert.Equal(0.89m, leiteRow.CheapestPrice);
-        Assert.Equal(Store2Id, leiteRow.CheapestStoreId);
+        Assert.Equal(Chain2Id, leiteRow.CheapestStoreId);
     }
 
     [Fact]
@@ -222,11 +230,11 @@ public class ShoppingOptimizerTests : IDisposable
         var matrix = await _optimizer.CompareAllStoresAsync(ListId, new OptimizationContext(), CancellationToken.None);
 
         // Continente: (1.09 * 2) + (2.49 * 1) = 4.67
-        var continente = matrix.Stores.First(s => s.StoreId == Store1Id);
+        var continente = matrix.Stores.First(s => s.StoreId == Chain1Id);
         Assert.Equal(4.67m, continente.Total);
 
         // Pingo Doce: (0.89 * 2) + (2.79 * 1) = 4.57
-        var pingodoce = matrix.Stores.First(s => s.StoreId == Store2Id);
+        var pingodoce = matrix.Stores.First(s => s.StoreId == Chain2Id);
         Assert.Equal(4.57m, pingodoce.Total);
     }
 
@@ -255,10 +263,10 @@ public class ShoppingOptimizerTests : IDisposable
     [Fact]
     public async Task OptimizeCheapestTotal_FiltersToRequestedStoreIds()
     {
-        // Only allow Continente (Store1)
-        var context = new OptimizationContext { StoreIds = [Store1Id] };
+        // Only allow Continente (Chain1)
+        var context = new OptimizationContext { StoreIds = [Chain1Id] };
         var result = await _optimizer.OptimizeCheapestTotalAsync(ListId, context, CancellationToken.None);
 
-        Assert.All(result.Items, item => Assert.Equal(Store1Id, item.StoreId));
+        Assert.All(result.Items, item => Assert.Equal(Chain1Id, item.StoreId));
     }
 }

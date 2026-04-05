@@ -1,0 +1,135 @@
+@page "{id:guid}"
+@model ShoppingListDetailModel
+@{
+    ViewData["Title"] = Model.ListName ?? "Shopping List";
+}
+
+@if (Model.ListName is null)
+{
+    <div class="alert alert-error">Shopping list not found.</div>
+    return;
+}
+
+<!-- Header -->
+<div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
+    <div>
+        <div class="breadcrumbs text-sm mb-1">
+            <ul>
+                <li><a asp-page="/ShoppingLists/Index">My Lists</a></li>
+                <li>@Model.ListName</li>
+            </ul>
+        </div>
+        <h1 class="text-2xl font-bold">@Model.ListName</h1>
+        <p class="text-base-content/60 text-sm mt-1">@Model.Items.Count item@(Model.Items.Count != 1 ? "s" : "")</p>
+    </div>
+    <a asp-page="/ShoppingLists/Optimize" asp-route-id="@Model.ListId"
+       class="btn btn-primary">⚡ Optimize prices</a>
+</div>
+
+<!-- Product search add -->
+<div class="card bg-base-100 shadow mb-6">
+    <div class="card-body py-4">
+        <h2 class="font-semibold text-sm mb-3">Add product</h2>
+        <div class="relative">
+            <input type="text"
+                   id="product-search"
+                   placeholder="Search for a product..."
+                   class="input input-bordered w-full"
+                   hx-get="/ShoppingLists/Detail/@Model.ListId?handler=SearchProducts"
+                   hx-trigger="keyup changed delay:400ms"
+                   hx-target="#product-search-results"
+                   name="q"
+                   autocomplete="off" />
+            <div id="product-search-results"
+                 class="absolute z-10 w-full mt-1 bg-base-100 rounded-box shadow-lg border border-base-200 max-h-72 overflow-y-auto empty:hidden"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Items table -->
+@if (!Model.Items.Any())
+{
+    <div class="alert alert-info">
+        <span>Your list is empty. Search for products above to add them.</span>
+    </div>
+}
+else
+{
+    <div class="card bg-base-100 shadow">
+        <div class="overflow-x-auto">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Product</th>
+                        <th class="text-right">Qty</th>
+                        <th class="text-right">Lowest price</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in Model.Items)
+                    {
+                        <tr>
+                            <td>
+                                <span class="font-medium text-sm">
+                                    @(item.Product?.Name ?? "Unknown product")
+                                </span>
+                                @if (!string.IsNullOrEmpty(item.Product?.Brand))
+                                {
+                                    <div class="text-xs text-base-content/50">@item.Product.Brand</div>
+                                }
+                            </td>
+                            <td class="text-right">
+                                <span class="text-sm">×@item.Item.Quantity</span>
+                            </td>
+                            <td class="text-right">
+                                @if (item.Product?.LowestPrice.HasValue == true)
+                                {
+                                    <span class="font-medium text-sm">€@item.Product.LowestPrice.Value.ToString("F2")</span>
+                                }
+                                else
+                                {
+                                    <span class="text-base-content/40 text-xs">—</span>
+                                }
+                            </td>
+                            <td class="text-right">
+                                <form method="post" asp-page-handler="RemoveItem"
+                                      asp-route-itemId="@item.Item.Id">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="btn btn-ghost btn-xs text-error"
+                                            onclick="return confirm('Remove this item?')">✕</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+                @if (Model.Items.Any(i => i.Product?.LowestPrice.HasValue == true))
+                {
+                    <tfoot>
+                        <tr>
+                            <td colspan="2" class="text-right font-semibold text-sm">Estimated total</td>
+                            <td class="text-right font-bold text-primary">
+                                €@Model.Items
+                                    .Where(i => i.Product?.LowestPrice.HasValue == true)
+                                    .Sum(i => i.Product!.LowestPrice!.Value * i.Item.Quantity)
+                                    .ToString("F2")
+                            </td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                }
+            </table>
+        </div>
+    </div>
+}
+
+@section Scripts {
+<script>
+document.addEventListener('click', function(e) {
+    if (!document.getElementById('product-search-results').contains(e.target) &&
+        e.target !== document.getElementById('product-search')) {
+        document.getElementById('product-search-results').innerHTML = '';
+    }
+});
+</script>
+}

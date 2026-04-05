@@ -1,0 +1,41 @@
+@page
+@model CategoriesIndexModel
+@{
+    ViewData["Title"] = "Categories";
+}
+
+<div class="mb-6">
+    <h1 class="text-3xl font-bold mb-2">Product Categories</h1>
+    <p class="text-base-content/60">Browse our full grocery catalog by category</p>
+</div>
+
+@if (!Model.Categories.Any())
+{
+    <div class="alert alert-info">No categories available yet.</div>
+}
+else
+{
+    @foreach (var parent in Model.Categories)
+    {
+        <div class="mb-8">
+            <a asp-page="/Categories/Detail" asp-route-slug="@parent.Slug"
+               class="flex items-center gap-2 mb-4 group">
+                <h2 class="text-xl font-bold group-hover:text-primary transition-colors">@parent.Name</h2>
+                <span class="text-primary opacity-0 group-hover:opacity-100 transition-opacity">→</span>
+            </a>
+            @if (parent.Children.Any())
+            {
+                <div class="flex flex-wrap gap-2">
+                    @foreach (var child in parent.Children)
+                    {
+                        <a asp-page="/Categories/Detail" asp-route-slug="@child.Slug"
+                           class="badge badge-outline badge-lg hover:badge-primary transition-colors cursor-pointer py-3 px-4">
+                            @child.Name
+                        </a>
+                    }
+                </div>
+            }
+            <div class="divider my-4"></div>
+        </div>
+    }
+}

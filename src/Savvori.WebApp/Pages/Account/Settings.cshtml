@@ -1,0 +1,28 @@
+@page
+@model SettingsModel
+@{
+    ViewData["Title"] = "Account Settings";
+}
+
+<div class="max-w-lg mx-auto">
+    <h1 class="text-2xl font-bold mb-6">Account Settings</h1>
+
+    <div class="card bg-base-100 shadow">
+        <div class="card-body">
+            <h2 class="card-title text-lg">Account Information</h2>
+            <p class="text-base-content/60 text-sm">Signed in as <strong>@User.Identity?.Name</strong></p>
+        </div>
+    </div>
+
+    <div class="card bg-base-100 shadow mt-4">
+        <div class="card-body">
+            <h2 class="card-title text-lg text-error">Danger Zone</h2>
+            <p class="text-sm text-base-content/60">Permanently delete your account and all associated data. This action cannot be undone.</p>
+            <form method="post" asp-page-handler="Delete"
+                  onsubmit="return confirm('Are you sure you want to delete your account? This cannot be undone.')">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn btn-error btn-sm mt-2">Delete my account</button>
+            </form>
+        </div>
+    </div>
+</div>

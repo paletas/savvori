@@ -20,6 +20,19 @@ tests/
 Savvori.sln
 ```
 
+## Local testing accounts
+
+On first startup the API seeds two test users into the database. These are for **local development only** — never use them in production.
+
+| Role | Email | Password |
+|------|-------|----------|
+| Admin | `admin@savvori.dev` | `Admin123!` |
+| User | `user@savvori.dev` | `User123!` |
+
+Log in via `POST /api/auth/login` to get a JWT token, then pass it as `Authorization: Bearer <token>`.
+
+The admin account has access to the `/api/admin/scraping/*` endpoints. The normal user account has access to authenticated shopping-list and optimization endpoints.
+
 ## Build
 
 Use Windows PowerShell:

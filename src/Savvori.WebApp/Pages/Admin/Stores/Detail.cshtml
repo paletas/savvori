@@ -1,0 +1,65 @@
+@page "{slug}"
+@model StoresDetailModel
+@{
+    ViewData["Title"] = $"Locations – {Model.ChainSlug}";
+    Layout = "_AdminLayout";
+}
+
+<div class="flex items-center gap-3 mb-6">
+    <a asp-page="/Admin/Stores/Index" class="btn btn-ghost btn-sm">← Stores</a>
+    <h1 class="text-2xl font-bold">@Model.ChainSlug — Locations</h1>
+    @if (Model.Locations is not null)
+    {
+        <div class="badge badge-neutral">@Model.Locations.Locations.Count location(s)</div>
+    }
+</div>
+
+@if (Model.Locations is null)
+{
+    <div class="alert alert-warning">
+        <span>Could not load locations for chain <strong>@Model.ChainSlug</strong>. It may not exist yet.</span>
+    </div>
+}
+else if (!Model.Locations.Locations.Any())
+{
+    <div class="alert alert-info">
+        <span>No store locations found for <strong>@Model.ChainSlug</strong>. Locations are populated during scraping.</span>
+    </div>
+}
+else
+{
+    <div class="overflow-x-auto">
+        <table class="table table-zebra w-full">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Address</th>
+                    <th>City</th>
+                    <th>Postal Code</th>
+                    <th>Coordinates</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var loc in Model.Locations.Locations)
+                {
+                    <tr>
+                        <td class="font-medium">@loc.Name</td>
+                        <td class="text-sm">@(loc.Address ?? "—")</td>
+                        <td>@(loc.City ?? "—")</td>
+                        <td><span class="font-mono text-sm">@(loc.PostalCode ?? "—")</span></td>
+                        <td class="text-sm font-mono">
+                            @if (loc.Latitude.HasValue && loc.Longitude.HasValue)
+                            {
+                                <span>@loc.Latitude.Value.ToString("F4"), @loc.Longitude.Value.ToString("F4")</span>
+                            }
+                            else
+                            {
+                                <span class="text-base-content/40">—</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}

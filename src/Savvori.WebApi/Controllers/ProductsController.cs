@@ -63,9 +63,10 @@ public class ProductsController : ControllerBase
                 p.Unit,
                 p.SizeValue,
                 p.ImageUrl,
-                LowestPrice = p.Prices
-                    .Where(pp => pp.IsLatest)
-                    .Select(pp => (decimal?)pp.Price)
+                LowestPrice = p.StoreProducts
+                    .Where(sp => sp.IsActive)
+                    .SelectMany(sp => sp.Prices.Where(spp => spp.IsLatest))
+                    .Select(spp => (decimal?)spp.Price)
                     .Min()
             })
             .ToListAsync(ct);
@@ -81,7 +82,7 @@ public class ProductsController : ControllerBase
     }
 
     /// <summary>
-    /// Get a single product with prices across all stores.
+    /// Get a single product with prices across all store chains.
     /// GET /api/products/{id}
     /// </summary>
     [HttpGet("{id:guid}")]
@@ -93,26 +94,38 @@ public class ProductsController : ControllerBase
 
         if (product is null) return NotFound();
 
-        var prices = await _db.ProductPrices
-            .Include(pp => pp.Store)
-                .ThenInclude(s => s!.StoreChain)
-            .Where(pp => pp.ProductId == id && pp.IsLatest)
-            .OrderBy(pp => pp.Price)
-            .Select(pp => new
-            {
-                pp.Id,
-                StoreId = pp.StoreId,
-                StoreName = pp.Store != null ? pp.Store.Name : null,
-                ChainSlug = pp.Store != null && pp.Store.StoreChain != null ? pp.Store.StoreChain.Slug : null,
-                pp.Price,
-                pp.UnitPrice,
-                pp.Currency,
-                pp.IsPromotion,
-                pp.PromotionDescription,
-                pp.SourceUrl,
-                pp.LastUpdated
-            })
+        var storeProducts = await _db.StoreProducts
+            .Include(sp => sp.StoreChain)
+            .Where(sp => sp.CanonicalProductId == id && sp.IsActive)
             .ToListAsync(ct);
+
+        var spIds = storeProducts.Select(sp => sp.Id).ToList();
+        var latestPrices = await _db.StoreProductPrices
+            .Where(spp => spIds.Contains(spp.StoreProductId) && spp.IsLatest)
+            .ToDictionaryAsync(spp => spp.StoreProductId, ct);
+
+        var prices = storeProducts
+            .Select(sp =>
+            {
+                latestPrices.TryGetValue(sp.Id, out var spp);
+                return new
+                {
+                    Id = sp.Id,
+                    StoreId = sp.StoreChainId,
+                    StoreName = sp.StoreChain?.Name,
+                    ChainSlug = sp.StoreChain?.Slug,
+                    Price = spp?.Price ?? 0m,
+                    UnitPrice = spp?.UnitPrice,
+                    Currency = spp?.Currency ?? "EUR",
+                    IsPromotion = spp?.IsPromotion ?? false,
+                    PromotionDescription = spp?.PromotionDescription,
+                    SourceUrl = sp.SourceUrl,
+                    LastUpdated = spp?.ScrapedAt ?? sp.LastScraped
+                };
+            })
+            .Where(p => p.Price > 0)
+            .OrderBy(p => p.Price)
+            .ToList();
 
         return Ok(new
         {
@@ -154,9 +167,10 @@ public class ProductsController : ControllerBase
                 p.Unit,
                 p.SizeValue,
                 p.ImageUrl,
-                LowestPrice = p.Prices
-                    .Where(pp => pp.IsLatest)
-                    .Select(pp => (decimal?)pp.Price)
+                LowestPrice = p.StoreProducts
+                    .Where(sp => sp.IsActive)
+                    .SelectMany(sp => sp.Prices.Where(spp => spp.IsLatest))
+                    .Select(spp => (decimal?)spp.Price)
                     .Min()
             })
             .OrderBy(p => p.LowestPrice)
@@ -167,13 +181,13 @@ public class ProductsController : ControllerBase
     }
 
     /// <summary>
-    /// Get price history for a product at a specific store.
-    /// GET /api/products/{id}/pricehistory?storeId={storeId}&days=30
+    /// Get price history for a product at a specific chain.
+    /// GET /api/products/{id}/pricehistory?chainSlug={slug}&days=30
     /// </summary>
     [HttpGet("{id:guid}/pricehistory")]
     public async Task<IActionResult> GetPriceHistory(
         Guid id,
-        [FromQuery] Guid? storeId,
+        [FromQuery] string? chainSlug,
         [FromQuery] int days = 30,
         CancellationToken ct = default)
     {
@@ -182,30 +196,37 @@ public class ProductsController : ControllerBase
 
         var cutoff = DateTime.UtcNow.AddDays(-days);
 
-        var query = _db.ProductPrices
-            .Include(pp => pp.Store)
-                .ThenInclude(s => s!.StoreChain)
-            .Where(pp => pp.ProductId == id && pp.LastUpdated >= cutoff);
+        var storeProductQuery = _db.StoreProducts
+            .Where(sp => sp.CanonicalProductId == id);
 
-        if (storeId.HasValue)
-            query = query.Where(pp => pp.StoreId == storeId.Value);
+        if (!string.IsNullOrWhiteSpace(chainSlug))
+        {
+            storeProductQuery = storeProductQuery
+                .Include(sp => sp.StoreChain)
+                .Where(sp => sp.StoreChain != null && sp.StoreChain.Slug == chainSlug);
+        }
 
-        var history = await query
-            .OrderBy(pp => pp.LastUpdated)
-            .Select(pp => new
+        var storeProductIds = await storeProductQuery.Select(sp => sp.Id).ToListAsync(ct);
+
+        var history = await _db.StoreProductPrices
+            .Include(spp => spp.StoreProduct)
+                .ThenInclude(sp => sp.StoreChain)
+            .Where(spp => storeProductIds.Contains(spp.StoreProductId) && spp.ScrapedAt >= cutoff)
+            .OrderBy(spp => spp.ScrapedAt)
+            .Select(spp => new
             {
-                pp.Id,
-                StoreId = pp.StoreId,
-                StoreName = pp.Store != null ? pp.Store.Name : null,
-                ChainSlug = pp.Store != null && pp.Store.StoreChain != null ? pp.Store.StoreChain.Slug : null,
-                pp.Price,
-                pp.UnitPrice,
-                pp.IsPromotion,
-                pp.IsLatest,
-                pp.LastUpdated
+                spp.Id,
+                StoreId = spp.StoreProduct.StoreChainId,
+                StoreName = spp.StoreProduct.StoreChain != null ? spp.StoreProduct.StoreChain.Name : null,
+                ChainSlug = spp.StoreProduct.StoreChain != null ? spp.StoreProduct.StoreChain.Slug : null,
+                spp.Price,
+                spp.UnitPrice,
+                spp.IsPromotion,
+                spp.IsLatest,
+                LastUpdated = spp.ScrapedAt
             })
             .ToListAsync(ct);
 
-        return Ok(new { ProductId = id, StoreId = storeId, Days = days, History = history });
+        return Ok(new { ProductId = id, ChainSlug = chainSlug, Days = days, History = history });
     }
 }

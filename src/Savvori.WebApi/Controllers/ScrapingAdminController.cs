@@ -11,7 +11,7 @@ namespace Savvori.WebApi.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/admin/scraping")]
-[Authorize]  // TODO: restrict to admin role when roles are implemented
+[Authorize(Policy = "AdminOnly")]
 public class ScrapingAdminController : ControllerBase
 {
     private readonly SavvoriDbContext _db;
@@ -24,31 +24,69 @@ public class ScrapingAdminController : ControllerBase
     }
 
     /// <summary>
-    /// Get status of all scraping jobs (last run, products scraped, errors).
+    /// Get status of all scraping jobs (last run, products scraped, errors, next scheduled run).
     /// GET /api/admin/scraping/status
     /// </summary>
     [HttpGet("status")]
     public async Task<IActionResult> GetStatus(CancellationToken ct = default)
     {
-        var jobs = await _db.ScrapingJobs
-            .Include(j => j.StoreChain)
-            .OrderByDescending(j => j.StartedAt)
-            .GroupBy(j => j.StoreChainId)
-            .Select(g => g.OrderByDescending(j => j.StartedAt).First())
-            .Select(j => new
-            {
-                j.Id,
-                ChainSlug = j.StoreChain != null ? j.StoreChain.Slug : null,
-                ChainName = j.StoreChain != null ? j.StoreChain.Name : null,
-                j.Status,
-                j.StartedAt,
-                j.CompletedAt,
-                j.ProductsScraped,
-                j.ErrorMessage
-            })
+        // All configured chains from DB — only active ones
+        var chains = await _db.StoreChains
+            .Where(c => c.IsActive)
+            .OrderBy(c => c.Name)
             .ToListAsync(ct);
 
-        return Ok(jobs);
+        // Latest job per chain
+        var latestJobs = await _db.ScrapingJobs
+            .Include(j => j.StoreChain)
+            .OrderByDescending(j => j.StartedAt)
+            .ToListAsync(ct);
+
+        var latestByChain = latestJobs
+            .GroupBy(j => j.StoreChainId)
+            .ToDictionary(g => g.Key, g => g.First());
+
+        // Next fire times from Quartz
+        var scheduler = await _schedulerFactory.GetScheduler(ct);
+        var nextFireTimes = new Dictionary<string, DateTime?>();
+        foreach (var chain in chains)
+        {
+            var jobKey = new JobKey($"scrape-{chain.Slug}");
+            if (await scheduler.CheckExists(jobKey, ct))
+            {
+                var triggers = await scheduler.GetTriggersOfJob(jobKey, ct);
+                var nextTimes = triggers
+                    .Select(t => t.GetNextFireTimeUtc())
+                    .Where(t => t.HasValue)
+                    .Select(t => t!.Value.UtcDateTime);
+                nextFireTimes[chain.Slug] = nextTimes.Any() ? nextTimes.Min() : null;
+            }
+            else
+            {
+                nextFireTimes[chain.Slug] = null;
+            }
+        }
+
+        var result = chains.Select(chain =>
+        {
+            latestByChain.TryGetValue(chain.Id, out var job);
+            nextFireTimes.TryGetValue(chain.Slug, out var nextFire);
+
+            return new
+            {
+                ChainSlug    = chain.Slug,
+                ChainName    = chain.Name,
+                IsScheduled  = nextFireTimes.ContainsKey(chain.Slug),
+                NextFireTime = nextFire,
+                LastStatus   = job?.Status,
+                LastRunAt    = job?.StartedAt,
+                CompletedAt  = job?.CompletedAt,
+                ProductsScraped = job?.ProductsScraped ?? 0,
+                ErrorMessage = job?.ErrorMessage
+            };
+        }).ToList();
+
+        return Ok(result);
     }
 
     /// <summary>
@@ -118,7 +156,7 @@ public class ScrapingAdminController : ControllerBase
             var dataMap = new JobDataMap
             {
                 { StoreScrapeJob.StoreChainSlugKey, chainSlug },
-                { StoreScrapeJob.ScrapeLocationsKey, false }
+                { StoreScrapeJob.ScrapeLocationsKey, true }
             };
 
             await scheduler.TriggerJob(jobKey, dataMap, ct);

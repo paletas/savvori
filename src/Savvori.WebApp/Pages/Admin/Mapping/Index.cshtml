@@ -1,0 +1,396 @@
+@page
+@model MappingIndexModel
+@using Savvori.WebApp.Pages.Admin.Mapping
+@{
+    ViewData["Title"] = "Mapping";
+    Layout = "../_AdminLayout";
+}
+
+<div class="mb-6">
+    <h1 class="text-2xl font-bold">Product &amp; Category Mapping</h1>
+    <p class="text-base-content/60 text-sm mt-1">Inspect and repair product–category and store-product–canonical-product mappings.</p>
+</div>
+
+@* ── Stats cards ────────────────────────────────────────────────────── *@
+@if (Model.Stats is not null)
+{
+    <div class="stats stats-horizontal shadow w-full mb-6 overflow-x-auto">
+        <div class="stat">
+            <div class="stat-title">Total Products</div>
+            <div class="stat-value text-2xl">@Model.Stats.TotalProducts.ToString("N0")</div>
+        </div>
+        <div class="stat">
+            <div class="stat-title">Categorized</div>
+            <div class="stat-value text-2xl @(Model.Stats.CategorizedPercent >= 90 ? "text-success" : "text-warning")">
+                @Model.Stats.CategorizedPercent %
+            </div>
+            <div class="stat-desc">@Model.Stats.CategorizedProducts of @Model.Stats.TotalProducts</div>
+        </div>
+        <div class="stat">
+            <div class="stat-title">Unmapped Category Strings</div>
+            <div class="stat-value text-2xl @(Model.Stats.UnmappedCategoryStrings == 0 ? "text-success" : "text-warning")">
+                @Model.Stats.UnmappedCategoryStrings
+            </div>
+            <div class="stat-desc">Distinct scraped strings with no canonical match</div>
+        </div>
+        @{
+            var unmatchedStat = Model.Stats.ByMatchStatus.FirstOrDefault(s => s.Status == "Unmatched");
+            var failedStat    = Model.Stats.ByMatchStatus.FirstOrDefault(s => s.Status == "Failed");
+            var unmatchedCount = (unmatchedStat?.Count ?? 0) + (failedStat?.Count ?? 0);
+        }
+        <div class="stat">
+            <div class="stat-title">Unmatched / Failed StoreProducts</div>
+            <div class="stat-value text-2xl @(unmatchedCount == 0 ? "text-success" : "text-error")">
+                @unmatchedCount
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Action buttons ─────────────────────────────────────────────────── *@
+<div class="flex flex-wrap gap-2 mb-6">
+    <form method="post" asp-page-handler="Backfill">
+        <button type="submit" class="btn btn-sm btn-secondary">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a0 0 011-1z"/>
+            </svg>
+            Backfill Categories
+        </button>
+    </form>
+    <form method="post" asp-page-handler="Rematch">
+        <button type="submit" class="btn btn-sm btn-accent">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Re-match Unmatched
+        </button>
+    </form>
+</div>
+
+@* ── Tabs ────────────────────────────────────────────────────────────── *@
+<div role="tablist" class="tabs tabs-bordered mb-4">
+    <a role="tab"
+       asp-page="/Admin/Mapping/Index" asp-route-tab="uncategorized"
+       class="tab @(Model.Tab == "uncategorized" ? "tab-active" : "")">
+        Uncategorized Products
+        @if (Model.Stats is not null)
+        {
+            <span class="badge badge-sm ml-2 @(Model.Stats.UncategorizedProducts == 0 ? "badge-success" : "badge-warning")">
+                @Model.Stats.UncategorizedProducts
+            </span>
+        }
+    </a>
+    <a role="tab"
+       asp-page="/Admin/Mapping/Index" asp-route-tab="unmapped-categories"
+       class="tab @(Model.Tab == "unmapped-categories" ? "tab-active" : "")">
+        Unmapped Category Strings
+        @if (Model.Stats is not null)
+        {
+            <span class="badge badge-sm ml-2 @(Model.Stats.UnmappedCategoryStrings == 0 ? "badge-success" : "badge-warning")">
+                @Model.Stats.UnmappedCategoryStrings
+            </span>
+        }
+    </a>
+    <a role="tab"
+       asp-page="/Admin/Mapping/Index" asp-route-tab="store-products"
+       class="tab @(Model.Tab == "store-products" ? "tab-active" : "")">
+        Store Products
+    </a>
+</div>
+
+@* ── Tab: Uncategorized Products ─────────────────────────────────────── *@
+@if (Model.Tab == "uncategorized")
+{
+    @if (Model.UncategorizedProducts is null)
+    {
+        <div class="alert alert-error">Failed to load uncategorized products.</div>
+    }
+    else if (!Model.UncategorizedProducts.Items.Any())
+    {
+        <div class="alert alert-success">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            All products have a canonical category assigned!
+        </div>
+    }
+    else
+    {
+        <div class="overflow-x-auto">
+            <table class="table table-zebra w-full">
+                <thead>
+                    <tr>
+                        <th>Product</th>
+                        <th>Brand</th>
+                        <th>Scraped Category</th>
+                        <th>EAN</th>
+                        <th class="text-right">Store Products</th>
+                        <th>Assign Category</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in Model.UncategorizedProducts.Items)
+                    {
+                        <tr>
+                            <td class="font-medium">@p.Name</td>
+                            <td class="text-sm">@(p.Brand ?? "—")</td>
+                            <td>
+                                @if (!string.IsNullOrEmpty(p.RawCategory))
+                                {
+                                    <span class="badge badge-ghost badge-sm font-mono">@p.RawCategory</span>
+                                }
+                                else
+                                {
+                                    <span class="text-base-content/40">—</span>
+                                }
+                            </td>
+                            <td><span class="font-mono text-xs">@(p.EAN ?? "—")</span></td>
+                            <td class="text-right text-sm">@p.StoreProductCount</td>
+                            <td>
+                                <form method="post" asp-page-handler="AssignCategory" class="flex gap-2 items-center">
+                                    <input type="hidden" name="productId" value="@p.Id" />
+                                    <input type="hidden" name="page" value="@Model.Page" />
+                                    <select name="categoryId" class="select select-bordered select-xs">
+                                        <option value="">— pick category —</option>
+                                        @foreach (var parent in Model.AllCategories)
+                                        {
+                                            <optgroup label="@parent.Name">
+                                                @foreach (var child in parent.Children)
+                                                {
+                                                    <option value="@child.Id">@child.Name</option>
+                                                }
+                                            </optgroup>
+                                            @if (!parent.Children.Any())
+                                            {
+                                                <option value="@parent.Id">@parent.Name</option>
+                                            }
+                                        }
+                                    </select>
+                                    <button type="submit" class="btn btn-xs btn-primary">Assign</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @* Pagination *@
+        @if (Model.UncategorizedProducts.TotalPages > 1)
+        {
+            <div class="flex justify-center gap-2 mt-6">
+                @if (Model.UncategorizedProducts.Page > 1)
+                {
+                    <a asp-page="/Admin/Mapping/Index"
+                       asp-route-tab="uncategorized"
+                       asp-route-page="@(Model.UncategorizedProducts.Page - 1)"
+                       class="btn btn-sm">← Prev</a>
+                }
+                <span class="btn btn-sm btn-ghost no-animation">
+                    Page @Model.UncategorizedProducts.Page of @Model.UncategorizedProducts.TotalPages
+                </span>
+                @if (Model.UncategorizedProducts.Page < Model.UncategorizedProducts.TotalPages)
+                {
+                    <a asp-page="/Admin/Mapping/Index"
+                       asp-route-tab="uncategorized"
+                       asp-route-page="@(Model.UncategorizedProducts.Page + 1)"
+                       class="btn btn-sm">Next →</a>
+                }
+            </div>
+        }
+    }
+}
+
+@* ── Tab: Unmapped Category Strings ─────────────────────────────────── *@
+@if (Model.Tab == "unmapped-categories")
+{
+    @if (!Model.UnmappedCategories.Any())
+    {
+        <div class="alert alert-success">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            All scraped category strings are mapped to canonical categories!
+        </div>
+    }
+    else
+    {
+        <p class="text-sm text-base-content/60 mb-4">
+            These are the raw category strings from scraped products that CategoryMapper cannot resolve.
+            Add mappings to <code>CategoryMapper.cs</code> to fix them, then use
+            <strong>Backfill Categories</strong> to apply retroactively.
+        </p>
+        <div class="overflow-x-auto">
+            <table class="table table-zebra w-full">
+                <thead>
+                    <tr>
+                        <th>Scraped Category String</th>
+                        <th class="text-right">Products</th>
+                        <th>CategoryMapper Suggestion</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var cat in Model.UnmappedCategories)
+                    {
+                        <tr>
+                            <td><span class="badge badge-ghost badge-sm font-mono">@cat.RawCategory</span></td>
+                            <td class="text-right">@cat.ProductCount</td>
+                            <td>
+                                @if (!string.IsNullOrEmpty(cat.SuggestedSlug))
+                                {
+                                    <span class="badge badge-success badge-sm">@cat.SuggestedSlug</span>
+                                    <span class="text-xs text-base-content/50 ml-1">(pending backfill)</span>
+                                }
+                                else
+                                {
+                                    <span class="text-base-content/40 text-sm">No match — add to CategoryMapper.cs</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@* ── Tab: Store Products ─────────────────────────────────────────────── *@
+@if (Model.Tab == "store-products")
+{
+    <form method="get" asp-page="/Admin/Mapping/Index" class="flex flex-wrap gap-2 mb-4 items-end">
+        <input type="hidden" name="tab" value="store-products" />
+        <div class="form-control">
+            <label class="label py-0"><span class="label-text text-xs">Match Status</span></label>
+            <select name="statusFilter" class="select select-bordered select-sm">
+                <option value="">All statuses</option>
+                <option value="Unmatched"     selected="@(Model.StatusFilter == "Unmatched"     ? "selected" : null)">Unmatched</option>
+                <option value="AutoMatched"   selected="@(Model.StatusFilter == "AutoMatched"   ? "selected" : null)">AutoMatched</option>
+                <option value="ManualMatched" selected="@(Model.StatusFilter == "ManualMatched" ? "selected" : null)">ManualMatched</option>
+                <option value="Failed"        selected="@(Model.StatusFilter == "Failed"        ? "selected" : null)">Failed</option>
+            </select>
+        </div>
+        <div class="form-control">
+            <label class="label py-0"><span class="label-text text-xs">Chain</span></label>
+            <input type="text" name="chainFilter" value="@Model.ChainFilter"
+                   placeholder="e.g. continente" class="input input-bordered input-sm w-40" />
+        </div>
+        <button type="submit" class="btn btn-sm btn-primary self-end">Filter</button>
+        @if (!string.IsNullOrEmpty(Model.StatusFilter) || !string.IsNullOrEmpty(Model.ChainFilter))
+        {
+            <a asp-page="/Admin/Mapping/Index" asp-route-tab="store-products"
+               class="btn btn-sm btn-ghost self-end">Clear</a>
+        }
+    </form>
+
+    @if (Model.StoreProducts is null)
+    {
+        <div class="alert alert-error">Failed to load store products.</div>
+    }
+    else if (!Model.StoreProducts.Items.Any())
+    {
+        <div class="alert alert-info">No store products match the current filter.</div>
+    }
+    else
+    {
+        <div class="text-sm text-base-content/60 mb-2">
+            @Model.StoreProducts.Total total — page @Model.StoreProducts.Page of @Model.StoreProducts.TotalPages
+        </div>
+        <div class="overflow-x-auto">
+            <table class="table table-zebra w-full">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Chain</th>
+                        <th>EAN</th>
+                        <th>Status</th>
+                        <th>Method</th>
+                        <th>Canonical Product</th>
+                        <th>Link Canonical</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var sp in Model.StoreProducts.Items)
+                    {
+                        <tr class="@(!sp.IsActive ? "opacity-50" : "")">
+                            <td>
+                                <div class="font-medium text-sm">@sp.Name</div>
+                                @if (!string.IsNullOrEmpty(sp.Brand))
+                                {
+                                    <div class="text-xs text-base-content/50">@sp.Brand</div>
+                                }
+                            </td>
+                            <td><span class="badge badge-ghost badge-sm">@sp.ChainSlug</span></td>
+                            <td><span class="font-mono text-xs">@(sp.EAN ?? "—")</span></td>
+                            <td>
+                                <span class="badge badge-sm @(sp.MatchStatus == "AutoMatched" || sp.MatchStatus == "ManualMatched"
+                                        ? "badge-success"
+                                        : sp.MatchStatus == "Failed"
+                                            ? "badge-error"
+                                            : "badge-warning")">
+                                    @sp.MatchStatus
+                                </span>
+                            </td>
+                            <td class="text-xs text-base-content/60">@(sp.MatchMethod ?? "—")</td>
+                            <td class="text-sm">
+                                @if (!string.IsNullOrEmpty(sp.CanonicalProductName))
+                                {
+                                    <span>@sp.CanonicalProductName</span>
+                                }
+                                else
+                                {
+                                    <span class="text-base-content/40">—</span>
+                                }
+                            </td>
+                            <td>
+                                <details class="dropdown dropdown-end">
+                                    <summary class="btn btn-xs btn-ghost">Link…</summary>
+                                    <div class="dropdown-content card card-compact w-72 p-3 shadow bg-base-200 z-10">
+                                        <form method="post" asp-page-handler="AssignCanonical" class="flex flex-col gap-2">
+                                            <input type="hidden" name="storeProductId" value="@sp.Id" />
+                                            <input type="hidden" name="statusFilter" value="@Model.StatusFilter" />
+                                            <input type="hidden" name="chainFilter" value="@Model.ChainFilter" />
+                                            <input type="hidden" name="page" value="@Model.Page" />
+                                            <label class="text-xs font-semibold">Canonical Product ID (GUID)</label>
+                                            <input type="text" name="canonicalProductId" required
+                                                   placeholder="00000000-0000-0000-0000-000000000000"
+                                                   class="input input-bordered input-xs font-mono" />
+                                            <button type="submit" class="btn btn-xs btn-primary">Link</button>
+                                        </form>
+                                    </div>
+                                </details>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @* Pagination *@
+        @if (Model.StoreProducts.TotalPages > 1)
+        {
+            <div class="flex justify-center gap-2 mt-6">
+                @if (Model.StoreProducts.Page > 1)
+                {
+                    <a asp-page="/Admin/Mapping/Index"
+                       asp-route-tab="store-products"
+                       asp-route-page="@(Model.StoreProducts.Page - 1)"
+                       asp-route-statusFilter="@Model.StatusFilter"
+                       asp-route-chainFilter="@Model.ChainFilter"
+                       class="btn btn-sm">← Prev</a>
+                }
+                <span class="btn btn-sm btn-ghost no-animation">
+                    Page @Model.StoreProducts.Page of @Model.StoreProducts.TotalPages
+                </span>
+                @if (Model.StoreProducts.Page < Model.StoreProducts.TotalPages)
+                {
+                    <a asp-page="/Admin/Mapping/Index"
+                       asp-route-tab="store-products"
+                       asp-route-page="@(Model.StoreProducts.Page + 1)"
+                       asp-route-statusFilter="@Model.StatusFilter"
+                       asp-route-chainFilter="@Model.ChainFilter"
+                       class="btn btn-sm">Next →</a>
+                }
+            </div>
+        }
+    }
+}

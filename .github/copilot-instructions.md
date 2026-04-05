@@ -3,42 +3,68 @@
 These instructions help AI coding agents work productively in this codebase. Keep edits concise and verify assumptions against the workspace before proceeding.
 
 ## Repo snapshot
-- Root: `d:\Savvori`
+- Root: `s:\Savvori`
 - Solution: `Savvori.sln`
+- SDK: .NET 10.0.200 (pinned via `global.json`, rolls forward to latest patch)
 - Projects:
-   - Web API: `src/Savvori.WebApi/Savvori.WebApi.csproj` (ASP.NET Core minimal API, .NET 10 RC)
+   - App Host: `src/Savvori.AppHost/Savvori.AppHost.csproj` (Aspire orchestration, Aspire SDK 13.2.1)
+   - Service Defaults: `src/Savvori.ServiceDefaults/Savvori.ServiceDefaults.csproj` (OpenTelemetry, health checks, resilience)
+   - Web API: `src/Savvori.WebApi/Savvori.WebApi.csproj` (ASP.NET Core minimal API, .NET 10)
+   - Web App: `src/Savvori.WebApp/Savvori.WebApp.csproj` (Razor Pages, .NET 10)
+   - Shared: `src/Savvori.Shared/Savvori.Shared.csproj` (EF Core models/DbContext)
    - Tests: `tests/Savvori.Web.Tests/Savvori.Web.Tests.csproj` (xUnit)
 
 ## First steps for any task
 1. Operate via the solution: prefer `Savvori.sln` for adds/refs/builds.
 2. Confirm target paths before running commands; use Windows PowerShell syntax.
 3. If adding projects, keep to `src/` and `tests/` layout and add them to the solution.
+4. Use `$env:USERPROFILE\.dotnet\tools\aspire.exe` or ensure `~/.dotnet/tools` is in PATH for Aspire CLI.
 
 ## Build, run, test
 - Build all:
    - `dotnet build Savvori.sln`
-- Run the web app:
+- Run with Aspire (recommended — starts PostgreSQL container via Podman, dashboard, all services):
+   - `aspire run` (from repo root, or `& "$env:USERPROFILE\.dotnet\tools\aspire.exe" run`)
+   - Aspire dashboard: http://localhost:15888 (auto-opens)
+   - WebApi URL injected by Aspire
+- Run the web API directly (requires local PostgreSQL at `ConnectionStrings:savvori`):
    - `dotnet run --project src/Savvori.WebApi/Savvori.WebApi.csproj`
    - Development endpoints:
       - GET http://localhost:5000/weatherforecast
       - OpenAPI (dev): http://localhost:5000/openapi/v1.json
+      - Health: http://localhost:5000/health
 - Run tests:
    - `dotnet test Savvori.sln`
 
 Notes:
-- The web project targets `net10.0` and currently references `Microsoft.AspNetCore.OpenApi` RC packages. Keep versions consistent across changes.
+- **Container runtime**: Podman 5.8.1. `ASPIRE_CONTAINER_RUNTIME=podman` is set as a user environment variable. Aspire uses Podman to run the PostgreSQL container.
+- All projects target `net10.0`. Aspire packages are at 13.2.x. Keep versions consistent.
 
 ## Architectural conventions
 - Minimal API in `Program.cs` defines endpoints directly. Example:
    - `app.MapGet("/weatherforecast", ...).WithName("GetWeatherForecast");`
 - Configuration: `appsettings.json` + `appsettings.Development.json` in the web project.
+- Database connection: resolved from `ConnectionStrings:savvori` (key name used by Aspire client integration `builder.AddNpgsqlDbContext<SavvoriDbContext>("savvori")`).
 - Namespaces/projects follow `Savvori.*`. New code should align with this naming.
+- ServiceDefaults (`builder.AddServiceDefaults()` / `app.MapDefaultEndpoints()`) must be wired in all executable projects.
+
+## Aspire AppHost conventions
+- Add new projects to orchestration in `Savvori.AppHost/AppHost.cs`.
+- Use `builder.AddProject<Projects.Savvori_ProjectName>("resource-name")` for .NET projects.
+- Use `.WithReference(resource).WaitFor(resource)` to wire database dependencies.
+- Add infrastructure (DBs, caches, etc.) via Aspire hosting integrations (`dotnet add package Aspire.Hosting.*`).
 
 ## Working patterns for agents
 - When adding endpoints, extend `Program.cs` or introduce modules with `MapGroup` as needed; keep routing consistent.
 - When adding services, register them via `builder.Services` in `Program.cs`. Prefer constructor injection for testability.
 - Tests live under `tests/` with xUnit. Add at least a happy-path test when changing public behavior.
 - Update the solution file whenever you add/remove projects or references.
+- New HTTP clients should use `AddStandardResilienceHandler()` (already applied globally via ServiceDefaults).
+
+## Aspire MCP
+- The Aspire MCP server is configured in `.vscode/mcp.json` (type: stdio, command: `aspire agent mcp`).
+- Aspire MCP tools (list_resources, console_logs, traces, etc.) are available when the AppHost is running.
+- Start the AppHost first with `aspire run`, then use Aspire MCP tools to inspect running services.
 
 ## Common tasks: concrete examples
 - Add a new test project:
@@ -46,6 +72,10 @@ Notes:
    - `dotnet sln Savvori.sln add tests/Savvori.Api.Tests/Savvori.Api.Tests.csproj`
 - Reference the web project from tests:
    - `dotnet add tests/Savvori.Api.Tests/Savvori.Api.Tests.csproj reference src/Savvori.WebApi/Savvori.WebApi.csproj`
+- Add an Aspire infrastructure integration:
+   - `aspire add <integration-name>` (from repo root)
+- Add a new project to Aspire orchestration:
+   - Add `ProjectReference` in AppHost.csproj, then `builder.AddProject<Projects.ProjectName>("name")` in AppHost.cs
 
 ## Quality gates before PRs
 - Build succeeds and `dotnet test` passes locally.
