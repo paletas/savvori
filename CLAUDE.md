@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Savvori is a grocery price-comparison API + web app for Portugal. It scrapes product prices from major Portuguese supermarket chains (Continente, Pingo Doce, Auchan, Minipreço implemented; Lidl, Intermarché, Mercadona are stubs with no online catalog), and helps users build shopping lists and optimize them for cheapest cost across stores.
+Savvori is a grocery price-comparison API + web app for Portugal. It scrapes product prices from major Portuguese supermarket chains (Continente, Pingo Doce, Auchan, Lidl, Celeiro; chains without a working scraper are not kept as stubs), and helps users build shopping lists and optimize them for cheapest cost across stores.
 
 ASP.NET Core / .NET 10, orchestrated locally with .NET Aspire, SQLite via EF Core. There is no authentication (single-user homelab deployment).
 

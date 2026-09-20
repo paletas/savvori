@@ -62,10 +62,10 @@ Savvori is an ASP.NET Core minimal API (.NET 10) that helps users find the cheap
 | Continente | SFCC JSON endpoint | Internal JSON API |
 | Pingo Doce | SFCC JSON endpoint | |
 | Auchan | SFCC + `data-gtm` JSON attribute | Page-based pagination |
-| Minipreço | SAP Hybris | `.product-list__item` selectors; regex unit-price parsing |
-| Lidl | Stub | No online grocery catalog |
-| Intermarché | Stub | No online grocery catalog |
-| Mercadona | Stub | No online grocery catalog |
+| Lidl | JSON search API (`/q/api/search`) | Empty query + grocery terms, `offset`/`fetchsize` paging; keeps `category == "Food"` items with a price; base price parsed from `1 kg = 2,95` text. Strict `Accept: application/json` returns 406 |
+| Celeiro | Magento | `.product-item-info` microdata; category paging via `?p=N` (stops when a page adds nothing new); unit price parsed from `.apresentacao` |
+
+Chains dropped from `Scraping:Chains` are pruned at startup by `StoreChainSeeder`: deleted if they have no data, otherwise deactivated. Minipreço (domain gone), Intermarché (DataDome bot protection) and Mercadona (no Portuguese online shop) were removed on this basis.
 
 ### 6. Product Normalization
 - `ProductNormalizer` class responsible for:

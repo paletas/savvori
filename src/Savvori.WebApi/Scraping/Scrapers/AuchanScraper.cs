@@ -9,7 +9,7 @@ namespace Savvori.WebApi.Scraping.Scrapers;
 /// <summary>
 /// Scraper for Auchan Portugal (auchan.pt).
 /// Uses the SFCC platform — products are in .product-tile elements with data-gtm JSON.
-/// Search URL: https://www.auchan.pt/pt/pesquisa?q={query}&page={page}
+/// Search URL: https://www.auchan.pt/pt/pesquisa?q={query}&amp;start={offset} (24 products per page)
 /// </summary>
 public sealed partial class AuchanScraper : BaseHttpScraper
 {
@@ -64,13 +64,13 @@ public sealed partial class AuchanScraper : BaseHttpScraper
         List<ScrapedProduct> products,
         CancellationToken ct)
     {
-        var page = 1;
+        var page = 0;
         int? total = null;
-        var scraped = 0;
 
         do
         {
-            var url = $"{SearchBase}?q={Uri.EscapeDataString(query)}&page={page}";
+            // Auchan ignores ?page=N (always returns the first page); paging is via ?start=N
+            var url = $"{SearchBase}?q={Uri.EscapeDataString(query)}&start={page * PageSize}";
             IDocument document;
 
             try
@@ -86,6 +86,7 @@ public sealed partial class AuchanScraper : BaseHttpScraper
             var tiles = document.QuerySelectorAll(".product-tile").ToList();
             if (tiles.Count == 0) break;
 
+            var added = 0;
             foreach (var tile in tiles)
             {
                 var product = ParseTile(tile);
@@ -93,7 +94,7 @@ public sealed partial class AuchanScraper : BaseHttpScraper
                 if (seen.Add(product.ExternalId))
                 {
                     products.Add(product);
-                    scraped++;
+                    added++;
                 }
             }
 
@@ -105,10 +106,13 @@ public sealed partial class AuchanScraper : BaseHttpScraper
 
             page++;
 
-            if (scraped < (total ?? int.MaxValue))
-                await Task.Delay(500, ct);
+            // Stop on: no new products (server repeated a page), a short page, or the reported total reached.
+            if (added == 0 || tiles.Count < PageSize || (total is not null && page * PageSize >= total))
+                break;
 
-        } while (scraped < (total ?? 0) + PageSize);
+            await Task.Delay(500, ct);
+
+        } while (true);
     }
 
     private static ScrapedProduct? ParseTile(IElement tile)
