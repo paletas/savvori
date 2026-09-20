@@ -133,3 +133,6 @@ data/
 *.db
 *.db-shm
 *.db-wal
+
+# Keep the WebApp lockfile: CI and the Docker image use `npm ci`
+!src/Savvori.WebApp/package-lock.json
