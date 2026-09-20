@@ -4,81 +4,16 @@ using Savvori.E2E.Tests.Infrastructure;
 namespace Savvori.E2E.Tests;
 
 /// <summary>
-/// Tests the Admin section from unauthenticated, non-admin, and admin perspectives.
-/// Admin pages require [Authorize(Roles="admin")]; both unauthenticated and non-admin
-/// users are redirected to /Account/Login (AccessDeniedPath = "/Account/Login").
+/// Tests the Admin section pages (the app has no authentication).
 /// </summary>
 public class AdminPagesTests(SavvoriWebAppFactory factory) : IClassFixture<SavvoriWebAppFactory>
 {
-    // ===== Access Control — unauthenticated =====
-
-    [Fact]
-    public async Task AdminIndexPage_Unauthenticated_RedirectsToLogin()
-    {
-        var client = factory.CreateUnauthenticatedClient();
-        var response = await client.GetAsync("/Admin", TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Contains("/Account/Login", response.Headers.Location?.ToString() ?? "");
-    }
-
-    [Fact]
-    public async Task AdminScrapingPage_Unauthenticated_RedirectsToLogin()
-    {
-        var client = factory.CreateUnauthenticatedClient();
-        var response = await client.GetAsync("/Admin/Scraping", TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Contains("/Account/Login", response.Headers.Location?.ToString() ?? "");
-    }
-
-    [Fact]
-    public async Task AdminStoresPage_Unauthenticated_RedirectsToLogin()
-    {
-        var client = factory.CreateUnauthenticatedClient();
-        var response = await client.GetAsync("/Admin/Stores", TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Contains("/Account/Login", response.Headers.Location?.ToString() ?? "");
-    }
-
-    [Fact]
-    public async Task AdminProductsPage_Unauthenticated_RedirectsToLogin()
-    {
-        var client = factory.CreateUnauthenticatedClient();
-        var response = await client.GetAsync("/Admin/Products", TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Contains("/Account/Login", response.Headers.Location?.ToString() ?? "");
-    }
-
-    // ===== Access Control — non-admin authenticated user =====
-
-    [Fact]
-    public async Task AdminIndexPage_NonAdmin_RedirectsToLogin()
-    {
-        var client = await factory.CreateAuthenticatedClientAsync("user@savvori.test");
-        var unauthClient = factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
-        {
-            AllowAutoRedirect = false,
-            HandleCookies = true
-        });
-        // Re-login as non-admin (user@... does not have admin role)
-        var token = await SavvoriWebAppFactory.GetAntiForgeryTokenAsync(unauthClient, "/Account/Login");
-        await unauthClient.PostAsync("/Account/Login", new FormUrlEncodedContent(
-            new Dictionary<string, string>
-            {
-                ["Email"] = "user@savvori.test",
-                ["Password"] = "TestPassword123",
-                ["__RequestVerificationToken"] = token
-            }), TestContext.Current.CancellationToken);
-        var response = await unauthClient.GetAsync("/Admin", TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Contains("/Account/Login", response.Headers.Location?.ToString() ?? "");
-    }
-
     // ===== Admin Scraping =====
 
     [Fact]
     public async Task AdminIndexPage_Admin_ReturnsOk_ShowsAllSections()
     {
-        var client = await factory.CreateAdminClientAsync();
+        var client = factory.CreateClient();
         var response = await client.GetAsync("/Admin", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
@@ -90,7 +25,7 @@ public class AdminPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savvo
     [Fact]
     public async Task AdminScrapingPage_Admin_ReturnsOk_ShowsJobStatus()
     {
-        var client = await factory.CreateAdminClientAsync();
+        var client = factory.CreateClient();
         var response = await client.GetAsync("/Admin/Scraping", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
@@ -100,7 +35,7 @@ public class AdminPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savvo
     [Fact]
     public async Task AdminScrapingPage_HtmxRefresh_ReturnsPartialHtml()
     {
-        var client = await factory.CreateAdminClientAsync();
+        var client = factory.CreateClient();
         var request = new HttpRequestMessage(HttpMethod.Get, "/Admin/Scraping?handler=Refresh");
         request.Headers.Add("HX-Request", "true");
         var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
@@ -112,7 +47,7 @@ public class AdminPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savvo
     [Fact]
     public async Task AdminScrapingDetailPage_Admin_ReturnsOk_ShowsChainDetail()
     {
-        var client = await factory.CreateAdminClientAsync();
+        var client = factory.CreateClient();
         var response = await client.GetAsync("/Admin/Scraping/Detail/continente", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
@@ -128,15 +63,6 @@ public class AdminPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savvo
             HandleCookies = true
         });
 
-        // Authenticate as admin
-        var loginToken = await SavvoriWebAppFactory.GetAntiForgeryTokenAsync(client, "/Account/Login");
-        await client.PostAsync("/Account/Login", new FormUrlEncodedContent(
-            new Dictionary<string, string>
-            {
-                ["Email"] = "admin@savvori.test",
-                ["Password"] = "TestPassword123",
-                ["__RequestVerificationToken"] = loginToken
-            }), TestContext.Current.CancellationToken);
 
         var detailToken = await SavvoriWebAppFactory.GetAntiForgeryTokenAsync(
             client, "/Admin/Scraping/Detail/continente");
@@ -159,7 +85,7 @@ public class AdminPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savvo
     [Fact]
     public async Task AdminStoresPage_Admin_ReturnsOk_ShowsChains()
     {
-        var client = await factory.CreateAdminClientAsync();
+        var client = factory.CreateClient();
         var response = await client.GetAsync("/Admin/Stores", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
@@ -169,7 +95,7 @@ public class AdminPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savvo
     [Fact]
     public async Task AdminStoresDetailPage_Admin_ReturnsOk_ShowsLocations()
     {
-        var client = await factory.CreateAdminClientAsync();
+        var client = factory.CreateClient();
         var response = await client.GetAsync("/Admin/Stores/Detail/continente", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
@@ -181,7 +107,7 @@ public class AdminPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savvo
     [Fact]
     public async Task AdminProductsPage_Admin_ReturnsOk_ShowsProducts()
     {
-        var client = await factory.CreateAdminClientAsync();
+        var client = factory.CreateClient();
         var response = await client.GetAsync("/Admin/Products", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
@@ -191,7 +117,7 @@ public class AdminPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savvo
     [Fact]
     public async Task AdminProductsPage_Admin_SearchFiltersResults()
     {
-        var client = await factory.CreateAdminClientAsync();
+        var client = factory.CreateClient();
         var response = await client.GetAsync("/Admin/Products?search=milk", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);

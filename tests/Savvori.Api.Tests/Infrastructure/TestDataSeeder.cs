@@ -9,16 +9,6 @@ namespace Savvori.Api.Tests.Infrastructure;
 /// </summary>
 public static class TestDataSeeder
 {
-    public static User CreateTestUser(string email = "user@test.com", bool isAdmin = false) => new()
-    {
-        Id = Guid.NewGuid(),
-        Email = email,
-        PasswordHash = BCrypt.Net.BCrypt.HashPassword("Password123!"),
-        IsAdmin = isAdmin,
-        CreatedAt = DateTime.UtcNow,
-        UpdatedAt = DateTime.UtcNow
-    };
-
     public static ProductCategory CreateTestCategory(
         string name,
         string? slug = null,
@@ -102,10 +92,9 @@ public static class TestDataSeeder
         ScrapedAt = scrapedAt ?? DateTime.UtcNow
     };
 
-    public static ShoppingList CreateTestShoppingList(Guid userId, string name = "Test List") => new()
+    public static ShoppingList CreateTestShoppingList(string name = "Test List") => new()
     {
         Id = Guid.NewGuid(),
-        UserId = userId,
         Name = name,
         CreatedAt = DateTime.UtcNow,
         UpdatedAt = DateTime.UtcNow

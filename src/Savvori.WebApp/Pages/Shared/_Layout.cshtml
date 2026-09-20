@@ -19,10 +19,8 @@
                     <li><a asp-page="/Index">Home</a></li>
                     <li><a asp-page="/Products/Index">Products</a></li>
                     <li><a asp-page="/Stores/Index">Stores</a></li>
-                    @if (User.Identity?.IsAuthenticated == true)
-                    {
-                        <li><a asp-page="/ShoppingLists/Index">My Lists</a></li>
-                    }
+                    <li><a asp-page="/ShoppingLists/Index">My Lists</a></li>
+                    <li><a asp-page="/Admin/Scraping/Index">Admin</a></li>
                 </ul>
             </div>
             <a asp-page="/Index" class="btn btn-ghost text-xl font-bold text-primary">🛒 Savvori</a>
@@ -32,40 +30,9 @@
                 <li><a asp-page="/Index" class="font-medium">Home</a></li>
                 <li><a asp-page="/Products/Index" class="font-medium">Products</a></li>
                 <li><a asp-page="/Stores/Index" class="font-medium">Stores</a></li>
-                @if (User.Identity?.IsAuthenticated == true)
-                {
-                    <li><a asp-page="/ShoppingLists/Index" class="font-medium">My Lists</a></li>
-                }
+                <li><a asp-page="/ShoppingLists/Index" class="font-medium">My Lists</a></li>
+                <li><a asp-page="/Admin/Scraping/Index" class="font-medium">Admin</a></li>
             </ul>
-        </div>
-        <div class="navbar-end gap-2">
-            @if (User.Identity?.IsAuthenticated == true)
-            {
-                <div class="dropdown dropdown-end">
-                    <div tabindex="0" role="button" class="btn btn-ghost btn-circle avatar placeholder">
-                        <div class="bg-primary text-primary-content rounded-full w-10">
-                            <span class="text-sm">@(User.Identity.Name?.Substring(0, 1).ToUpper() ?? "U")</span>
-                        </div>
-                    </div>
-                    <ul tabindex="0" class="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-52">
-                        <li><a asp-page="/Account/Settings">Settings</a></li>
-                        @if (User.IsInRole("admin"))
-                        {
-                            <li><a asp-page="/Admin/Scraping/Index">Admin</a></li>
-                        }
-                        <li>
-                            <form method="post" asp-page="/Account/Logout">
-                                <button type="submit" class="w-full text-left">Logout</button>
-                            </form>
-                        </li>
-                    </ul>
-                </div>
-            }
-            else
-            {
-                <a asp-page="/Account/Login" class="btn btn-ghost btn-sm">Login</a>
-                <a asp-page="/Account/Register" class="btn btn-primary btn-sm">Register</a>
-            }
         </div>
     </div>
 

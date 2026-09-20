@@ -9,26 +9,16 @@ namespace Savvori.Api.Tests;
 public class AdminScrapingTests : IClassFixture<SavvoriWebApiFactory>
 {
     private readonly SavvoriWebApiFactory _factory;
-    private readonly Guid _adminUserId;
-    private readonly Guid _regularUserId;
     private readonly Guid _chainId;
 
     public AdminScrapingTests(SavvoriWebApiFactory factory)
     {
         _factory = factory;
-        _adminUserId = Guid.NewGuid();
-        _regularUserId = Guid.NewGuid();
         _chainId = Guid.NewGuid();
 
         factory.SeedData(db =>
         {
-            var admin = TestDataSeeder.CreateTestUser($"admin_{_adminUserId}@test.com", isAdmin: true);
-            admin.Id = _adminUserId;
-            db.Users.Add(admin);
 
-            var regular = TestDataSeeder.CreateTestUser($"regular_{_regularUserId}@test.com");
-            regular.Id = _regularUserId;
-            db.Users.Add(regular);
 
             var chain = TestDataSeeder.CreateTestStoreChain("Continente", $"continente-adm-{Guid.NewGuid():N}");
             chain.Id = _chainId;
@@ -39,16 +29,12 @@ public class AdminScrapingTests : IClassFixture<SavvoriWebApiFactory>
         });
     }
 
-    private HttpClient AdminClient() =>
-        _factory.CreateAuthenticatedClient(_adminUserId, $"admin_{_adminUserId}@test.com", isAdmin: true);
 
-    private HttpClient RegularClient() =>
-        _factory.CreateAuthenticatedClient(_regularUserId, $"regular_{_regularUserId}@test.com");
 
     [Fact]
     public async Task GetStatus_AsAdmin_Returns200WithJobList()
     {
-        using var client = AdminClient();
+        using var client = _factory.CreateClient();
         var response = await client.GetAsync("/api/admin/scraping/status", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
@@ -57,28 +43,12 @@ public class AdminScrapingTests : IClassFixture<SavvoriWebApiFactory>
     }
 
     [Fact]
-    public async Task GetStatus_AsRegularUser_Returns403()
-    {
-        using var client = RegularClient();
-        var response = await client.GetAsync("/api/admin/scraping/status", TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task GetStatus_Unauthenticated_Returns401()
-    {
-        using var client = _factory.CreateClient();
-        var response = await client.GetAsync("/api/admin/scraping/status", TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-    }
-
-    [Fact]
     public async Task GetChainStatus_AsAdmin_ValidChain_Returns200WithHistoryAndLogs()
     {
         // Use the chain slug we seeded
         var chainSlug = await GetSeededChainSlug();
 
-        using var client = AdminClient();
+        using var client = _factory.CreateClient();
         var response = await client.GetAsync($"/api/admin/scraping/status/{chainSlug}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
@@ -91,31 +61,15 @@ public class AdminScrapingTests : IClassFixture<SavvoriWebApiFactory>
     [Fact]
     public async Task GetChainStatus_AsAdmin_UnknownChain_Returns404()
     {
-        using var client = AdminClient();
+        using var client = _factory.CreateClient();
         var response = await client.GetAsync("/api/admin/scraping/status/no-such-chain", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]
-    public async Task TriggerScrape_AsRegularUser_Returns403()
-    {
-        using var client = RegularClient();
-        var response = await client.PostAsync("/api/admin/scraping/trigger/continente", null, TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task TriggerScrape_Unauthenticated_Returns401()
-    {
-        using var client = _factory.CreateClient();
-        var response = await client.PostAsync("/api/admin/scraping/trigger/continente", null, TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-    }
-
-    [Fact]
     public async Task TriggerScrape_AsAdmin_UnknownChain_Returns404()
     {
-        using var client = AdminClient();
+        using var client = _factory.CreateClient();
         var response = await client.PostAsync("/api/admin/scraping/trigger/no-such-chain", null, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -125,7 +79,7 @@ public class AdminScrapingTests : IClassFixture<SavvoriWebApiFactory>
     {
         // In test environment Quartz has no jobs registered → endpoint returns 400
         var chainSlug = await GetSeededChainSlug();
-        using var client = AdminClient();
+        using var client = _factory.CreateClient();
         var response = await client.PostAsync($"/api/admin/scraping/trigger/{chainSlug}", null, TestContext.Current.CancellationToken);
         // Returns 404 (chain not found in Quartz) or 400 (no job registered)
         Assert.True(
@@ -137,7 +91,7 @@ public class AdminScrapingTests : IClassFixture<SavvoriWebApiFactory>
 
     private async Task<string> GetSeededChainSlug()
     {
-        using var client = AdminClient();
+        using var client = _factory.CreateClient();
         var response = await client.GetAsync("/api/admin/scraping/status", TestContext.Current.CancellationToken);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         foreach (var job in body.EnumerateArray())

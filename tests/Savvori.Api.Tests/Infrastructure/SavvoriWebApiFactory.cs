@@ -1,11 +1,8 @@
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.IdentityModel.Tokens;
+using Microsoft.Data.Sqlite;
 using NSubstitute;
 using Quartz;
 using Savvori.WebApi;
@@ -14,13 +11,26 @@ using Savvori.WebApi.Services;
 namespace Savvori.Api.Tests.Infrastructure;
 
 /// <summary>
-/// WebApplicationFactory for integration tests. Uses EF Core InMemory, mocks ILocationService,
+/// WebApplicationFactory for integration tests. Uses a shared in-memory SQLite database, mocks ILocationService,
 /// and disables Quartz background jobs.
 /// </summary>
 public class SavvoriWebApiFactory : WebApplicationFactory<Program>
 {
-    private const string JwtKey = "dev_secret_key_change_me_in_prod!!";
-    private readonly string _dbName = $"TestDb_{Guid.NewGuid()}";
+    private readonly SqliteConnection _connection = OpenKeeperConnection();
+
+    // A shared-cache in-memory SQLite database lives only while at least one connection is open.
+    private static SqliteConnection OpenKeeperConnection()
+    {
+        var connection = new SqliteConnection($"Data Source=file:TestDb_{Guid.NewGuid():N}?mode=memory&cache=shared");
+        connection.Open();
+        return connection;
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        base.Dispose(disposing);
+        if (disposing) _connection.Dispose();
+    }
 
     /// <summary>Mocked location service, configured per-test as needed.</summary>
     public ILocationService LocationService { get; } = Substitute.For<ILocationService>();
@@ -29,8 +39,8 @@ public class SavvoriWebApiFactory : WebApplicationFactory<Program>
     {
         builder.UseEnvironment("Testing");
 
-        // Pass unique DB name so each factory gets an isolated InMemory database
-        builder.UseSetting("TestDbName", _dbName);
+        // Each factory gets an isolated in-memory SQLite database; the keeper connection below keeps it alive
+        builder.UseSetting("ConnectionStrings:savvori", _connection.ConnectionString);
 
         builder.ConfigureServices(services =>
         {
@@ -82,34 +92,4 @@ public class SavvoriWebApiFactory : WebApplicationFactory<Program>
         db.SaveChanges();
     }
 
-    /// <summary>Generate a valid JWT token for a test user.</summary>
-    public static string CreateJwtToken(Guid userId, string email, bool isAdmin = false)
-    {
-        var key = Encoding.UTF8.GetBytes(JwtKey);
-        var creds = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256);
-        var claims = new List<Claim>
-        {
-            new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
-            new Claim(ClaimTypes.Email, email)
-        };
-        if (isAdmin)
-            claims.Add(new Claim(ClaimTypes.Role, "admin"));
-
-        var token = new JwtSecurityToken(
-            claims: claims,
-            expires: DateTime.UtcNow.AddDays(7),
-            signingCredentials: creds);
-
-        return new JwtSecurityTokenHandler().WriteToken(token);
-    }
-
-    /// <summary>Create an HttpClient pre-configured with a JWT Bearer token.</summary>
-    public HttpClient CreateAuthenticatedClient(Guid userId, string email, bool isAdmin = false)
-    {
-        var client = CreateClient();
-        var token = CreateJwtToken(userId, email, isAdmin);
-        client.DefaultRequestHeaders.Authorization =
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-        return client;
-    }
 }

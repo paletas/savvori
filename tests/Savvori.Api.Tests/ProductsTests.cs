@@ -14,7 +14,7 @@ public class ProductsTests : IClassFixture<SavvoriWebApiFactory>
     // Shared seed data
     private readonly Guid _categoryId;
     private readonly Guid _productId;
-    private readonly string _chainSlug = "continente";
+    private readonly string _chainSlug = $"continente-{Guid.NewGuid():N}";
 
     public ProductsTests(SavvoriWebApiFactory factory)
     {
@@ -29,11 +29,11 @@ public class ProductsTests : IClassFixture<SavvoriWebApiFactory>
 
         factory.SeedData(db =>
         {
-            var cat = TestDataSeeder.CreateTestCategory("Dairy", "dairy");
+            var cat = TestDataSeeder.CreateTestCategory("Dairy", $"dairy-{catId:N}");
             cat.Id = catId;
             db.ProductCategories.Add(cat);
 
-            var chain = TestDataSeeder.CreateTestStoreChain("Continente", "continente");
+            var chain = TestDataSeeder.CreateTestStoreChain("Continente", _chainSlug);
             chain.Id = chainId;
             db.StoreChains.Add(chain);
 

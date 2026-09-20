@@ -7,7 +7,6 @@ public class SavvoriDbContext : DbContext
 {
     public SavvoriDbContext(DbContextOptions<SavvoriDbContext> options) : base(options) { }
 
-    public DbSet<User> Users { get; set; } = default!;
     public DbSet<ShoppingList> ShoppingLists { get; set; } = default!;
     public DbSet<ShoppingListItem> ShoppingListItems { get; set; } = default!;
     public DbSet<Product> Products { get; set; } = default!;
@@ -20,6 +19,14 @@ public class SavvoriDbContext : DbContext
     public DbSet<StoreCategoryMapping> StoreCategoryMappings { get; set; } = default!;
     public DbSet<StoreProduct> StoreProducts { get; set; } = default!;
     public DbSet<StoreProductPrice> StoreProductPrices { get; set; } = default!;
+
+    // SQLite has no native decimal type: EF stores it as TEXT, which breaks ORDER BY / MIN / SUM
+    // (prices would sort lexically, or the query fails to translate). Store prices as REAL instead.
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        configurationBuilder.Properties<decimal>().HaveConversion<double>();
+        configurationBuilder.Properties<decimal?>().HaveConversion<double>();
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -127,7 +134,6 @@ public class SavvoriDbContext : DbContext
             .HasDefaultValue("EUR");
 
         // Unique indexes
-        modelBuilder.Entity<User>().HasIndex(u => u.Email).IsUnique();
         modelBuilder.Entity<StoreChain>().HasIndex(sc => sc.Slug).IsUnique();
         modelBuilder.Entity<ProductCategory>().HasIndex(pc => pc.Slug).IsUnique();
         modelBuilder.Entity<StoreCategory>()
@@ -146,8 +152,13 @@ public class SavvoriDbContext : DbContext
         modelBuilder.Entity<StoreProduct>().HasIndex(sp => sp.EAN);
         modelBuilder.Entity<StoreProductPrice>()
             .HasIndex(spp => new { spp.StoreProductId, spp.ScrapedAt });
-        // IsLatest index — the unique partial index (WHERE IsLatest) is added via raw SQL in the migration
         modelBuilder.Entity<StoreProductPrice>()
             .HasIndex(spp => new { spp.StoreProductId, spp.IsLatest });
+        // Only one IsLatest row per StoreProduct (partial unique index)
+        modelBuilder.Entity<StoreProductPrice>()
+            .HasIndex(spp => spp.StoreProductId)
+            .HasDatabaseName("ix_store_product_prices_latest")
+            .IsUnique()
+            .HasFilter("\"IsLatest\" = 1");
     }
 }

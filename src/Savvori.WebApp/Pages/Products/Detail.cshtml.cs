@@ -15,9 +15,7 @@ public class ProductDetailPageModel(SavvoriApiClient api) : PageModel
     {
         var productTask = api.GetProductAsync(id, ct);
         var alternativesTask = api.GetAlternativesAsync(id, ct);
-        var listsTask = User.Identity?.IsAuthenticated == true
-            ? api.GetShoppingListsAsync(ct)
-            : Task.FromResult(new List<ShoppingListDto>());
+        var listsTask = api.GetShoppingListsAsync(ct);
 
         await Task.WhenAll(productTask, alternativesTask, listsTask);
 

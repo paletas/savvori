@@ -3,7 +3,7 @@
 ## 1. Shopping Lists
 
 ### User Stories
-- As a registered user, I want to create multiple shopping lists so I can organize my grocery needs.
+- As a user, I want to create multiple shopping lists so I can organize my grocery needs.
 - As a user, I want to search for and add products from an available product list to my shopping lists.
 - As a user, I want to see my shopping list optimized for the lowest total price across all stores.
 - As a user, I want to see my shopping list grouped by the cheapest store for each item.
@@ -27,20 +27,11 @@
 - The system prefers APIs for price discovery, but uses web scraping if APIs are unavailable.
 - The system is designed to easily add new stores in the future.
 
-## 3. Account Creation and Login
+## 3. Access Model (No Authentication)
 
-### User Stories
-- As a new user, I want to register with my email and password so I can have a private account.
-- As a returning user, I want to log in securely to access my shopping lists.
-- As a user, I want to delete my account and all associated data if I choose.
-
-### Acceptance Criteria
-- Users can register with email and password.
-- Users can log in and log out securely.
-- Passwords are stored securely (hashed and salted).
-- Users can delete their account and all associated data.
-- User data is not shared with third parties.
-- The system supports GDPR compliance (data export and deletion on request).
+- The application has no user accounts, login, or roles. It is intended for a single household on a trusted network (e.g. a homelab).
+- All API endpoints and pages, including the admin section, are open to any client that can reach the app. Access control, if needed, is provided outside the app (network rules or a reverse proxy).
+- Shopping lists are shared by everyone using the instance.
 
 ## 4. Price Optimization Modes
 
@@ -108,7 +99,7 @@ The `/api/shoppinglists/{id}/optimize` endpoint supports four modes via `?mode=`
 ### Acceptance Criteria
 - `GET /api/admin/scraping/status` returns the last run time, next scheduled time, and success/failure status for each scraper.
 - `POST /api/admin/scraping/trigger/{chainSlug}` enqueues an immediate scrape for the specified chain.
-- Both endpoints require the `admin` role.
+
 - Supported `chainSlug` values: `continente`, `pingo-doce`, `auchan`, `minipreco` (stubs: `lidl`, `intermarche`, `mercadona`).
 
 ## 9. Category & Product Mapping Admin
@@ -125,7 +116,7 @@ The `/api/shoppinglists/{id}/optimize` endpoint supports four modes via `?mode=`
 - `POST /api/admin/mapping/backfill-categories` assigns canonical categories to uncategorized products wherever a mapping now resolves, without erroring on unresolved ones.
 - `POST /api/admin/mapping/rematch?chainSlug=` re-attempts EAN and brand/name/size/unit matching for unmatched or failed store products, optionally scoped to one chain, and never creates duplicate canonical products.
 - `PUT /api/admin/mapping/products/{id}/category` and `PUT /api/admin/mapping/store-products/{id}/canonical` allow manual, per-item correction.
-- All endpoints require the `admin` role.
+
 - The Web App admin area (`/Admin/Mapping`) provides a UI over this same API.
 
 ## 10. Web Application (Frontend UI)
@@ -137,25 +128,20 @@ The `/api/shoppinglists/{id}/optimize` endpoint supports four modes via `?mode=`
 
 ### Acceptance Criteria
 
-**Public pages (no login required):**
+**Catalog pages:**
 - The home page displays a product search bar and a category grid.
 - `/Products` shows a browseable, searchable product catalog with live HTMX search (no page reload).
 - `/Products/Detail/{id}` shows full product details: prices across all stores, price history, and alternative suggestions.
 - `/Categories` shows the full category tree; `/Categories/Detail/{slug}` shows paginated products in that category.
 - `/Stores` lets users search for nearby stores by Portuguese postal code (XXXX-XXX format).
 
-**Authentication pages:**
-- `/Account/Login` and `/Account/Register` are accessible to unauthenticated users.
-- After login, the user is redirected to the home page with a persistent session (7-day sliding cookie).
-- `/Account/Settings` (authenticated) allows users to view their account details and delete their account.
-
-**Shopping list pages (authentication required):**
-- `/ShoppingLists` shows all lists for the logged-in user with create, rename, and delete actions.
+**Shopping list pages:**
+- `/ShoppingLists` shows all lists with create, rename, and delete actions.
 - `/ShoppingLists/Detail/{id}` allows adding/removing products via HTMX product search (no page reload).
 - `/ShoppingLists/Optimize` displays optimization results (cheapest-total, cheapest-store, balanced) and a full store comparison matrix.
 
-**Admin pages (admin role required):**
-- `/Admin` is the admin dashboard, accessible only to users with the `admin` role.
+**Admin pages:**
+- `/Admin` is the admin dashboard.
 - `/Admin/Scraping` shows a live auto-refreshing (every 30 s) grid of scraping job statuses.
 - `/Admin/Scraping/Detail/{chainSlug}` shows per-chain job history, recent logs, and a manual trigger button.
 - `/Admin/Mapping` provides a UI over the category/product mapping admin API (see section 9): stats, uncategorized products, unmapped categories, store-product match status, and repair actions.

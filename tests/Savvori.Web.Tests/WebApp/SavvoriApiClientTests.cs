@@ -17,64 +17,6 @@ public class SavvoriApiClientTests
     private static string ToJson<T>(T obj) =>
         JsonSerializer.Serialize(obj, new JsonSerializerOptions(JsonSerializerDefaults.Web));
 
-    // ===== Auth =====
-
-    [Fact]
-    public async Task LoginAsync_WithValidCredentials_ReturnsToken()
-    {
-        var handler = new FakeHttpMessageHandler();
-        handler.SetupRoute("/api/auth/login", ToJson(new { token = "jwt-token-123", isAdmin = false }));
-        var client = CreateClient(handler);
-
-        var (success, token, isAdmin, error) = await client.LoginAsync("user@test.com", "password123", TestContext.Current.CancellationToken);
-
-        Assert.True(success);
-        Assert.Equal("jwt-token-123", token);
-        Assert.False(isAdmin);
-        Assert.Null(error);
-    }
-
-    [Fact]
-    public async Task LoginAsync_WithInvalidCredentials_ReturnsError()
-    {
-        var handler = new FakeHttpMessageHandler();
-        handler.SetupRoute("/api/auth/login", "", HttpStatusCode.Unauthorized);
-        var client = CreateClient(handler);
-
-        var (success, token, isAdmin, error) = await client.LoginAsync("user@test.com", "wrongpassword", TestContext.Current.CancellationToken);
-
-        Assert.False(success);
-        Assert.Null(token);
-        Assert.False(isAdmin);
-        Assert.Equal("Invalid email or password.", error);
-    }
-
-    [Fact]
-    public async Task RegisterAsync_WithValidData_ReturnsSuccess()
-    {
-        var handler = new FakeHttpMessageHandler();
-        handler.SetupRoute("/api/auth/register", "");
-        var client = CreateClient(handler);
-
-        var (success, error) = await client.RegisterAsync("newuser@test.com", "password123", TestContext.Current.CancellationToken);
-
-        Assert.True(success);
-        Assert.Null(error);
-    }
-
-    [Fact]
-    public async Task RegisterAsync_WithDuplicateEmail_ReturnsError()
-    {
-        var handler = new FakeHttpMessageHandler();
-        handler.SetupRoute("/api/auth/register", "Email already registered", HttpStatusCode.BadRequest);
-        var client = CreateClient(handler);
-
-        var (success, error) = await client.RegisterAsync("existing@test.com", "password123", TestContext.Current.CancellationToken);
-
-        Assert.False(success);
-        Assert.Equal("Email already registered", error);
-    }
-
     // ===== Products =====
 
     [Fact]
@@ -253,9 +195,9 @@ public class SavvoriApiClientTests
     {
         var lists = new List<ShoppingListDto>
         {
-            new(Guid.NewGuid(), Guid.NewGuid(), "Weekly shop",
+            new(Guid.NewGuid(), "Weekly shop",
                 DateTime.UtcNow, DateTime.UtcNow, new List<ShoppingListItemDto>()),
-            new(Guid.NewGuid(), Guid.NewGuid(), "Party supplies",
+            new(Guid.NewGuid(), "Party supplies",
                 DateTime.UtcNow, DateTime.UtcNow, new List<ShoppingListItemDto>())
         };
         var handler = new FakeHttpMessageHandler();
@@ -283,7 +225,7 @@ public class SavvoriApiClientTests
     public async Task CreateShoppingListAsync_ReturnsCreatedList()
     {
         var created = new ShoppingListDto(
-            Guid.NewGuid(), Guid.NewGuid(), "My new list",
+            Guid.NewGuid(), "My new list",
             DateTime.UtcNow, DateTime.UtcNow, new List<ShoppingListItemDto>());
         var handler = new FakeHttpMessageHandler();
         handler.SetupRoute("/api/shoppinglists", ToJson(created));

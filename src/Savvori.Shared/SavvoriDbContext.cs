@@ -1,22 +1,8 @@
 namespace Savvori.Shared;
 
-public class User
-{
-    public Guid Id { get; set; }
-    public string Email { get; set; } = string.Empty;
-    public string PasswordHash { get; set; } = string.Empty;
-    public string? PostalCode { get; set; }
-    public double? Latitude { get; set; }
-    public double? Longitude { get; set; }
-    public bool IsAdmin { get; set; } = false;
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
-}
-
 public class ShoppingList
 {
     public Guid Id { get; set; }
-    public Guid UserId { get; set; }
     public string Name { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }

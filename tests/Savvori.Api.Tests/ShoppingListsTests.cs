@@ -8,8 +8,6 @@ namespace Savvori.Api.Tests;
 public class ShoppingListsTests : IClassFixture<SavvoriWebApiFactory>
 {
     private readonly SavvoriWebApiFactory _factory;
-    private readonly Guid _userId;
-    private readonly Guid _otherUserId;
     private readonly Guid _productId;
     private readonly Guid _existingListId;
 
@@ -17,86 +15,48 @@ public class ShoppingListsTests : IClassFixture<SavvoriWebApiFactory>
     {
         _factory = factory;
 
-        _userId = Guid.NewGuid();
-        _otherUserId = Guid.NewGuid();
         _productId = Guid.NewGuid();
         _existingListId = Guid.NewGuid();
 
         factory.SeedData(db =>
         {
-            var user = TestDataSeeder.CreateTestUser($"user_{_userId}@test.com");
-            user.Id = _userId;
-            db.Users.Add(user);
-
-            var other = TestDataSeeder.CreateTestUser($"other_{_otherUserId}@test.com");
-            other.Id = _otherUserId;
-            db.Users.Add(other);
-
             var product = TestDataSeeder.CreateTestProduct("Test Product");
             product.Id = _productId;
             db.Products.Add(product);
 
-            var list = TestDataSeeder.CreateTestShoppingList(_userId, "My List");
+            var list = TestDataSeeder.CreateTestShoppingList("My List");
             list.Id = _existingListId;
             db.ShoppingLists.Add(list);
-
-            var otherList = TestDataSeeder.CreateTestShoppingList(_otherUserId, "Other User List");
-            db.ShoppingLists.Add(otherList);
         });
     }
 
-    private HttpClient AuthClient(bool asAdmin = false) =>
-        _factory.CreateAuthenticatedClient(_userId, $"user_{_userId}@test.com", asAdmin);
-
     [Fact]
-    public async Task GetLists_Authenticated_ReturnsOnlyUserLists()
+    public async Task GetLists_ReturnsLists()
     {
-        using var client = AuthClient();
+        using var client = _factory.CreateClient();
         var response = await client.GetAsync("/api/shoppinglists", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
-        var lists = body.EnumerateArray().ToList();
-        Assert.True(lists.Count >= 1);
-        // All lists must belong to the authenticated user
-        foreach (var list in lists)
-            Assert.Equal(_userId.ToString(), list.GetProperty("userId").GetString());
+        Assert.True(body.EnumerateArray().Any());
     }
 
     [Fact]
-    public async Task GetLists_Unauthenticated_Returns401()
+    public async Task CreateList_Returns200WithList()
     {
         using var client = _factory.CreateClient();
-        var response = await client.GetAsync("/api/shoppinglists", TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task CreateList_Authenticated_Returns200WithList()
-    {
-        using var client = AuthClient();
         var response = await client.PostAsJsonAsync("/api/shoppinglists",
             new { Name = "New Test List" }, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.Equal("New Test List", body.GetProperty("name").GetString());
-        Assert.Equal(_userId.ToString(), body.GetProperty("userId").GetString());
     }
 
     [Fact]
-    public async Task CreateList_Unauthenticated_Returns401()
+    public async Task UpdateList_Returns200WithUpdatedName()
     {
         using var client = _factory.CreateClient();
-        var response = await client.PostAsJsonAsync("/api/shoppinglists",
-            new { Name = "Unauthorized List" }, TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task UpdateList_OwnList_Returns200WithUpdatedName()
-    {
-        using var client = AuthClient();
         var response = await client.PutAsJsonAsync($"/api/shoppinglists/{_existingListId}",
             new { Name = "Updated List Name" }, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -106,69 +66,43 @@ public class ShoppingListsTests : IClassFixture<SavvoriWebApiFactory>
     }
 
     [Fact]
-    public async Task UpdateList_AnotherUsersList_Returns404()
+    public async Task UpdateList_NonExistentList_Returns404()
     {
-        // Create a list belonging to other user
-        Guid otherListId = Guid.NewGuid();
-        _factory.SeedData(db =>
-        {
-            var list = TestDataSeeder.CreateTestShoppingList(_otherUserId, "Other's List");
-            list.Id = otherListId;
-            db.ShoppingLists.Add(list);
-        });
-
-        using var client = AuthClient(); // authenticated as _userId
-        var response = await client.PutAsJsonAsync($"/api/shoppinglists/{otherListId}",
-            new { Name = "Hijacked Name" }, TestContext.Current.CancellationToken);
+        using var client = _factory.CreateClient();
+        var response = await client.PutAsJsonAsync($"/api/shoppinglists/{Guid.NewGuid()}",
+            new { Name = "Nope" }, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]
-    public async Task UpdateList_Unauthenticated_Returns401()
-    {
-        using var client = _factory.CreateClient();
-        var response = await client.PutAsJsonAsync($"/api/shoppinglists/{_existingListId}",
-            new { Name = "Fail" }, TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task DeleteList_OwnList_Returns204()
+    public async Task DeleteList_Returns204()
     {
         // Create a fresh list to delete
         Guid deleteId = Guid.NewGuid();
         _factory.SeedData(db =>
         {
-            var list = TestDataSeeder.CreateTestShoppingList(_userId, "To Delete");
+            var list = TestDataSeeder.CreateTestShoppingList("To Delete");
             list.Id = deleteId;
             db.ShoppingLists.Add(list);
         });
 
-        using var client = AuthClient();
+        using var client = _factory.CreateClient();
         var response = await client.DeleteAsync($"/api/shoppinglists/{deleteId}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
     }
 
     [Fact]
-    public async Task DeleteList_AnotherUsersList_Returns404()
+    public async Task DeleteList_NonExistentList_Returns404()
     {
-        Guid otherListId = Guid.NewGuid();
-        _factory.SeedData(db =>
-        {
-            var list = TestDataSeeder.CreateTestShoppingList(_otherUserId, "Not Mine");
-            list.Id = otherListId;
-            db.ShoppingLists.Add(list);
-        });
-
-        using var client = AuthClient();
-        var response = await client.DeleteAsync($"/api/shoppinglists/{otherListId}", TestContext.Current.CancellationToken);
+        using var client = _factory.CreateClient();
+        var response = await client.DeleteAsync($"/api/shoppinglists/{Guid.NewGuid()}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]
-    public async Task AddItem_OwnList_Returns200WithItem()
+    public async Task AddItem_Returns200WithItem()
     {
-        using var client = AuthClient();
+        using var client = _factory.CreateClient();
         var response = await client.PostAsJsonAsync(
             $"/api/shoppinglists/{_existingListId}/items",
             new { ProductId = _productId, Quantity = 2 }, TestContext.Current.CancellationToken);
@@ -180,32 +114,24 @@ public class ShoppingListsTests : IClassFixture<SavvoriWebApiFactory>
     }
 
     [Fact]
-    public async Task AddItem_AnotherUsersList_Returns404()
+    public async Task AddItem_NonExistentList_Returns404()
     {
-        Guid otherListId = Guid.NewGuid();
-        _factory.SeedData(db =>
-        {
-            var list = TestDataSeeder.CreateTestShoppingList(_otherUserId, "Other List");
-            list.Id = otherListId;
-            db.ShoppingLists.Add(list);
-        });
-
-        using var client = AuthClient();
+        using var client = _factory.CreateClient();
         var response = await client.PostAsJsonAsync(
-            $"/api/shoppinglists/{otherListId}/items",
+            $"/api/shoppinglists/{Guid.NewGuid()}/items",
             new { ProductId = _productId, Quantity = 1 }, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]
-    public async Task RemoveItem_OwnList_Returns204()
+    public async Task RemoveItem_Returns204()
     {
         // Seed a list with item to remove
         Guid listId = Guid.NewGuid();
         Guid itemId = Guid.NewGuid();
         _factory.SeedData(db =>
         {
-            var list = TestDataSeeder.CreateTestShoppingList(_userId, "List With Item");
+            var list = TestDataSeeder.CreateTestShoppingList("List With Item");
             list.Id = listId;
             db.ShoppingLists.Add(list);
             var item = TestDataSeeder.CreateTestShoppingListItem(listId, _productId);
@@ -213,7 +139,7 @@ public class ShoppingListsTests : IClassFixture<SavvoriWebApiFactory>
             db.ShoppingListItems.Add(item);
         });
 
-        using var client = AuthClient();
+        using var client = _factory.CreateClient();
         var response = await client.DeleteAsync($"/api/shoppinglists/{listId}/items/{itemId}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
     }
@@ -221,7 +147,7 @@ public class ShoppingListsTests : IClassFixture<SavvoriWebApiFactory>
     [Fact]
     public async Task RemoveItem_NonExistentItem_Returns404()
     {
-        using var client = AuthClient();
+        using var client = _factory.CreateClient();
         var response = await client.DeleteAsync(
             $"/api/shoppinglists/{_existingListId}/items/{Guid.NewGuid()}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);

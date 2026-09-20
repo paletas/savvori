@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Savvori.WebApi.Services;
@@ -7,11 +6,10 @@ namespace Savvori.WebApi.Controllers;
 
 /// <summary>
 /// Shopping list price-optimization API.
-/// All endpoints require authentication (the list must belong to the user).
+/// Returns 404 when the list does not exist.
 /// </summary>
 [ApiController]
 [Route("api/shoppinglists/{id:guid}/optimize")]
-[Authorize]
 public class OptimizeController : ControllerBase
 {
     private readonly SavvoriDbContext _db;
@@ -45,7 +43,7 @@ public class OptimizeController : ControllerBase
         [FromQuery] List<Guid>? storeIds = null,
         CancellationToken ct = default)
     {
-        if (!await ListBelongsToUser(id, ct))
+        if (!await _db.ShoppingLists.AnyAsync(sl => sl.Id == id, ct))
             return NotFound();
 
         var context = new OptimizationContext
@@ -65,14 +63,4 @@ public class OptimizeController : ControllerBase
         };
     }
 
-    private async Task<bool> ListBelongsToUser(Guid listId, CancellationToken ct)
-    {
-        var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
-            ?? User.FindFirst("sub")?.Value;
-
-        if (!Guid.TryParse(userIdClaim, out var userId)) return false;
-
-        return await _db.ShoppingLists
-            .AnyAsync(sl => sl.Id == listId && sl.UserId == userId, ct);
-    }
 }

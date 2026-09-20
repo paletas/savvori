@@ -8,6 +8,7 @@ namespace Savvori.Api.Tests;
 public class CategoriesTests : IClassFixture<SavvoriWebApiFactory>
 {
     private readonly HttpClient _client;
+    private readonly string _rootSlug = $"food-cat-{Guid.NewGuid():N}";
     private readonly Guid _rootCatId;
     private readonly Guid _childCatId;
     private readonly Guid _productInChildId;
@@ -25,11 +26,11 @@ public class CategoriesTests : IClassFixture<SavvoriWebApiFactory>
 
         factory.SeedData(db =>
         {
-            var root = TestDataSeeder.CreateTestCategory("Food", "food-cat");
+            var root = TestDataSeeder.CreateTestCategory("Food", _rootSlug);
             root.Id = rootId;
             db.ProductCategories.Add(root);
 
-            var child = TestDataSeeder.CreateTestCategory("Beverages", "beverages-cat", rootId);
+            var child = TestDataSeeder.CreateTestCategory("Beverages", $"beverages-cat-{Guid.NewGuid():N}", rootId);
             child.Id = childId;
             db.ProductCategories.Add(child);
 
@@ -70,11 +71,11 @@ public class CategoriesTests : IClassFixture<SavvoriWebApiFactory>
     [Fact]
     public async Task GetCategory_BySlug_Returns200()
     {
-        var response = await _client.GetAsync("/api/categories/food-cat", TestContext.Current.CancellationToken);
+        var response = await _client.GetAsync($"/api/categories/{_rootSlug}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
-        Assert.Equal("food-cat", body.GetProperty("slug").GetString());
+        Assert.Equal(_rootSlug, body.GetProperty("slug").GetString());
     }
 
     [Fact]

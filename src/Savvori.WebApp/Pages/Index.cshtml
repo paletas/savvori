@@ -39,17 +39,7 @@
             <div id="search-suggestions" class="absolute z-10 w-full mt-1 bg-base-100 rounded-box shadow-lg border border-base-200"></div>
         </div>
 
-        @if (User.Identity?.IsAuthenticated != true)
-        {
-            <div class="flex gap-3 mt-6">
-                <a asp-page="/Account/Register" class="btn btn-primary">Get started free</a>
-                <a asp-page="/Account/Login" class="btn btn-ghost">Sign in</a>
-            </div>
-        }
-        else
-        {
-            <a asp-page="/ShoppingLists/Index" class="btn btn-primary mt-6">My Shopping Lists</a>
-        }
+        <a asp-page="/ShoppingLists/Index" class="btn btn-primary mt-6">My Shopping Lists</a>
     </div>
 </div>
 

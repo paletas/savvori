@@ -1,32 +1,26 @@
 ﻿# Technical Architecture: Savvori MVP
 
 ## Overview
-Savvori is an ASP.NET Core minimal API (.NET 10) that helps users find the cheapest way to fill their grocery shopping lists by comparing prices across major Portuguese supermarket chains. The MVP supports user accounts, private shopping lists, automatic price discovery via web scraping, location-based store lookup, and shopping list optimization.
+Savvori is an ASP.NET Core minimal API (.NET 10) that helps users find the cheapest way to fill their grocery shopping lists by comparing prices across major Portuguese supermarket chains. The MVP supports shopping lists (single-user, no authentication), automatic price discovery via web scraping, location-based store lookup, and shopping list optimization.
 
 ## High-Level Architecture
-- **Web API:** ASP.NET Core minimal API, authenticated via JWT. Exposes all business logic as REST endpoints. Uses Quartz.NET for background scraping jobs (twice daily).
-- **Data Storage:** PostgreSQL (via Entity Framework Core). Managed by Aspire in development (container via Podman).
-- **Authentication:** JWT tokens for API calls. Email/password registration and login. Secure password hashing (ASP.NET Identity or custom solution).
+- **Web API:** ASP.NET Core minimal API with no authentication (intended for a trusted single-user network). Exposes all business logic as REST endpoints. Uses Quartz.NET for background scraping jobs (twice daily).
+- **Data Storage:** SQLite (via Entity Framework Core). Database file defaults to `data/savvori.db` (`ConnectionStrings:savvori`); migrations are applied at startup. `decimal` properties are mapped to REAL so ordering/aggregates work in SQLite.
 - **Product Data:** Populated via dedicated per-store web scrapers, normalised and upserted by a shared processor.
 - **Location Services:** Portuguese postal code resolution via geoapi.pt; Haversine distance for nearby store lookup.
 - **Testing:** xUnit (`tests/Savvori.Web.Tests`).
-- **Orchestration/Development:** .NET Aspire 13.x for local development. Run with `aspire run` from the repo root. The AppHost (`Savvori.AppHost`) starts all services and a PostgreSQL container (via Podman). OpenTelemetry, health checks, and service discovery are provided by `Savvori.ServiceDefaults`.
+- **Orchestration/Development:** .NET Aspire 13.x for local development. Run with `aspire run` from the repo root. The AppHost (`Savvori.AppHost`) starts the Web API and Web App. OpenTelemetry, health checks, and service discovery are provided by `Savvori.ServiceDefaults`.
 - **HTTP Resilience:** `Microsoft.Extensions.Http.Resilience` (replaces deprecated `Polly.Extensions.Http`) wired via `ServiceDefaults` for all HttpClients.
 
 ## Key Components
 
-### 1. User Accounts & Authentication
-- User entity: email, password hash, created/updated timestamps
-- Registration, login, logout endpoints (Web API)
-- JWT tokens for API calls
-- Account deletion endpoint (GDPR compliance)
-- Secure password storage (hash + salt)
+### 1. Access Model
+- There are no user accounts and no authentication. All endpoints and pages (including admin) are open, so deploy only on a trusted network or behind a reverse proxy that provides its own access control.
 
 ### 2. Shopping Lists
-- ShoppingList entity: id, userId, name, created/updated timestamps
+- ShoppingList entity: id, name, created/updated timestamps
 - ShoppingListItem entity: id, shoppingListId, productId, quantity
 - CRUD endpoints for shopping lists and items (Web API)
-- Shopping lists are always scoped to the authenticated user
 
 ### 3. Product Catalog & Price Discovery
 - Product entity: id, name, brand, category, normalizedName, size, unit
@@ -43,21 +37,16 @@ Savvori is an ASP.NET Core minimal API (.NET 10) that helps users find the cheap
   - Product search: `hx-get="/Products?handler=Search"` with 400 ms debounce → HTML fragment
   - Shopping list product search: `hx-get="/ShoppingLists/Detail?…&handler=SearchProducts"` → rows fragment with IAntiforgery token
   - Admin scraping dashboard: `hx-trigger="every 30s"` auto-refresh via `_ScrapingStatusTable` partial
-- **Authentication:** Dual-cookie scheme:
-  - `savvori_auth` — ASP.NET Core cookie auth (7-day sliding expiry); governs Razor Page `[Authorize]` enforcement
-  - `savvori_token` — HTTP-only cookie holding the raw JWT from the Web API login response
-  - `AuthCookieHandler` (DelegatingHandler) reads `savvori_token` and injects `Authorization: Bearer {token}` on every outbound API call, bridging page auth to API auth
 - **API communication:** `SavvoriApiClient` typed HttpClient (registered via DI). Wraps all 28+ Web API endpoints. Base address resolved from Aspire service discovery keys (`services:webapi:https:0` / `services:webapi:http:0`); falls back to `http://localhost:5000`. All methods handle exceptions gracefully (log + return null/empty).
 - **Pages implemented:**
 
 | Section | Pages |
 |---------|-------|
 | Public | Home (`/`), Products browse + detail, Categories (tree + products), Stores (postal code search) |
-| Auth | Login, Register, Logout, Account settings + deletion |
 | Shopping lists | Index (create/rename/delete), Detail (item management, product search), Optimize (results + comparison matrix) |
 | Admin | Dashboard, Scraping jobs (status grid + per-chain detail + manual trigger) |
 
-- **Admin area:** Lives under `Pages/Admin/` with its own `_AdminLayout.cshtml` (DaisyUI drawer sidebar). Access restricted by `[Authorize(Roles = "admin")]`.
+- **Admin area:** Lives under `Pages/Admin/` with its own `_AdminLayout.cshtml` (DaisyUI drawer sidebar). Not access-restricted (no authentication).
 - **Service defaults:** `builder.AddServiceDefaults()` + `app.MapDefaultEndpoints()` wired in for OpenTelemetry, health checks, and resilience. `AddStandardResilienceHandler()` applied to the `SavvoriApiClient` HttpClient.
 
 ### 5. Scraper Infrastructure
@@ -88,7 +77,7 @@ Savvori is an ASP.NET Core minimal API (.NET 10) that helps users find the cheap
 - `CategoryTaxonomy` / `CategorySeeder` define and seed a canonical category tree, independent of each store's own category labels.
 - `CategoryMapper.MapToSlug(rawCategory)` maps a scraped/raw category string to a canonical category slug.
 - `ProductMatcher` links a scraped `StoreProduct` to a canonical `Product` in tiers: Tier 1 by EAN, Tier 2 by brand + normalized name + size/unit; unmatched products are flagged (`MatchStatus.Unmatched`/`Failed`) rather than auto-created.
-- `MappingAdminController` (`/api/admin/mapping/*`, admin role required) exposes mapping statistics, uncategorized products, unmapped category strings, and store-product match status, plus repair actions: `backfill-categories` (re-runs `CategoryMapper` over uncategorized products), `rematch` (re-runs Tier 1/2 matching over unmatched/failed store products), and manual per-item category/canonical-product assignment.
+- `MappingAdminController` (`/api/admin/mapping/*`) exposes mapping statistics, uncategorized products, unmapped category strings, and store-product match status, plus repair actions: `backfill-categories` (re-runs `CategoryMapper` over uncategorized products), `rematch` (re-runs Tier 1/2 matching over unmatched/failed store products), and manual per-item category/canonical-product assignment.
 - Web App: `Pages/Admin/Mapping/Index.cshtml` provides an admin UI over this same API for reviewing and repairing mappings.
 
 ### 7. Location Services
@@ -109,11 +98,6 @@ Savvori is an ASP.NET Core minimal API (.NET 10) that helps users find the cheap
 
 ## API Endpoints
 
-### Auth & Accounts
-- `POST /api/auth/register` – Create account
-- `POST /api/auth/login` – Authenticate
-- `POST /api/auth/logout` – Log out
-- `DELETE /api/account` – Delete account (GDPR)
 
 ### Products
 - `GET /api/products?search=&category=&page=` – Search/browse product catalog
@@ -131,7 +115,7 @@ Savvori is an ASP.NET Core minimal API (.NET 10) that helps users find the cheap
 - `GET /api/categories` – Full category tree
 - `GET /api/categories/{idOrSlug}/products` – Products in a category
 
-### Shopping Lists (auth required)
+### Shopping Lists
 - `GET /api/shoppinglists` – List user's shopping lists
 - `POST /api/shoppinglists` – Create shopping list
 - `PUT /api/shoppinglists/{id}` – Update shopping list
@@ -140,11 +124,11 @@ Savvori is an ASP.NET Core minimal API (.NET 10) that helps users find the cheap
 - `DELETE /api/shoppinglists/{id}/items/{itemId}` – Remove item
 - `GET /api/shoppinglists/{id}/optimize?mode={mode}&threshold=2.00` – Optimize list (modes: `cheapest-total`, `cheapest-store`, `balanced`, `compare`)
 
-### Admin — Scraping (admin role required)
+### Admin — Scraping
 - `GET /api/admin/scraping/status` – Current status of all scraping jobs
 - `POST /api/admin/scraping/trigger/{chainSlug}` – Manually trigger a scrape for a store chain
 
-### Admin — Category & Product Mapping (admin role required)
+### Admin — Category & Product Mapping
 - `GET /api/admin/mapping/stats` – Aggregate category/match statistics
 - `GET /api/admin/mapping/uncategorized-products?page=&pageSize=` – Canonical products with no category
 - `GET /api/admin/mapping/unmapped-categories` – Distinct raw category strings with no canonical mapping, with a suggested slug
@@ -155,11 +139,8 @@ Savvori is an ASP.NET Core minimal API (.NET 10) that helps users find the cheap
 - `PUT /api/admin/mapping/store-products/{id}/canonical` – Manually link a store product to a canonical product
 
 ## Security & Privacy
-- All API endpoints (except register/login) require authentication
-- Passwords never stored in plain text
-- User data is never shared with third parties
-- Users can export or delete their data (GDPR)
-- API uses JWT for secure calls
+- No authentication: every API endpoint and page is open. Run only on a trusted network or behind a reverse proxy that enforces access control.
+- No personal data is stored.
 
 ## Extensibility
 - New stores can be added by implementing `IStoreScraper` and registering it with DI
@@ -168,18 +149,19 @@ Savvori is an ASP.NET Core minimal API (.NET 10) that helps users find the cheap
 
 ## Testing
 
-- **Test projects:** `tests/Savvori.Api.Tests` (integration tests against `Savvori.WebApi` via `WebApplicationFactory`), `tests/Savvori.Web.Tests` (unit tests covering `Savvori.WebApi` and `Savvori.WebApp`), `tests/Savvori.E2E.Tests` (end-to-end tests against `Savvori.WebApp`). All three use xUnit v3 (`xunit.v3` 4.x) running on Microsoft.Testing.Platform, NSubstitute v6, EF Core InMemory.
-- **Coverage areas:** scraper correctness (per-chain), price normaliser, category mapping/matching, shopping optimizer (all 4 modes), location service, `SavvoriApiClient`, `AuthCookieHandler`, admin mapping/scraping endpoints, full web app page flows (auth, shopping lists, admin).
+- **Test projects:** `tests/Savvori.Api.Tests` (integration tests against `Savvori.WebApi` via `WebApplicationFactory`), `tests/Savvori.Web.Tests` (unit tests covering `Savvori.WebApi` and `Savvori.WebApp`), `tests/Savvori.E2E.Tests` (end-to-end tests against `Savvori.WebApp`). All three use xUnit v3 (`xunit.v3` 4.x) running on Microsoft.Testing.Platform, NSubstitute v6, EF Core InMemory (unit tests) and shared in-memory SQLite (API integration tests).
+- **Coverage areas:** scraper correctness (per-chain), price normaliser, category mapping/matching, shopping optimizer (all 4 modes), location service, `SavvoriApiClient`, admin mapping/scraping endpoints, full web app page flows (shopping lists, admin).
 - **Total tests:** ~390 across the three projects, all passing except `LiveScraperTests` (in `Savvori.Web.Tests`), which make real HTTP calls to live grocery-store websites and are expected to be slow/flaky independent of code changes.
 - **Running tests:** `dotnet test Savvori.sln` runs all three projects via the unified `dotnet test` MTP mode (enabled by the `test.runner` section in `global.json` — required because `xunit.v3` 4.x no longer supports the legacy VSTest bridge on .NET 10 SDK+). Run a single project with `dotnet test tests/<Project>/<Project>.csproj`, or a single test with `--filter "FullyQualifiedName~ClassName.MethodName"`.
 - **Dependency note:** `Quartz` is pinned to the 3.x line (not 4.0) because `Quartz.Extensions.Hosting` has no 4.x-compatible release yet; bumping `Quartz` alone without `Quartz.Extensions.Hosting` breaks the `IJob.Execute` contract and `AddQuartzHostedService` resolution.
 
 ## Open Questions / Decisions
-- [x] Which DBMS to use for MVP? → PostgreSQL
+- [x] Which DBMS to use? → SQLite (single-user homelab deployment; previously PostgreSQL)
+- [x] Authentication? → None (single-user homelab deployment; previously JWT + cookies)
 - [x] How to schedule and run background jobs? → Quartz.NET jobs in Web API
 - [x] Will the MVP have a web frontend? → Yes, Razor Pages web app (implemented — TailwindCSS v4, DaisyUI v5, HTMX)
 - [x] How to orchestrate/deploy? → .NET Aspire for local/dev
-- [x] How does the WebApp talk to the WebApi? → Typed `SavvoriApiClient` HttpClient with Aspire service discovery; JWT forwarded via `AuthCookieHandler`
+- [x] How does the WebApp talk to the WebApi? → Typed `SavvoriApiClient` HttpClient with Aspire service discovery
 
 ---
 

@@ -1,9 +1,4 @@
-using System.Security.Claims;
-using System.Text;
-using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
 using Quartz;
 using Savvori.Shared;
 using Savvori.WebApi;
@@ -25,51 +20,14 @@ builder.Services.AddOpenApi();
 
 builder.Services.AddMemoryCache();
 
-if (builder.Environment.IsEnvironment("Testing"))
-    builder.Services.AddDbContext<SavvoriDbContext>(opts =>
-        opts.UseInMemoryDatabase(builder.Configuration["TestDbName"] ?? "TestDb"));
-else
-    builder.AddNpgsqlDbContext<SavvoriDbContext>("savvori");
-
-builder.Services.AddAuthentication(options =>
-{
-    options.DefaultAuthenticateScheme = "JwtOrCookie";
-    options.DefaultChallengeScheme = "JwtOrCookie";
-})
-.AddPolicyScheme("JwtOrCookie", "JWT or Cookie", options =>
-{
-    options.ForwardDefaultSelector = context =>
-    {
-        var authHeader = context.Request.Headers["Authorization"].FirstOrDefault();
-        if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer "))
-            return JwtBearerDefaults.AuthenticationScheme;
-        return CookieAuthenticationDefaults.AuthenticationScheme;
-    };
-})
-.AddJwtBearer(options =>
-{
-    var key = Encoding.UTF8.GetBytes(
-        builder.Configuration["Jwt:Key"] ?? "dev_secret_key_change_me_in_prod!!");
-    options.MapInboundClaims = true;
-    options.TokenValidationParameters = new()
-    {
-        ValidateIssuer = false,
-        ValidateAudience = false,
-        ValidateLifetime = true,
-        ValidateIssuerSigningKey = true,
-        IssuerSigningKey = new SymmetricSecurityKey(key),
-        RoleClaimType = ClaimTypes.Role
-    };
-})
-.AddCookie();
+var connectionString = builder.Configuration.GetConnectionString("savvori") ?? "Data Source=data/savvori.db";
+var sqliteBuilder = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(connectionString);
+if (!builder.Environment.IsEnvironment("Testing")
+    && Path.GetDirectoryName(Path.GetFullPath(sqliteBuilder.DataSource)) is { Length: > 0 } dbDir)
+    Directory.CreateDirectory(dbDir);
+builder.Services.AddDbContext<SavvoriDbContext>(opts => opts.UseSqlite(connectionString));
 
 builder.Services.AddControllers();
-
-builder.Services.AddAuthorization(options =>
-{
-    options.AddPolicy("AdminOnly", policy =>
-        policy.RequireRole("admin"));
-});
 
 // --- Scraping infrastructure ---
 builder.Services.AddHttpClient("continente", c =>
@@ -178,11 +136,10 @@ app.MapDefaultEndpoints();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<SavvoriDbContext>();
-    if (db.Database.IsRelational())
+    if (!app.Environment.IsEnvironment("Testing"))
     {
         await db.Database.MigrateAsync();
         await CategorySeeder.SeedAsync(db, app.Logger);
-        await UserSeeder.SeedAsync(db, app.Logger);
         await StoreChainSeeder.SeedAsync(db, app.Configuration, app.Logger);
 
         // Mark any jobs left in Running state as Failed — they were interrupted by a restart.

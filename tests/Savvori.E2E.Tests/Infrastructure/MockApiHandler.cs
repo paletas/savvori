@@ -7,7 +7,7 @@ namespace Savvori.E2E.Tests.Infrastructure;
 
 /// <summary>
 /// Intercepts all outbound HTTP calls from SavvoriApiClient and returns predefined mock responses.
-/// No real network calls are made. Specific passwords/emails trigger error responses for negative tests.
+/// No real network calls are made.
 /// </summary>
 public class MockApiHandler : HttpMessageHandler
 {
@@ -16,7 +16,6 @@ public class MockApiHandler : HttpMessageHandler
     public static readonly Guid StoreId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
     public static readonly Guid ListId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
     public static readonly Guid ListItemId = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
-    public static readonly Guid UserId = Guid.Parse("ffffffff-ffff-ffff-ffff-ffffffffffff");
 
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
 
@@ -27,43 +26,6 @@ public class MockApiHandler : HttpMessageHandler
         var query = request.RequestUri?.Query ?? "";
         var method = request.Method.Method.ToUpperInvariant();
         var pathLower = path.ToLowerInvariant();
-
-        // ===== Auth =====
-        if (method == "POST" && pathLower == "/api/auth/login")
-        {
-            if (request.Content is not null)
-            {
-                var body = await request.Content.ReadFromJsonAsync<JsonElement>(ct);
-                var password = body.TryGetProperty("password", out var pw) ? pw.GetString() : null;
-                if (password == "WrongPassword123")
-                    return new HttpResponseMessage(HttpStatusCode.Unauthorized);
-                var email = body.TryGetProperty("email", out var em) ? em.GetString() : null;
-                var isAdmin = email?.Contains("admin", StringComparison.OrdinalIgnoreCase) == true;
-                return Json(new { token = "fake-jwt-token-for-test", isAdmin });
-            }
-            return Json(new { token = "fake-jwt-token-for-test", isAdmin = false });
-        }
-
-        if (method == "POST" && pathLower == "/api/auth/register")
-        {
-            if (request.Content is not null)
-            {
-                var body = await request.Content.ReadFromJsonAsync<JsonElement>(ct);
-                var email = body.TryGetProperty("email", out var em) ? em.GetString() : null;
-                if (email == "duplicate@savvori.test")
-                    return new HttpResponseMessage(HttpStatusCode.BadRequest)
-                    {
-                        Content = new StringContent("Email already registered.", Encoding.UTF8, "text/plain")
-                    };
-            }
-            return new HttpResponseMessage(HttpStatusCode.OK);
-        }
-
-        if (method == "POST" && pathLower == "/api/auth/logout")
-            return new HttpResponseMessage(HttpStatusCode.NoContent);
-
-        if (method == "DELETE" && pathLower.StartsWith("/api/account"))
-            return new HttpResponseMessage(HttpStatusCode.OK);
 
         // ===== Categories =====
         if (method == "GET" && pathLower == "/api/categories")
@@ -221,7 +183,7 @@ public class MockApiHandler : HttpMessageHandler
     [
         new
         {
-            id = ListId, userId = UserId, name = "Weekly Shopping",
+            id = ListId, name = "Weekly Shopping",
             createdAt = DateTime.UtcNow.AddDays(-1), updatedAt = DateTime.UtcNow,
             items = new[]
             {
@@ -233,14 +195,14 @@ public class MockApiHandler : HttpMessageHandler
     private static object CreateShoppingList() =>
         new
         {
-            id = Guid.NewGuid(), userId = UserId, name = "New List",
+            id = Guid.NewGuid(), name = "New List",
             createdAt = DateTime.UtcNow, updatedAt = DateTime.UtcNow, items = Array.Empty<object>()
         };
 
     private static object GetShoppingListDto() =>
         new
         {
-            id = ListId, userId = UserId, name = "Weekly Shopping",
+            id = ListId, name = "Weekly Shopping",
             createdAt = DateTime.UtcNow.AddDays(-1), updatedAt = DateTime.UtcNow, items = Array.Empty<object>()
         };
 

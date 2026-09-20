@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Quartz;
@@ -11,7 +10,6 @@ namespace Savvori.WebApi.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/admin/scraping")]
-[Authorize(Policy = "AdminOnly")]
 public class ScrapingAdminController : ControllerBase
 {
     private readonly SavvoriDbContext _db;

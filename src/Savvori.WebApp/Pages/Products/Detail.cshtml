@@ -63,10 +63,8 @@
             <p class="text-xs text-base-content/50 mb-4">Lowest price across @Model.Product.Prices.Count store@(Model.Product.Prices.Count != 1 ? "s" : "")</p>
         }
 
-        @if (User.Identity?.IsAuthenticated == true)
-        {
-            <!-- Add to list -->
-            <div class="flex gap-2 flex-wrap">
+        <!-- Add to list -->
+        <div class="flex gap-2 flex-wrap">
                 <div class="dropdown">
                     <div tabindex="0" role="button" class="btn btn-primary btn-sm">+ Add to list</div>
                     <ul tabindex="0" class="dropdown-content menu menu-sm bg-base-100 rounded-box z-[1] shadow border border-base-200 w-52 mt-1">
@@ -89,12 +87,7 @@
                     </ul>
                 </div>
                 <a asp-page="/ShoppingLists/Index" class="btn btn-ghost btn-sm">View my lists</a>
-            </div>
-        }
-        else
-        {
-            <a asp-page="/Account/Login" class="btn btn-primary btn-sm">Sign in to add to list</a>
-        }
+        </div>
     </div>
 </div>
 

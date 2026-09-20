@@ -15,7 +15,7 @@ public class ShoppingListsTests(SavvoriWebAppFactory factory) : IClassFixture<Sa
     [Fact]
     public async Task ShoppingListsPage_Authenticated_ReturnsOk_ShowsLists()
     {
-        var client = await factory.CreateAuthenticatedClientAsync();
+        var client = factory.CreateClient();
         var response = await client.GetAsync("/ShoppingLists", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
@@ -27,7 +27,7 @@ public class ShoppingListsTests(SavvoriWebAppFactory factory) : IClassFixture<Sa
     [Fact]
     public async Task CreateList_WithValidName_RedirectsToDetailPage()
     {
-        var client = await factory.CreateAuthenticatedClientAsync();
+        var client = factory.CreateClient();
         var token = await SavvoriWebAppFactory.GetAntiForgeryTokenAsync(client, "/ShoppingLists");
 
         // MockApiHandler returns a new list with a random ID for POST /api/shoppinglists
@@ -37,14 +37,6 @@ public class ShoppingListsTests(SavvoriWebAppFactory factory) : IClassFixture<Sa
             HandleCookies = true
         });
         // Re-authenticate on the non-redirect client
-        var loginToken = await SavvoriWebAppFactory.GetAntiForgeryTokenAsync(noRedirectClient, "/Account/Login");
-        await noRedirectClient.PostAsync("/Account/Login", new FormUrlEncodedContent(
-            new Dictionary<string, string>
-            {
-                ["Email"] = "user@savvori.test",
-                ["Password"] = "TestPassword123",
-                ["__RequestVerificationToken"] = loginToken
-            }), TestContext.Current.CancellationToken);
 
         var postToken = await SavvoriWebAppFactory.GetAntiForgeryTokenAsync(noRedirectClient, "/ShoppingLists");
         var response = await noRedirectClient.PostAsync("/ShoppingLists?handler=Create", new FormUrlEncodedContent(
@@ -69,14 +61,6 @@ public class ShoppingListsTests(SavvoriWebAppFactory factory) : IClassFixture<Sa
             AllowAutoRedirect = false,
             HandleCookies = true
         });
-        var loginToken = await SavvoriWebAppFactory.GetAntiForgeryTokenAsync(client, "/Account/Login");
-        await client.PostAsync("/Account/Login", new FormUrlEncodedContent(
-            new Dictionary<string, string>
-            {
-                ["Email"] = "user@savvori.test",
-                ["Password"] = "TestPassword123",
-                ["__RequestVerificationToken"] = loginToken
-            }), TestContext.Current.CancellationToken);
 
         var postToken = await SavvoriWebAppFactory.GetAntiForgeryTokenAsync(client, "/ShoppingLists");
         var response = await client.PostAsync("/ShoppingLists?handler=Rename", new FormUrlEncodedContent(
@@ -101,14 +85,6 @@ public class ShoppingListsTests(SavvoriWebAppFactory factory) : IClassFixture<Sa
             AllowAutoRedirect = false,
             HandleCookies = true
         });
-        var loginToken = await SavvoriWebAppFactory.GetAntiForgeryTokenAsync(client, "/Account/Login");
-        await client.PostAsync("/Account/Login", new FormUrlEncodedContent(
-            new Dictionary<string, string>
-            {
-                ["Email"] = "user@savvori.test",
-                ["Password"] = "TestPassword123",
-                ["__RequestVerificationToken"] = loginToken
-            }), TestContext.Current.CancellationToken);
 
         var postToken = await SavvoriWebAppFactory.GetAntiForgeryTokenAsync(client, "/ShoppingLists");
         var response = await client.PostAsync("/ShoppingLists?handler=Delete", new FormUrlEncodedContent(
@@ -127,7 +103,7 @@ public class ShoppingListsTests(SavvoriWebAppFactory factory) : IClassFixture<Sa
     [Fact]
     public async Task ListDetailPage_Authenticated_ReturnsOk_ShowsListName()
     {
-        var client = await factory.CreateAuthenticatedClientAsync();
+        var client = factory.CreateClient();
         var response = await client.GetAsync($"/ShoppingLists/Detail/{MockApiHandler.ListId}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
@@ -137,7 +113,7 @@ public class ShoppingListsTests(SavvoriWebAppFactory factory) : IClassFixture<Sa
     [Fact]
     public async Task ListDetailPage_HtmxSearchProducts_ReturnsHtml()
     {
-        var client = await factory.CreateAuthenticatedClientAsync();
+        var client = factory.CreateClient();
         var request = new HttpRequestMessage(
             HttpMethod.Get,
             $"/ShoppingLists/Detail/{MockApiHandler.ListId}?handler=SearchProducts&q=milk");
@@ -155,7 +131,7 @@ public class ShoppingListsTests(SavvoriWebAppFactory factory) : IClassFixture<Sa
     public async Task OptimizePage_Authenticated_ReturnsOk()
     {
         // Without mode param — just loads the page UI without running optimization
-        var client = await factory.CreateAuthenticatedClientAsync();
+        var client = factory.CreateClient();
         var response = await client.GetAsync($"/ShoppingLists/Optimize/{MockApiHandler.ListId}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
@@ -165,7 +141,7 @@ public class ShoppingListsTests(SavvoriWebAppFactory factory) : IClassFixture<Sa
     [Fact]
     public async Task OptimizePage_WithCheapestTotalMode_ShowsOptimizationResult()
     {
-        var client = await factory.CreateAuthenticatedClientAsync();
+        var client = factory.CreateClient();
         var response = await client.GetAsync(
             $"/ShoppingLists/Optimize/{MockApiHandler.ListId}?mode=cheapest-total", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -176,7 +152,7 @@ public class ShoppingListsTests(SavvoriWebAppFactory factory) : IClassFixture<Sa
     [Fact]
     public async Task OptimizePage_WithCompareMode_ShowsComparisonMatrix()
     {
-        var client = await factory.CreateAuthenticatedClientAsync();
+        var client = factory.CreateClient();
         var response = await client.GetAsync(
             $"/ShoppingLists/Optimize/{MockApiHandler.ListId}?mode=compare", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);

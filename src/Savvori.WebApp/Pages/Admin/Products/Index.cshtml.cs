@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Savvori.WebApp.Services;
@@ -6,7 +5,6 @@ using Savvori.WebApp.Services.ApiModels;
 
 namespace Savvori.WebApp.Pages.Admin.Products;
 
-[Authorize(Roles = "admin")]
 public class ProductsIndexModel(SavvoriApiClient api) : PageModel
 {
     [BindProperty(SupportsGet = true)]

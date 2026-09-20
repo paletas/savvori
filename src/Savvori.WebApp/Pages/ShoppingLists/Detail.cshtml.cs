@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Antiforgery;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Savvori.WebApp.Services;
@@ -7,7 +6,6 @@ using Savvori.WebApp.Services.ApiModels;
 
 namespace Savvori.WebApp.Pages.ShoppingLists;
 
-[Authorize]
 public class ShoppingListDetailModel(SavvoriApiClient api, IAntiforgery antiforgery) : PageModel
 {
     public Guid ListId { get; set; }

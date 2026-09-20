@@ -6,36 +6,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Savvori is a grocery price-comparison API + web app for Portugal. It scrapes product prices from major Portuguese supermarket chains (Continente, Pingo Doce, Auchan, Minipreço implemented; Lidl, Intermarché, Mercadona are stubs with no online catalog), and helps users build shopping lists and optimize them for cheapest cost across stores.
 
-ASP.NET Core / .NET 10, orchestrated locally with .NET Aspire, PostgreSQL via EF Core.
+ASP.NET Core / .NET 10, orchestrated locally with .NET Aspire, SQLite via EF Core. There is no authentication (single-user homelab deployment).
 
 ## Build, run, test
 
 Use Windows PowerShell syntax (this is a Windows dev environment).
 
-- **Run everything (recommended)**: `aspire run` from repo root — starts a PostgreSQL container via Podman, the Aspire dashboard (http://localhost:15888), the Web API, and the Web App. If `aspire` isn't on PATH, use `& "$env:USERPROFILE\.dotnet\tools\aspire.exe" run`.
+- **Run everything (recommended)**: `aspire run` from repo root — starts the Aspire dashboard (http://localhost:15888), the Web API, and the Web App. If `aspire` isn't on PATH, use `& "$env:USERPROFILE\.dotnet\tools\aspire.exe" run`.
 - **Build**: `dotnet build Savvori.sln`
-- **Run Web API directly** (needs local Postgres at `ConnectionStrings:savvori`): `dotnet run --project src/Savvori.WebApi/Savvori.WebApi.csproj`
+- **Run Web API directly** (creates the SQLite file at `ConnectionStrings:savvori`, default `data/savvori.db`): `dotnet run --project src/Savvori.WebApi/Savvori.WebApi.csproj`
   - OpenAPI (dev): `http://localhost:5000/openapi/v1.json`, Health: `/health`
 - **Test all**: `dotnet test Savvori.sln` (runs in Microsoft.Testing.Platform mode via `global.json` `test.runner`; `LiveScraperTests` hit the live network and are a known flake)
 - **Test a single project**: `dotnet test tests/Savvori.Api.Tests/Savvori.Api.Tests.csproj` (same for `Savvori.Web.Tests`, `Savvori.E2E.Tests`)
 - **Test a single test**: `dotnet test tests/Savvori.Web.Tests/Savvori.Web.Tests.csproj --filter "FullyQualifiedName~ClassName.MethodName"`
-- **Container runtime**: Podman (`ASPIRE_CONTAINER_RUNTIME=podman` set as a user env var) — Aspire uses it for the Postgres container.
 - **Aspire MCP tools** (list_resources, console_logs, traces): available once `aspire run` is active; configured in `.vscode/mcp.json`.
-
-### Local test accounts (seeded on first startup, dev only)
-
-| Role | Email | Password |
-|------|-------|----------|
-| Admin | `admin@savvori.dev` | `Admin123!` |
-| User | `user@savvori.dev` | `User123!` |
-
-Log in via `POST /api/auth/login` for a JWT, then `Authorization: Bearer <token>`.
 
 ## Solution structure
 
 ```
 src/
-  Savvori.AppHost/         Aspire orchestration (AppHost.cs wires up services + Postgres container)
+  Savvori.AppHost/         Aspire orchestration (AppHost.cs wires up services)
   Savvori.ServiceDefaults/ Shared OpenTelemetry, health checks, HTTP resilience wiring
   Savvori.Shared/          EF Core entity models (User, Product, Store, ShoppingList, ...)
   Savvori.WebApi/          ASP.NET Core Web API — the actual DbContext, controllers, scraping, business logic
@@ -52,10 +42,9 @@ tests/
 
 ### Web API (`src/Savvori.WebApi`)
 
-- Minimal-API style bootstrap in `Program.cs`, but endpoints are grouped into MVC controllers under `Controllers/` (Auth, Products, Categories, Stores, ShoppingLists, Optimize, ScrapingAdmin, MappingAdmin).
-- Auth: dual scheme — JWT Bearer (for API-to-API / direct API callers) and cookie auth, selected per-request via a `JwtOrCookie` policy scheme that inspects the `Authorization` header.
-- Database: `SavvoriDbContext` over PostgreSQL (via `Aspire.Npgsql.EntityFrameworkCore.PostgreSQL`), or EF Core InMemory when `ASPNETCORE_ENVIRONMENT=Testing`.
-- EF migrations are applied automatically at startup, before seeding.
+- Minimal-API style bootstrap in `Program.cs`, but endpoints are grouped into MVC controllers under `Controllers/` (Products, Categories, Stores, ShoppingLists, Optimize, ScrapingAdmin, MappingAdmin).
+- Database: `SavvoriDbContext` over SQLite (`Microsoft.EntityFrameworkCore.Sqlite`). Tests (`ASPNETCORE_ENVIRONMENT=Testing`) use a shared in-memory SQLite database created with `EnsureCreated`. `decimal` columns are stored as REAL (see `ConfigureConventions`) so ordering and aggregates work in SQLite. There is a single migration (`InitialCreate`); the partial unique index on `StoreProductPrices.IsLatest` is declared in the model.
+- EF migrations are applied automatically at startup, before seeding. There is no authentication or user model: every endpoint is open, including the admin ones.
 
 ### Scraping (`src/Savvori.WebApi/Scraping`)
 
@@ -77,8 +66,7 @@ tests/
 - Razor Pages, styled with TailwindCSS v4 + DaisyUI v5. CSS is built from `wwwroot/css/input.css` via `npm run build:css`, wired as an MSBuild target that runs before every build (skipped when `$(CI) == 'true'`). Generated `site.css` is git-ignored — run `npm install` in `src/Savvori.WebApp` before first build if `node_modules` is missing.
 - HTMX (CDN) drives in-page updates without full reloads (debounced product search, admin auto-refreshing status tables, etc.).
 - Talks to the Web API exclusively through `SavvoriApiClient` (typed HttpClient, DI-registered), which wraps every Web API endpoint. Base address comes from Aspire service discovery keys, falling back to `http://localhost:5000`.
-- Auth bridging: `savvori_auth` cookie governs page-level `[Authorize]`; `savvori_token` cookie holds the raw JWT; `AuthCookieHandler` (a `DelegatingHandler`) reads the JWT cookie and injects it as `Authorization: Bearer` on every outbound `SavvoriApiClient` call.
-- Admin pages live under `Pages/Admin/` (own layout, `[Authorize(Roles = "admin")]`).
+- Admin pages live under `Pages/Admin/` (own layout).
 
 ### Aspire (`src/Savvori.AppHost`, `src/Savvori.ServiceDefaults`)
 

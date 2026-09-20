@@ -1,8 +1,5 @@
 namespace Savvori.WebApp.Services.ApiModels;
 
-// ===== Auth =====
-public record LoginResponse(string Token, bool IsAdmin);
-
 // ===== Categories =====
 public record CategoryDto(Guid Id, string Name, string Slug, Guid? ParentCategoryId, List<CategoryDto> Children);
 
@@ -54,7 +51,7 @@ public record NearbyStoreDto(
 public record GeocodeResponse(string PostalCode, double Latitude, double Longitude);
 
 // ===== Shopping Lists =====
-public record ShoppingListDto(Guid Id, Guid UserId, string Name, DateTime CreatedAt, DateTime UpdatedAt, List<ShoppingListItemDto> Items);
+public record ShoppingListDto(Guid Id, string Name, DateTime CreatedAt, DateTime UpdatedAt, List<ShoppingListItemDto> Items);
 
 public record ShoppingListItemDto(Guid Id, Guid ShoppingListId, Guid ProductId, int Quantity);
 

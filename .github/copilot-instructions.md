@@ -23,11 +23,11 @@ These instructions help AI coding agents work productively in this codebase. Kee
 ## Build, run, test
 - Build all:
    - `dotnet build Savvori.sln`
-- Run with Aspire (recommended — starts PostgreSQL container via Podman, dashboard, all services):
+- Run with Aspire (recommended — starts the dashboard and all services):
    - `aspire run` (from repo root, or `& "$env:USERPROFILE\.dotnet\tools\aspire.exe" run`)
    - Aspire dashboard: http://localhost:15888 (auto-opens)
    - WebApi URL injected by Aspire
-- Run the web API directly (requires local PostgreSQL at `ConnectionStrings:savvori`):
+- Run the web API directly (creates the SQLite file at `ConnectionStrings:savvori`, default `data/savvori.db`):
    - `dotnet run --project src/Savvori.WebApi/Savvori.WebApi.csproj`
    - Development endpoints:
       - GET http://localhost:5000/weatherforecast
@@ -37,14 +37,13 @@ These instructions help AI coding agents work productively in this codebase. Kee
    - `dotnet test Savvori.sln`
 
 Notes:
-- **Container runtime**: Podman 5.8.1. `ASPIRE_CONTAINER_RUNTIME=podman` is set as a user environment variable. Aspire uses Podman to run the PostgreSQL container.
 - All projects target `net10.0`. Aspire packages are at 13.2.x. Keep versions consistent.
 
 ## Architectural conventions
 - Minimal API in `Program.cs` defines endpoints directly. Example:
    - `app.MapGet("/weatherforecast", ...).WithName("GetWeatherForecast");`
 - Configuration: `appsettings.json` + `appsettings.Development.json` in the web project.
-- Database connection: resolved from `ConnectionStrings:savvori` (key name used by Aspire client integration `builder.AddNpgsqlDbContext<SavvoriDbContext>("savvori")`).
+- Database: SQLite via `Microsoft.EntityFrameworkCore.Sqlite`; connection string resolved from `ConnectionStrings:savvori` (default `Data Source=data/savvori.db`). There is no authentication.
 - Namespaces/projects follow `Savvori.*`. New code should align with this naming.
 - ServiceDefaults (`builder.AddServiceDefaults()` / `app.MapDefaultEndpoints()`) must be wired in all executable projects.
 

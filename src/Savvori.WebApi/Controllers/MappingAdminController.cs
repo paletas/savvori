@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Savvori.Shared;
@@ -11,7 +10,6 @@ namespace Savvori.WebApi.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/admin/mapping")]
-[Authorize(Policy = "AdminOnly")]
 public class MappingAdminController : ControllerBase
 {
     private readonly SavvoriDbContext _db;

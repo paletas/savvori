@@ -2,13 +2,13 @@
 
 Savvori is a smart grocery shopping list API and web app for Portugal. It compares product prices across major Portuguese supermarkets — **Continente**, **Pingo Doce**, **Auchan**, **Minipreço**, **Lidl**, **Intermarché**, and **Mercadona** — and helps users find the cheapest way to fill their shopping lists.
 
-Built with ASP.NET Core .NET 10, orchestrated locally with .NET Aspire, PostgreSQL via EF Core.
+Built with ASP.NET Core .NET 10, orchestrated locally with .NET Aspire, SQLite via EF Core. There is no authentication — it is designed to run as a single-user app on a trusted network (e.g. a homelab).
 
 ## Project structure
 
 ```
 src/
-    Savvori.AppHost/         Aspire orchestration (starts Postgres container, WebApi, WebApp)
+    Savvori.AppHost/         Aspire orchestration (starts WebApi, WebApp)
     Savvori.ServiceDefaults/ Shared OpenTelemetry/health-checks/HTTP-resilience wiring
     Savvori.Shared/          EF Core entity models
     Savvori.WebApi/          ASP.NET Core Web API — controllers, scraping, optimization, DbContext
@@ -22,19 +22,6 @@ Savvori.sln
 
 See `CLAUDE.md` for a fuller architecture walkthrough, and `docs/TECHNICAL_ARCHITECTURE.md` / `docs/FUNCTIONAL_REQUIREMENTS.md` for the living design and feature specs.
 
-## Local testing accounts
-
-On first startup the API seeds two test users into the database. These are for **local development only** — never use them in production.
-
-| Role | Email | Password |
-|------|-------|----------|
-| Admin | `admin@savvori.dev` | `Admin123!` |
-| User | `user@savvori.dev` | `User123!` |
-
-Log in via `POST /api/auth/login` to get a JWT token, then pass it as `Authorization: Bearer <token>`.
-
-The admin account has access to the `/api/admin/scraping/*` endpoints. The normal user account has access to authenticated shopping-list and optimization endpoints.
-
 ## Build
 
 Use Windows PowerShell:
@@ -45,7 +32,7 @@ dotnet build Savvori.sln
 
 ## Run
 
-Recommended — starts a PostgreSQL container (via Podman), the Aspire dashboard, the Web API, and the Web App:
+Recommended — starts the Aspire dashboard, the Web API, and the Web App:
 
 ```powershell
 aspire run
@@ -53,7 +40,7 @@ aspire run
 
 Aspire dashboard: http://localhost:15888
 
-Or run the Web API directly (requires local PostgreSQL at `ConnectionStrings:savvori`):
+Or run the Web API directly (creates the SQLite database file on first start):
 
 ```powershell
 dotnet run --project src/Savvori.WebApi/Savvori.WebApi.csproj
@@ -89,17 +76,17 @@ dotnet test tests/Savvori.Api.Tests/Savvori.Api.Tests.csproj
 | GET | `/api/stores/geocode?postalCode=` | Resolve postal code to coordinates |
 | GET | `/api/categories` | Category tree |
 | GET | `/api/categories/{idOrSlug}/products` | Products in a category |
-| GET | `/api/shoppinglists/{id}/optimize?mode=&threshold=` | Optimize a shopping list (auth required) |
-| GET | `/api/admin/scraping/status` | Scraping job status (admin only) |
-| POST | `/api/admin/scraping/trigger/{chainSlug}` | Trigger a scrape (admin only) |
-| GET | `/api/admin/mapping/stats` | Category/match mapping statistics (admin only) |
-| GET | `/api/admin/mapping/uncategorized-products` | Canonical products with no category (admin only) |
-| GET | `/api/admin/mapping/unmapped-categories` | Scraped category strings with no canonical mapping (admin only) |
-| GET | `/api/admin/mapping/store-products?status=&chainSlug=` | Store products filtered by match status/chain (admin only) |
-| POST | `/api/admin/mapping/backfill-categories` | Re-run category mapping for uncategorized products (admin only) |
-| POST | `/api/admin/mapping/rematch?chainSlug=` | Re-run EAN/name matching for unmatched store products (admin only) |
-| PUT | `/api/admin/mapping/products/{id}/category` | Manually assign a category to a product (admin only) |
-| PUT | `/api/admin/mapping/store-products/{id}/canonical` | Manually link a store product to a canonical product (admin only) |
+| GET | `/api/shoppinglists/{id}/optimize?mode=&threshold=` | Optimize a shopping list |
+| GET | `/api/admin/scraping/status` | Scraping job status|
+| POST | `/api/admin/scraping/trigger/{chainSlug}` | Trigger a scrape|
+| GET | `/api/admin/mapping/stats` | Category/match mapping statistics|
+| GET | `/api/admin/mapping/uncategorized-products` | Canonical products with no category|
+| GET | `/api/admin/mapping/unmapped-categories` | Scraped category strings with no canonical mapping|
+| GET | `/api/admin/mapping/store-products?status=&chainSlug=` | Store products filtered by match status/chain|
+| POST | `/api/admin/mapping/backfill-categories` | Re-run category mapping for uncategorized products|
+| POST | `/api/admin/mapping/rematch?chainSlug=` | Re-run EAN/name matching for unmatched store products|
+| PUT | `/api/admin/mapping/products/{id}/category` | Manually assign a category to a product|
+| PUT | `/api/admin/mapping/store-products/{id}/canonical` | Manually link a store product to a canonical product|
 
 ### Optimization modes
 
@@ -114,9 +101,9 @@ dotnet test tests/Savvori.Api.Tests/Savvori.Api.Tests.csproj
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `ConnectionStrings__savvori` | PostgreSQL connection string (Aspire client integration key) | `Host=localhost;Database=savvori;Username=sa;Password=...` |
+| `ConnectionStrings__savvori` | SQLite connection string (default `Data Source=data/savvori.db`, relative to the API working directory; the directory is created on startup) | `Data Source=/data/savvori.db` |
 
-Configuration can be set via `appsettings.json`, `appsettings.Development.json`, or environment variables. When running via `aspire run`, the connection string is injected automatically from the Aspire-managed Postgres container.
+Configuration can be set via `appsettings.json`, `appsettings.Development.json`, or environment variables. EF Core migrations are applied automatically at startup, creating the database file if it does not exist.
 
 ## Background jobs
 

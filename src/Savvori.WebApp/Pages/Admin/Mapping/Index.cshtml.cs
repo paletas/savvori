@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Savvori.WebApp.Services;
@@ -6,7 +5,6 @@ using Savvori.WebApp.Services.ApiModels;
 
 namespace Savvori.WebApp.Pages.Admin.Mapping;
 
-[Authorize(Roles = "admin")]
 public class MappingIndexModel(SavvoriApiClient api) : PageModel
 {
     // ── Tab selection ──────────────────────────────────────────────────────

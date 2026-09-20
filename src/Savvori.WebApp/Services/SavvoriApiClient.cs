@@ -9,48 +9,6 @@ public class SavvoriApiClient(HttpClient http, ILogger<SavvoriApiClient> logger)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    // ===== Auth =====
-
-    public async Task<(bool Success, string? Token, bool IsAdmin, string? Error)> LoginAsync(
-        string email, string password, CancellationToken ct = default)
-    {
-        try
-        {
-            var resp = await http.PostAsJsonAsync("/api/auth/login", new { email, password }, ct);
-            if (resp.StatusCode == HttpStatusCode.Unauthorized)
-                return (false, null, false, "Invalid email or password.");
-            resp.EnsureSuccessStatusCode();
-            var result = await resp.Content.ReadFromJsonAsync<LoginResponse>(JsonOptions, ct);
-            return (true, result?.Token, result?.IsAdmin ?? false, null);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Login failed");
-            return (false, null, false, "An error occurred during login.");
-        }
-    }
-
-    public async Task<(bool Success, string? Error)> RegisterAsync(
-        string email, string password, CancellationToken ct = default)
-    {
-        try
-        {
-            var resp = await http.PostAsJsonAsync("/api/auth/register", new { email, password }, ct);
-            if (resp.StatusCode == HttpStatusCode.BadRequest)
-            {
-                var error = await resp.Content.ReadAsStringAsync(ct);
-                return (false, error);
-            }
-            resp.EnsureSuccessStatusCode();
-            return (true, null);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Register failed");
-            return (false, "An error occurred during registration.");
-        }
-    }
-
     // ===== Categories =====
 
     public async Task<List<CategoryDto>> GetCategoriesAsync(CancellationToken ct = default)
