@@ -89,10 +89,10 @@ public class OptimizeTests : IClassFixture<SavvoriWebApiFactory>
     public async Task Optimize_CheapestTotal_Returns200WithItems()
     {
         using var client = AuthClient();
-        var response = await client.GetAsync($"/api/shoppinglists/{_listId}/optimize?mode=cheapest-total");
+        var response = await client.GetAsync($"/api/shoppinglists/{_listId}/optimize?mode=cheapest-total", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.True(body.GetProperty("items").GetArrayLength() >= 1);
         Assert.Equal("cheapest-total", body.GetProperty("optimizationMode").GetString());
     }
@@ -101,10 +101,10 @@ public class OptimizeTests : IClassFixture<SavvoriWebApiFactory>
     public async Task Optimize_CheapestStore_Returns200WithItems()
     {
         using var client = AuthClient();
-        var response = await client.GetAsync($"/api/shoppinglists/{_listId}/optimize?mode=cheapest-store");
+        var response = await client.GetAsync($"/api/shoppinglists/{_listId}/optimize?mode=cheapest-store", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.True(body.GetProperty("items").GetArrayLength() >= 1);
         Assert.Equal("cheapest-store", body.GetProperty("optimizationMode").GetString());
     }
@@ -114,10 +114,10 @@ public class OptimizeTests : IClassFixture<SavvoriWebApiFactory>
     {
         using var client = AuthClient();
         var response = await client.GetAsync(
-            $"/api/shoppinglists/{_listId}/optimize?mode=balanced&threshold=0.50");
+            $"/api/shoppinglists/{_listId}/optimize?mode=balanced&threshold=0.50", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.True(body.GetProperty("items").GetArrayLength() >= 0);
     }
 
@@ -125,10 +125,10 @@ public class OptimizeTests : IClassFixture<SavvoriWebApiFactory>
     public async Task Optimize_Compare_Returns200WithMatrix()
     {
         using var client = AuthClient();
-        var response = await client.GetAsync($"/api/shoppinglists/{_listId}/optimize?mode=compare");
+        var response = await client.GetAsync($"/api/shoppinglists/{_listId}/optimize?mode=compare", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.True(body.TryGetProperty("stores", out var stores));
         Assert.True(body.TryGetProperty("rows", out var rows));
         Assert.True(stores.GetArrayLength() >= 1);
@@ -140,10 +140,10 @@ public class OptimizeTests : IClassFixture<SavvoriWebApiFactory>
     {
         using var client = AuthClient();
         // No mode parameter — defaults to cheapest-total
-        var response = await client.GetAsync($"/api/shoppinglists/{_listId}/optimize");
+        var response = await client.GetAsync($"/api/shoppinglists/{_listId}/optimize", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.Equal("cheapest-total", body.GetProperty("optimizationMode").GetString());
     }
 
@@ -151,7 +151,7 @@ public class OptimizeTests : IClassFixture<SavvoriWebApiFactory>
     public async Task Optimize_UnknownMode_Returns400()
     {
         using var client = AuthClient();
-        var response = await client.GetAsync($"/api/shoppinglists/{_listId}/optimize?mode=invalid-mode");
+        var response = await client.GetAsync($"/api/shoppinglists/{_listId}/optimize?mode=invalid-mode", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
@@ -167,7 +167,7 @@ public class OptimizeTests : IClassFixture<SavvoriWebApiFactory>
         });
 
         using var client = AuthClient(); // authenticated as _userId
-        var response = await client.GetAsync($"/api/shoppinglists/{otherListId}/optimize");
+        var response = await client.GetAsync($"/api/shoppinglists/{otherListId}/optimize", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
@@ -175,7 +175,7 @@ public class OptimizeTests : IClassFixture<SavvoriWebApiFactory>
     public async Task Optimize_Unauthenticated_Returns401()
     {
         using var client = _factory.CreateClient();
-        var response = await client.GetAsync($"/api/shoppinglists/{_listId}/optimize");
+        var response = await client.GetAsync($"/api/shoppinglists/{_listId}/optimize", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
@@ -183,10 +183,10 @@ public class OptimizeTests : IClassFixture<SavvoriWebApiFactory>
     public async Task Optimize_EmptyList_ReturnsEmptyItems()
     {
         using var client = AuthClient();
-        var response = await client.GetAsync($"/api/shoppinglists/{_emptyListId}/optimize?mode=cheapest-total");
+        var response = await client.GetAsync($"/api/shoppinglists/{_emptyListId}/optimize?mode=cheapest-total", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.Equal(0, body.GetProperty("items").GetArrayLength());
     }
 }

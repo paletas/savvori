@@ -84,6 +84,13 @@ Savvori is an ASP.NET Core minimal API (.NET 10) that helps users find the cheap
   - Text normalization: lowercase, strip diacritics/accents
   - Brand extraction from product name
 
+### 6a. Category Taxonomy & Product Matching
+- `CategoryTaxonomy` / `CategorySeeder` define and seed a canonical category tree, independent of each store's own category labels.
+- `CategoryMapper.MapToSlug(rawCategory)` maps a scraped/raw category string to a canonical category slug.
+- `ProductMatcher` links a scraped `StoreProduct` to a canonical `Product` in tiers: Tier 1 by EAN, Tier 2 by brand + normalized name + size/unit; unmatched products are flagged (`MatchStatus.Unmatched`/`Failed`) rather than auto-created.
+- `MappingAdminController` (`/api/admin/mapping/*`, admin role required) exposes mapping statistics, uncategorized products, unmapped category strings, and store-product match status, plus repair actions: `backfill-categories` (re-runs `CategoryMapper` over uncategorized products), `rematch` (re-runs Tier 1/2 matching over unmatched/failed store products), and manual per-item category/canonical-product assignment.
+- Web App: `Pages/Admin/Mapping/Index.cshtml` provides an admin UI over this same API for reviewing and repairing mappings.
+
 ### 7. Location Services
 - `ILocationService` / `GeoApiLocationService`
 - Integrates with [geoapi.pt](https://geo.iotech.pt) (free, no auth): `GET https://geo.iotech.pt/cp/{postalCode}?json=1`
@@ -137,6 +144,16 @@ Savvori is an ASP.NET Core minimal API (.NET 10) that helps users find the cheap
 - `GET /api/admin/scraping/status` – Current status of all scraping jobs
 - `POST /api/admin/scraping/trigger/{chainSlug}` – Manually trigger a scrape for a store chain
 
+### Admin — Category & Product Mapping (admin role required)
+- `GET /api/admin/mapping/stats` – Aggregate category/match statistics
+- `GET /api/admin/mapping/uncategorized-products?page=&pageSize=` – Canonical products with no category
+- `GET /api/admin/mapping/unmapped-categories` – Distinct raw category strings with no canonical mapping, with a suggested slug
+- `GET /api/admin/mapping/store-products?status=&chainSlug=&page=&pageSize=` – Store products filtered by match status/chain
+- `POST /api/admin/mapping/backfill-categories` – Re-run `CategoryMapper` over uncategorized products
+- `POST /api/admin/mapping/rematch?chainSlug=` – Re-run Tier 1/2 matching over unmatched/failed store products
+- `PUT /api/admin/mapping/products/{id}/category` – Manually assign a category to a product
+- `PUT /api/admin/mapping/store-products/{id}/canonical` – Manually link a store product to a canonical product
+
 ## Security & Privacy
 - All API endpoints (except register/login) require authentication
 - Passwords never stored in plain text
@@ -151,9 +168,11 @@ Savvori is an ASP.NET Core minimal API (.NET 10) that helps users find the cheap
 
 ## Testing
 
-- **Test project:** `tests/Savvori.Web.Tests` (xUnit v3, NSubstitute v5, EF Core InMemory)
-- **Coverage areas:** scraper correctness (per-chain), price normaliser, shopping optimizer (all 4 modes), location service, `SavvoriApiClient` (24 tests via `FakeHttpMessageHandler`), `AuthCookieHandler` (4 tests)
-- **Total tests:** 165 — all passing
+- **Test projects:** `tests/Savvori.Api.Tests` (integration tests against `Savvori.WebApi` via `WebApplicationFactory`), `tests/Savvori.Web.Tests` (unit tests covering `Savvori.WebApi` and `Savvori.WebApp`), `tests/Savvori.E2E.Tests` (end-to-end tests against `Savvori.WebApp`). All three use xUnit v3 (`xunit.v3` 4.x) running on Microsoft.Testing.Platform, NSubstitute v6, EF Core InMemory.
+- **Coverage areas:** scraper correctness (per-chain), price normaliser, category mapping/matching, shopping optimizer (all 4 modes), location service, `SavvoriApiClient`, `AuthCookieHandler`, admin mapping/scraping endpoints, full web app page flows (auth, shopping lists, admin).
+- **Total tests:** ~390 across the three projects, all passing except `LiveScraperTests` (in `Savvori.Web.Tests`), which make real HTTP calls to live grocery-store websites and are expected to be slow/flaky independent of code changes.
+- **Running tests:** `dotnet test Savvori.sln` runs all three projects via the unified `dotnet test` MTP mode (enabled by the `test.runner` section in `global.json` — required because `xunit.v3` 4.x no longer supports the legacy VSTest bridge on .NET 10 SDK+). Run a single project with `dotnet test tests/<Project>/<Project>.csproj`, or a single test with `--filter "FullyQualifiedName~ClassName.MethodName"`.
+- **Dependency note:** `Quartz` is pinned to the 3.x line (not 4.0) because `Quartz.Extensions.Hosting` has no 4.x-compatible release yet; bumping `Quartz` alone without `Quartz.Extensions.Hosting` breaks the `IJob.Execute` contract and `AddQuartzHostedService` resolution.
 
 ## Open Questions / Decisions
 - [x] Which DBMS to use for MVP? → PostgreSQL

@@ -98,10 +98,10 @@ public class MappingAdminTests : IClassFixture<SavvoriWebApiFactory>
     public async Task GetStats_AsAdmin_Returns200WithCounts()
     {
         using var client = AdminClient();
-        var resp = await client.GetAsync("/api/admin/mapping/stats");
+        var resp = await client.GetAsync("/api/admin/mapping/stats", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.True(body.GetProperty("totalProducts").GetInt32() >= 2);
         Assert.True(body.GetProperty("uncategorizedProducts").GetInt32() >= 1);
         Assert.True(body.TryGetProperty("byMatchStatus", out _));
@@ -111,7 +111,7 @@ public class MappingAdminTests : IClassFixture<SavvoriWebApiFactory>
     public async Task GetStats_AsRegularUser_Returns403()
     {
         using var client = RegularClient();
-        var resp = await client.GetAsync("/api/admin/mapping/stats");
+        var resp = await client.GetAsync("/api/admin/mapping/stats", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
     }
 
@@ -119,7 +119,7 @@ public class MappingAdminTests : IClassFixture<SavvoriWebApiFactory>
     public async Task GetStats_Unauthenticated_Returns401()
     {
         using var client = _factory.CreateClient();
-        var resp = await client.GetAsync("/api/admin/mapping/stats");
+        var resp = await client.GetAsync("/api/admin/mapping/stats", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Unauthorized, resp.StatusCode);
     }
 
@@ -129,10 +129,10 @@ public class MappingAdminTests : IClassFixture<SavvoriWebApiFactory>
     public async Task GetUncategorizedProducts_AsAdmin_Returns200WithItems()
     {
         using var client = AdminClient();
-        var resp = await client.GetAsync("/api/admin/mapping/uncategorized-products");
+        var resp = await client.GetAsync("/api/admin/mapping/uncategorized-products", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.True(body.GetProperty("total").GetInt32() >= 1);
         var items = body.GetProperty("items").EnumerateArray().ToList();
         Assert.True(items.Count >= 1);
@@ -144,10 +144,10 @@ public class MappingAdminTests : IClassFixture<SavvoriWebApiFactory>
     public async Task GetUncategorizedProducts_DoesNotIncludeProductsWithCategory()
     {
         using var client = AdminClient();
-        var resp = await client.GetAsync("/api/admin/mapping/uncategorized-products?pageSize=100");
+        var resp = await client.GetAsync("/api/admin/mapping/uncategorized-products?pageSize=100", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         var ids = body.GetProperty("items").EnumerateArray()
             .Select(i => i.GetProperty("id").GetGuid())
             .ToList();
@@ -161,10 +161,10 @@ public class MappingAdminTests : IClassFixture<SavvoriWebApiFactory>
     public async Task GetUnmappedCategories_AsAdmin_Returns200()
     {
         using var client = AdminClient();
-        var resp = await client.GetAsync("/api/admin/mapping/unmapped-categories");
+        var resp = await client.GetAsync("/api/admin/mapping/unmapped-categories", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.Equal(JsonValueKind.Array, body.ValueKind);
     }
 
@@ -174,10 +174,10 @@ public class MappingAdminTests : IClassFixture<SavvoriWebApiFactory>
     public async Task GetStoreProducts_NoFilter_Returns200WithAllProducts()
     {
         using var client = AdminClient();
-        var resp = await client.GetAsync("/api/admin/mapping/store-products");
+        var resp = await client.GetAsync("/api/admin/mapping/store-products", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.True(body.GetProperty("total").GetInt32() >= 2);
     }
 
@@ -185,10 +185,10 @@ public class MappingAdminTests : IClassFixture<SavvoriWebApiFactory>
     public async Task GetStoreProducts_FilterByUnmatched_ReturnsOnlyUnmatched()
     {
         using var client = AdminClient();
-        var resp = await client.GetAsync("/api/admin/mapping/store-products?status=Unmatched");
+        var resp = await client.GetAsync("/api/admin/mapping/store-products?status=Unmatched", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         var items = body.GetProperty("items").EnumerateArray().ToList();
         Assert.True(items.Count >= 1);
         Assert.All(items, i => Assert.Equal("Unmatched", i.GetProperty("matchStatus").GetString()));
@@ -200,10 +200,10 @@ public class MappingAdminTests : IClassFixture<SavvoriWebApiFactory>
     public async Task BackfillCategories_AsAdmin_Returns200WithUpdatedCount()
     {
         using var client = AdminClient();
-        var resp = await client.PostAsync("/api/admin/mapping/backfill-categories", null);
+        var resp = await client.PostAsync("/api/admin/mapping/backfill-categories", null, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         // We don't assert exact count as the seeded product's category string "unknown-scraped-category"
         // won't map to anything — but the response format must be correct.
         Assert.True(body.TryGetProperty("updated", out _));
@@ -214,7 +214,7 @@ public class MappingAdminTests : IClassFixture<SavvoriWebApiFactory>
     public async Task BackfillCategories_AsRegularUser_Returns403()
     {
         using var client = RegularClient();
-        var resp = await client.PostAsync("/api/admin/mapping/backfill-categories", null);
+        var resp = await client.PostAsync("/api/admin/mapping/backfill-categories", null, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
     }
 
@@ -224,10 +224,10 @@ public class MappingAdminTests : IClassFixture<SavvoriWebApiFactory>
     public async Task Rematch_AsAdmin_Returns200WithMatchedCount()
     {
         using var client = AdminClient();
-        var resp = await client.PostAsync("/api/admin/mapping/rematch", null);
+        var resp = await client.PostAsync("/api/admin/mapping/rematch", null, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.True(body.TryGetProperty("matched", out _));
         Assert.True(body.TryGetProperty("remaining", out _));
     }
@@ -236,7 +236,7 @@ public class MappingAdminTests : IClassFixture<SavvoriWebApiFactory>
     public async Task Rematch_InvalidChain_Returns404()
     {
         using var client = AdminClient();
-        var resp = await client.PostAsync("/api/admin/mapping/rematch?chainSlug=nonexistent-chain-xyz", null);
+        var resp = await client.PostAsync("/api/admin/mapping/rematch?chainSlug=nonexistent-chain-xyz", null, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
 
@@ -244,7 +244,7 @@ public class MappingAdminTests : IClassFixture<SavvoriWebApiFactory>
     public async Task Rematch_AsRegularUser_Returns403()
     {
         using var client = RegularClient();
-        var resp = await client.PostAsync("/api/admin/mapping/rematch", null);
+        var resp = await client.PostAsync("/api/admin/mapping/rematch", null, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
     }
 
@@ -256,11 +256,11 @@ public class MappingAdminTests : IClassFixture<SavvoriWebApiFactory>
         using var client = AdminClient();
         var resp = await client.PutAsJsonAsync(
             $"/api/admin/mapping/products/{_productForCategoryAssignId}/category",
-            new { categoryId = _categoryId });
+            new { categoryId = _categoryId }, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.Equal(_categoryId, body.GetProperty("categoryId").GetGuid());
     }
 
@@ -270,7 +270,7 @@ public class MappingAdminTests : IClassFixture<SavvoriWebApiFactory>
         using var client = AdminClient();
         var resp = await client.PutAsJsonAsync(
             $"/api/admin/mapping/products/{Guid.NewGuid()}/category",
-            new { categoryId = _categoryId });
+            new { categoryId = _categoryId }, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
 
@@ -280,7 +280,7 @@ public class MappingAdminTests : IClassFixture<SavvoriWebApiFactory>
         using var client = AdminClient();
         var resp = await client.PutAsJsonAsync(
             $"/api/admin/mapping/products/{_productForCategoryAssignId}/category",
-            new { categoryId = Guid.NewGuid() });
+            new { categoryId = Guid.NewGuid() }, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
 
@@ -290,7 +290,7 @@ public class MappingAdminTests : IClassFixture<SavvoriWebApiFactory>
         using var client = RegularClient();
         var resp = await client.PutAsJsonAsync(
             $"/api/admin/mapping/products/{_productForCategoryAssignId}/category",
-            new { categoryId = _categoryId });
+            new { categoryId = _categoryId }, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
     }
 
@@ -302,11 +302,11 @@ public class MappingAdminTests : IClassFixture<SavvoriWebApiFactory>
         using var client = AdminClient();
         var resp = await client.PutAsJsonAsync(
             $"/api/admin/mapping/store-products/{_storeProductForCanonicalAssignId}/canonical",
-            new { canonicalProductId = _productWithCategoryId });
+            new { canonicalProductId = _productWithCategoryId }, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.Equal(_productWithCategoryId, body.GetProperty("canonicalProductId").GetGuid());
     }
 
@@ -316,7 +316,7 @@ public class MappingAdminTests : IClassFixture<SavvoriWebApiFactory>
         using var client = AdminClient();
         var resp = await client.PutAsJsonAsync(
             $"/api/admin/mapping/store-products/{Guid.NewGuid()}/canonical",
-            new { canonicalProductId = _productWithCategoryId });
+            new { canonicalProductId = _productWithCategoryId }, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
 
@@ -326,7 +326,7 @@ public class MappingAdminTests : IClassFixture<SavvoriWebApiFactory>
         using var client = AdminClient();
         var resp = await client.PutAsJsonAsync(
             $"/api/admin/mapping/store-products/{_storeProductMatchedId}/canonical",
-            new { canonicalProductId = Guid.NewGuid() });
+            new { canonicalProductId = Guid.NewGuid() }, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
 
@@ -336,7 +336,7 @@ public class MappingAdminTests : IClassFixture<SavvoriWebApiFactory>
         using var client = RegularClient();
         var resp = await client.PutAsJsonAsync(
             $"/api/admin/mapping/store-products/{_storeProductForCanonicalAssignId}/canonical",
-            new { canonicalProductId = _productWithCategoryId });
+            new { canonicalProductId = _productWithCategoryId }, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
     }
 }

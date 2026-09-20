@@ -37,10 +37,10 @@ public class StoresTests : IClassFixture<SavvoriWebApiFactory>
     [Fact]
     public async Task GetStores_ReturnsAllActiveChains()
     {
-        var response = await _client.GetAsync("/api/stores");
+        var response = await _client.GetAsync("/api/stores", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.Equal(JsonValueKind.Array, body.ValueKind);
         Assert.True(body.GetArrayLength() >= 1);
     }
@@ -48,10 +48,10 @@ public class StoresTests : IClassFixture<SavvoriWebApiFactory>
     [Fact]
     public async Task GetStores_WithChainFilter_ReturnsFilteredChain()
     {
-        var response = await _client.GetAsync($"/api/stores?chain={_chainSlug}");
+        var response = await _client.GetAsync($"/api/stores?chain={_chainSlug}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.Equal(1, body.GetArrayLength());
         Assert.Equal(_chainSlug, body[0].GetProperty("slug").GetString());
     }
@@ -59,10 +59,10 @@ public class StoresTests : IClassFixture<SavvoriWebApiFactory>
     [Fact]
     public async Task GetChainLocations_ValidChain_ReturnsLocations()
     {
-        var response = await _client.GetAsync($"/api/stores/{_chainSlug}/locations");
+        var response = await _client.GetAsync($"/api/stores/{_chainSlug}/locations", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.Equal(_chainSlug, body.GetProperty("chainSlug").GetString());
         Assert.Equal(2, body.GetProperty("locations").GetArrayLength());
     }
@@ -70,7 +70,7 @@ public class StoresTests : IClassFixture<SavvoriWebApiFactory>
     [Fact]
     public async Task GetChainLocations_UnknownChain_Returns404()
     {
-        var response = await _client.GetAsync("/api/stores/unknown-chain/locations");
+        var response = await _client.GetAsync("/api/stores/unknown-chain/locations", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
@@ -78,10 +78,10 @@ public class StoresTests : IClassFixture<SavvoriWebApiFactory>
     public async Task GetNearbyStores_ValidPostalCode_ReturnsSortedByDistance()
     {
         // Default mock returns (38.716, -9.139) for any postal code
-        var response = await _client.GetAsync("/api/stores/nearby?postalCode=1000-001&radiusKm=5000");
+        var response = await _client.GetAsync("/api/stores/nearby?postalCode=1000-001&radiusKm=5000", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.Equal("1000-001", body.GetProperty("postalCode").GetString());
         Assert.True(body.GetProperty("storeCount").GetInt32() >= 1);
 
@@ -98,7 +98,7 @@ public class StoresTests : IClassFixture<SavvoriWebApiFactory>
     [Fact]
     public async Task GetNearbyStores_MissingPostalCode_Returns400()
     {
-        var response = await _client.GetAsync("/api/stores/nearby");
+        var response = await _client.GetAsync("/api/stores/nearby", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
@@ -110,17 +110,17 @@ public class StoresTests : IClassFixture<SavvoriWebApiFactory>
             .ResolvePostalCodeAsync("0000-000", Arg.Any<CancellationToken>())
             .Returns((GeoCoordinate?)null);
 
-        var response = await _client.GetAsync("/api/stores/nearby?postalCode=0000-000");
+        var response = await _client.GetAsync("/api/stores/nearby?postalCode=0000-000", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]
     public async Task Geocode_ValidPostalCode_ReturnsCoordinates()
     {
-        var response = await _client.GetAsync("/api/stores/geocode?postalCode=1000-001");
+        var response = await _client.GetAsync("/api/stores/geocode?postalCode=1000-001", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.Equal("1000-001", body.GetProperty("postalCode").GetString());
         Assert.True(body.TryGetProperty("latitude", out _));
         Assert.True(body.TryGetProperty("longitude", out _));
@@ -129,7 +129,7 @@ public class StoresTests : IClassFixture<SavvoriWebApiFactory>
     [Fact]
     public async Task Geocode_MissingPostalCode_Returns400()
     {
-        var response = await _client.GetAsync("/api/stores/geocode");
+        var response = await _client.GetAsync("/api/stores/geocode", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
@@ -141,7 +141,7 @@ public class StoresTests : IClassFixture<SavvoriWebApiFactory>
             .ResolvePostalCodeAsync("9999-999", Arg.Any<CancellationToken>())
             .Returns((GeoCoordinate?)null);
 
-        var response = await _client.GetAsync("/api/stores/geocode?postalCode=9999-999");
+        var response = await _client.GetAsync("/api/stores/geocode?postalCode=9999-999", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 }

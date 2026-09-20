@@ -1,0 +1,91 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this is
+
+Savvori is a grocery price-comparison API + web app for Portugal. It scrapes product prices from major Portuguese supermarket chains (Continente, Pingo Doce, Auchan, Minipreço implemented; Lidl, Intermarché, Mercadona are stubs with no online catalog), and helps users build shopping lists and optimize them for cheapest cost across stores.
+
+ASP.NET Core / .NET 10, orchestrated locally with .NET Aspire, PostgreSQL via EF Core.
+
+## Build, run, test
+
+Use Windows PowerShell syntax (this is a Windows dev environment).
+
+- **Run everything (recommended)**: `aspire run` from repo root — starts a PostgreSQL container via Podman, the Aspire dashboard (http://localhost:15888), the Web API, and the Web App. If `aspire` isn't on PATH, use `& "$env:USERPROFILE\.dotnet\tools\aspire.exe" run`.
+- **Build**: `dotnet build Savvori.sln`
+- **Run Web API directly** (needs local Postgres at `ConnectionStrings:savvori`): `dotnet run --project src/Savvori.WebApi/Savvori.WebApi.csproj`
+  - OpenAPI (dev): `http://localhost:5000/openapi/v1.json`, Health: `/health`
+- **Test all**: `dotnet test Savvori.sln` (runs in Microsoft.Testing.Platform mode via `global.json` `test.runner`; `LiveScraperTests` hit the live network and are a known flake)
+- **Test a single project**: `dotnet test tests/Savvori.Api.Tests/Savvori.Api.Tests.csproj` (same for `Savvori.Web.Tests`, `Savvori.E2E.Tests`)
+- **Test a single test**: `dotnet test tests/Savvori.Web.Tests/Savvori.Web.Tests.csproj --filter "FullyQualifiedName~ClassName.MethodName"`
+- **Container runtime**: Podman (`ASPIRE_CONTAINER_RUNTIME=podman` set as a user env var) — Aspire uses it for the Postgres container.
+- **Aspire MCP tools** (list_resources, console_logs, traces): available once `aspire run` is active; configured in `.vscode/mcp.json`.
+
+### Local test accounts (seeded on first startup, dev only)
+
+| Role | Email | Password |
+|------|-------|----------|
+| Admin | `admin@savvori.dev` | `Admin123!` |
+| User | `user@savvori.dev` | `User123!` |
+
+Log in via `POST /api/auth/login` for a JWT, then `Authorization: Bearer <token>`.
+
+## Solution structure
+
+```
+src/
+  Savvori.AppHost/         Aspire orchestration (AppHost.cs wires up services + Postgres container)
+  Savvori.ServiceDefaults/ Shared OpenTelemetry, health checks, HTTP resilience wiring
+  Savvori.Shared/          EF Core entity models (User, Product, Store, ShoppingList, ...)
+  Savvori.WebApi/          ASP.NET Core Web API — the actual DbContext, controllers, scraping, business logic
+  Savvori.WebApp/          Razor Pages frontend (TailwindCSS v4 + DaisyUI v5, HTMX)
+tests/
+  Savvori.Api.Tests/       Integration tests against Savvori.WebApi (WebApplicationFactory)
+  Savvori.Web.Tests/       Unit tests covering both WebApi and WebApp
+  Savvori.E2E.Tests/       End-to-end tests against Savvori.WebApp
+```
+
+**Gotcha**: `Savvori.Shared` contains an unused, stale `SavvoriDbContext.cs` and `Class1.cs` left over from project scaffolding. The DbContext actually wired into DI (`SavvoriDbContext` in namespace `Savvori.WebApi`) lives in `src/Savvori.WebApi/SavvoriDbContext.cs` and references the entity classes from `Savvori.Shared`. Don't confuse the two when looking for "the" DbContext.
+
+## Architecture
+
+### Web API (`src/Savvori.WebApi`)
+
+- Minimal-API style bootstrap in `Program.cs`, but endpoints are grouped into MVC controllers under `Controllers/` (Auth, Products, Categories, Stores, ShoppingLists, Optimize, ScrapingAdmin, MappingAdmin).
+- Auth: dual scheme — JWT Bearer (for API-to-API / direct API callers) and cookie auth, selected per-request via a `JwtOrCookie` policy scheme that inspects the `Authorization` header.
+- Database: `SavvoriDbContext` over PostgreSQL (via `Aspire.Npgsql.EntityFrameworkCore.PostgreSQL`), or EF Core InMemory when `ASPNETCORE_ENVIRONMENT=Testing`.
+- EF migrations are applied automatically at startup, before seeding.
+
+### Scraping (`src/Savvori.WebApi/Scraping`)
+
+- `IStoreScraper` — contract each store chain scraper implements (`Scrapers/*Scraper.cs`).
+- `BaseHttpScraper` — shared HttpClient + Polly v8 retry policy + AngleSharp HTML parsing.
+- `ScraperResultProcessor` — normalizes raw scraper output and upserts Products/Prices.
+- `ProductNormalizer` — size/unit extraction, text normalization, brand extraction.
+- `ProductMatcher` / `CategoryMapper` / `CategoryTaxonomy` / `CategorySeeder` — category taxonomy assignment and product-to-category mapping (added in the "Phase 4" work).
+- `StoreScrapeJob` — Quartz.NET job running all registered scrapers, scheduled twice daily.
+- New store chain = implement `IStoreScraper` + register with DI; scrapers differ by underlying platform (SFCC JSON, SAP Hybris HTML, etc.) — check an existing scraper for the closest-matching platform before writing a new one from scratch.
+
+### Optimization (`src/Savvori.WebApi/Services`)
+
+- `IShoppingOptimizer` / `ShoppingOptimizer` implement four modes: `cheapest-total`, `cheapest-store`, `balanced` (configurable savings threshold, default €2.00), `compare` (full price matrix). Modes are pluggable.
+- `ILocationService` / `GeoApiLocationService` — postal code → coordinates via geoapi.pt, Haversine distance for "stores nearby", `IMemoryCache` with 24h TTL.
+
+### Web App (`src/Savvori.WebApp`)
+
+- Razor Pages, styled with TailwindCSS v4 + DaisyUI v5. CSS is built from `wwwroot/css/input.css` via `npm run build:css`, wired as an MSBuild target that runs before every build (skipped when `$(CI) == 'true'`). Generated `site.css` is git-ignored — run `npm install` in `src/Savvori.WebApp` before first build if `node_modules` is missing.
+- HTMX (CDN) drives in-page updates without full reloads (debounced product search, admin auto-refreshing status tables, etc.).
+- Talks to the Web API exclusively through `SavvoriApiClient` (typed HttpClient, DI-registered), which wraps every Web API endpoint. Base address comes from Aspire service discovery keys, falling back to `http://localhost:5000`.
+- Auth bridging: `savvori_auth` cookie governs page-level `[Authorize]`; `savvori_token` cookie holds the raw JWT; `AuthCookieHandler` (a `DelegatingHandler`) reads the JWT cookie and injects it as `Authorization: Bearer` on every outbound `SavvoriApiClient` call.
+- Admin pages live under `Pages/Admin/` (own layout, `[Authorize(Roles = "admin")]`).
+
+### Aspire (`src/Savvori.AppHost`, `src/Savvori.ServiceDefaults`)
+
+- `AppHost.cs` is the single place new services/infrastructure get registered — add `ProjectReference` in the AppHost csproj, then `builder.AddProject<Projects.X>("name")`, wire dependencies with `.WithReference(...).WaitFor(...)`.
+- Every executable project must call `builder.AddServiceDefaults()` / `app.MapDefaultEndpoints()` for OpenTelemetry, health checks, and HTTP resilience (`AddStandardResilienceHandler()`) to stay consistent.
+
+## Docs
+
+- `docs/FUNCTIONAL_REQUIREMENTS.md` and `docs/TECHNICAL_ARCHITECTURE.md` are the living spec/architecture docs for this project — check them for feature scope and design rationale, and update them when functional behavior or architecture changes (this repo's contributing convention, see `.github/copilot-instructions.md`).
+- Keep package versions consistent across all `net10.0` projects (currently EF Core / ASP.NET packages on 10.0.11, Aspire packages on 13.5.x; Quartz stays on 3.20.x until Quartz.Extensions.Hosting ships a 4.x release) when bumping dependencies.

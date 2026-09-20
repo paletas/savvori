@@ -59,10 +59,10 @@ public class ProductsTests : IClassFixture<SavvoriWebApiFactory>
     [Fact]
     public async Task GetProducts_ReturnsPagedResults()
     {
-        var response = await _client.GetAsync("/api/products");
+        var response = await _client.GetAsync("/api/products", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.True(body.GetProperty("total").GetInt32() >= 1);
         Assert.True(body.GetProperty("items").GetArrayLength() >= 1);
     }
@@ -70,10 +70,10 @@ public class ProductsTests : IClassFixture<SavvoriWebApiFactory>
     [Fact]
     public async Task GetProducts_WithSearch_ReturnsFilteredResults()
     {
-        var response = await _client.GetAsync("/api/products?search=milk");
+        var response = await _client.GetAsync("/api/products?search=milk", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         var items = body.GetProperty("items");
         Assert.True(items.GetArrayLength() >= 1);
         foreach (var item in items.EnumerateArray())
@@ -86,20 +86,20 @@ public class ProductsTests : IClassFixture<SavvoriWebApiFactory>
     [Fact]
     public async Task GetProducts_WithCategoryFilter_ReturnsFilteredResults()
     {
-        var response = await _client.GetAsync($"/api/products?category={_categoryId}");
+        var response = await _client.GetAsync($"/api/products?category={_categoryId}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.True(body.GetProperty("total").GetInt32() >= 1);
     }
 
     [Fact]
     public async Task GetProducts_Pagination_ReturnsCorrectPageSize()
     {
-        var response = await _client.GetAsync("/api/products?page=1&pageSize=1");
+        var response = await _client.GetAsync("/api/products?page=1&pageSize=1", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.Equal(1, body.GetProperty("pageSize").GetInt32());
         Assert.Equal(1, body.GetProperty("items").GetArrayLength());
     }
@@ -107,10 +107,10 @@ public class ProductsTests : IClassFixture<SavvoriWebApiFactory>
     [Fact]
     public async Task GetProduct_ValidId_ReturnsProductWithPrices()
     {
-        var response = await _client.GetAsync($"/api/products/{_productId}");
+        var response = await _client.GetAsync($"/api/products/{_productId}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.Equal(_productId.ToString(), body.GetProperty("id").GetString());
         Assert.Equal("Milk Full Fat", body.GetProperty("name").GetString());
         var prices = body.GetProperty("prices");
@@ -120,17 +120,17 @@ public class ProductsTests : IClassFixture<SavvoriWebApiFactory>
     [Fact]
     public async Task GetProduct_InvalidId_Returns404()
     {
-        var response = await _client.GetAsync($"/api/products/{Guid.NewGuid()}");
+        var response = await _client.GetAsync($"/api/products/{Guid.NewGuid()}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]
     public async Task GetAlternatives_ValidProduct_ReturnsAlternatives()
     {
-        var response = await _client.GetAsync($"/api/products/{_productId}/alternatives");
+        var response = await _client.GetAsync($"/api/products/{_productId}/alternatives", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.True(body.TryGetProperty("items", out var items2));
         // Should find Skim Milk in same category
         Assert.True(items2.GetArrayLength() >= 1);
@@ -141,30 +141,30 @@ public class ProductsTests : IClassFixture<SavvoriWebApiFactory>
     {
         // Orange Juice has no category
         // Find it by name
-        var listResponse = await _client.GetAsync("/api/products?search=Orange+Juice");
-        var listBody = await listResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var listResponse = await _client.GetAsync("/api/products?search=Orange+Juice", TestContext.Current.CancellationToken);
+        var listBody = await listResponse.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         var ojId = listBody.GetProperty("items")[0].GetProperty("id").GetString();
 
-        var response = await _client.GetAsync($"/api/products/{ojId}/alternatives");
+        var response = await _client.GetAsync($"/api/products/{ojId}/alternatives", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.Equal(0, body.GetProperty("items").GetArrayLength());
     }
 
     [Fact]
     public async Task GetAlternatives_InvalidProduct_Returns404()
     {
-        var response = await _client.GetAsync($"/api/products/{Guid.NewGuid()}/alternatives");
+        var response = await _client.GetAsync($"/api/products/{Guid.NewGuid()}/alternatives", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]
     public async Task GetPriceHistory_ValidProduct_ReturnsHistory()
     {
-        var response = await _client.GetAsync($"/api/products/{_productId}/pricehistory");
+        var response = await _client.GetAsync($"/api/products/{_productId}/pricehistory", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.Equal(_productId.ToString(), body.GetProperty("productId").GetString());
         Assert.True(body.GetProperty("history").GetArrayLength() >= 1);
     }
@@ -172,10 +172,10 @@ public class ProductsTests : IClassFixture<SavvoriWebApiFactory>
     [Fact]
     public async Task GetPriceHistory_WithDaysFilter_LimitsResults()
     {
-        var response = await _client.GetAsync($"/api/products/{_productId}/pricehistory?days=3");
+        var response = await _client.GetAsync($"/api/products/{_productId}/pricehistory?days=3", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         // The historical price is 5 days old, so with days=3 only the latest should appear
         Assert.Equal(3, body.GetProperty("days").GetInt32());
         Assert.Equal(1, body.GetProperty("history").GetArrayLength());
@@ -185,17 +185,17 @@ public class ProductsTests : IClassFixture<SavvoriWebApiFactory>
     public async Task GetPriceHistory_WithChainFilter_FiltersResults()
     {
         var response = await _client.GetAsync(
-            $"/api/products/{_productId}/pricehistory?chainSlug={_chainSlug}");
+            $"/api/products/{_productId}/pricehistory?chainSlug={_chainSlug}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.True(body.GetProperty("history").GetArrayLength() >= 1);
     }
 
     [Fact]
     public async Task GetPriceHistory_InvalidProduct_Returns404()
     {
-        var response = await _client.GetAsync($"/api/products/{Guid.NewGuid()}/pricehistory");
+        var response = await _client.GetAsync($"/api/products/{Guid.NewGuid()}/pricehistory", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 }

@@ -52,10 +52,10 @@ public class ShoppingListsTests : IClassFixture<SavvoriWebApiFactory>
     public async Task GetLists_Authenticated_ReturnsOnlyUserLists()
     {
         using var client = AuthClient();
-        var response = await client.GetAsync("/api/shoppinglists");
+        var response = await client.GetAsync("/api/shoppinglists", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         var lists = body.EnumerateArray().ToList();
         Assert.True(lists.Count >= 1);
         // All lists must belong to the authenticated user
@@ -67,7 +67,7 @@ public class ShoppingListsTests : IClassFixture<SavvoriWebApiFactory>
     public async Task GetLists_Unauthenticated_Returns401()
     {
         using var client = _factory.CreateClient();
-        var response = await client.GetAsync("/api/shoppinglists");
+        var response = await client.GetAsync("/api/shoppinglists", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
@@ -76,10 +76,10 @@ public class ShoppingListsTests : IClassFixture<SavvoriWebApiFactory>
     {
         using var client = AuthClient();
         var response = await client.PostAsJsonAsync("/api/shoppinglists",
-            new { Name = "New Test List" });
+            new { Name = "New Test List" }, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.Equal("New Test List", body.GetProperty("name").GetString());
         Assert.Equal(_userId.ToString(), body.GetProperty("userId").GetString());
     }
@@ -89,7 +89,7 @@ public class ShoppingListsTests : IClassFixture<SavvoriWebApiFactory>
     {
         using var client = _factory.CreateClient();
         var response = await client.PostAsJsonAsync("/api/shoppinglists",
-            new { Name = "Unauthorized List" });
+            new { Name = "Unauthorized List" }, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
@@ -98,10 +98,10 @@ public class ShoppingListsTests : IClassFixture<SavvoriWebApiFactory>
     {
         using var client = AuthClient();
         var response = await client.PutAsJsonAsync($"/api/shoppinglists/{_existingListId}",
-            new { Name = "Updated List Name" });
+            new { Name = "Updated List Name" }, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.Equal("Updated List Name", body.GetProperty("name").GetString());
     }
 
@@ -119,7 +119,7 @@ public class ShoppingListsTests : IClassFixture<SavvoriWebApiFactory>
 
         using var client = AuthClient(); // authenticated as _userId
         var response = await client.PutAsJsonAsync($"/api/shoppinglists/{otherListId}",
-            new { Name = "Hijacked Name" });
+            new { Name = "Hijacked Name" }, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
@@ -128,7 +128,7 @@ public class ShoppingListsTests : IClassFixture<SavvoriWebApiFactory>
     {
         using var client = _factory.CreateClient();
         var response = await client.PutAsJsonAsync($"/api/shoppinglists/{_existingListId}",
-            new { Name = "Fail" });
+            new { Name = "Fail" }, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
@@ -145,7 +145,7 @@ public class ShoppingListsTests : IClassFixture<SavvoriWebApiFactory>
         });
 
         using var client = AuthClient();
-        var response = await client.DeleteAsync($"/api/shoppinglists/{deleteId}");
+        var response = await client.DeleteAsync($"/api/shoppinglists/{deleteId}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
     }
 
@@ -161,7 +161,7 @@ public class ShoppingListsTests : IClassFixture<SavvoriWebApiFactory>
         });
 
         using var client = AuthClient();
-        var response = await client.DeleteAsync($"/api/shoppinglists/{otherListId}");
+        var response = await client.DeleteAsync($"/api/shoppinglists/{otherListId}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
@@ -171,10 +171,10 @@ public class ShoppingListsTests : IClassFixture<SavvoriWebApiFactory>
         using var client = AuthClient();
         var response = await client.PostAsJsonAsync(
             $"/api/shoppinglists/{_existingListId}/items",
-            new { ProductId = _productId, Quantity = 2 });
+            new { ProductId = _productId, Quantity = 2 }, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.Equal(_productId.ToString(), body.GetProperty("productId").GetString());
         Assert.Equal(2, body.GetProperty("quantity").GetInt32());
     }
@@ -193,7 +193,7 @@ public class ShoppingListsTests : IClassFixture<SavvoriWebApiFactory>
         using var client = AuthClient();
         var response = await client.PostAsJsonAsync(
             $"/api/shoppinglists/{otherListId}/items",
-            new { ProductId = _productId, Quantity = 1 });
+            new { ProductId = _productId, Quantity = 1 }, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
@@ -214,7 +214,7 @@ public class ShoppingListsTests : IClassFixture<SavvoriWebApiFactory>
         });
 
         using var client = AuthClient();
-        var response = await client.DeleteAsync($"/api/shoppinglists/{listId}/items/{itemId}");
+        var response = await client.DeleteAsync($"/api/shoppinglists/{listId}/items/{itemId}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
     }
 
@@ -223,7 +223,7 @@ public class ShoppingListsTests : IClassFixture<SavvoriWebApiFactory>
     {
         using var client = AuthClient();
         var response = await client.DeleteAsync(
-            $"/api/shoppinglists/{_existingListId}/items/{Guid.NewGuid()}");
+            $"/api/shoppinglists/{_existingListId}/items/{Guid.NewGuid()}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 }

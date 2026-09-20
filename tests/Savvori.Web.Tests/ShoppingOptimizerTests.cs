@@ -249,7 +249,7 @@ public class ShoppingOptimizerTests : IDisposable
 
         _db.Products.Add(new Product { Id = orphanProductId, Name = "Produto Raro" });
         _db.ShoppingListItems.Add(new ShoppingListItem { Id = orphanItemId, ShoppingListId = orphanListId, ProductId = orphanProductId, Quantity = 1 });
-        await _db.SaveChangesAsync();
+        await _db.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         var result = await _optimizer.OptimizeCheapestTotalAsync(orphanListId, new OptimizationContext(), CancellationToken.None);
 

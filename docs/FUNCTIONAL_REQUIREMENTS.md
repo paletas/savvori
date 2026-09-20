@@ -111,7 +111,24 @@ The `/api/shoppinglists/{id}/optimize` endpoint supports four modes via `?mode=`
 - Both endpoints require the `admin` role.
 - Supported `chainSlug` values: `continente`, `pingo-doce`, `auchan`, `minipreco` (stubs: `lidl`, `intermarche`, `mercadona`).
 
-## 9. Web Application (Frontend UI)
+## 9. Category & Product Mapping Admin
+
+### User Stories
+- As an administrator, I want to see how much of the catalog is categorized and matched so I can gauge data quality.
+- As an administrator, I want to review products with no category and store products that failed to match a canonical product, so I can repair the catalog.
+- As an administrator, I want to bulk-repair mappings (backfill categories, rematch store products) and, when automation can't resolve an item, assign it manually.
+
+### Acceptance Criteria
+- `GET /api/admin/mapping/stats` returns total/categorized/uncategorized product counts, match-status breakdown, and match-method breakdown.
+- `GET /api/admin/mapping/uncategorized-products` and `GET /api/admin/mapping/unmapped-categories` are paginated/listable and admin-only.
+- `GET /api/admin/mapping/store-products?status=&chainSlug=` supports filtering by match status and store chain.
+- `POST /api/admin/mapping/backfill-categories` assigns canonical categories to uncategorized products wherever a mapping now resolves, without erroring on unresolved ones.
+- `POST /api/admin/mapping/rematch?chainSlug=` re-attempts EAN and brand/name/size/unit matching for unmatched or failed store products, optionally scoped to one chain, and never creates duplicate canonical products.
+- `PUT /api/admin/mapping/products/{id}/category` and `PUT /api/admin/mapping/store-products/{id}/canonical` allow manual, per-item correction.
+- All endpoints require the `admin` role.
+- The Web App admin area (`/Admin/Mapping`) provides a UI over this same API.
+
+## 10. Web Application (Frontend UI)
 
 ### User Stories
 - As a user, I want a web interface so I can use Savvori without writing API calls.
@@ -141,6 +158,8 @@ The `/api/shoppinglists/{id}/optimize` endpoint supports four modes via `?mode=`
 - `/Admin` is the admin dashboard, accessible only to users with the `admin` role.
 - `/Admin/Scraping` shows a live auto-refreshing (every 30 s) grid of scraping job statuses.
 - `/Admin/Scraping/Detail/{chainSlug}` shows per-chain job history, recent logs, and a manual trigger button.
+- `/Admin/Mapping` provides a UI over the category/product mapping admin API (see section 9): stats, uncategorized products, unmapped categories, store-product match status, and repair actions.
+- `/Admin/Products` and `/Admin/Stores` provide admin views over the product and store catalogs.
 
 ---
 

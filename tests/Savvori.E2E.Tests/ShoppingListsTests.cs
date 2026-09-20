@@ -16,9 +16,9 @@ public class ShoppingListsTests(SavvoriWebAppFactory factory) : IClassFixture<Sa
     public async Task ShoppingListsPage_Authenticated_ReturnsOk_ShowsLists()
     {
         var client = await factory.CreateAuthenticatedClientAsync();
-        var response = await client.GetAsync("/ShoppingLists");
+        var response = await client.GetAsync("/ShoppingLists", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var html = await response.Content.ReadAsStringAsync();
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains("Weekly Shopping", html);
     }
 
@@ -44,7 +44,7 @@ public class ShoppingListsTests(SavvoriWebAppFactory factory) : IClassFixture<Sa
                 ["Email"] = "user@savvori.test",
                 ["Password"] = "TestPassword123",
                 ["__RequestVerificationToken"] = loginToken
-            }));
+            }), TestContext.Current.CancellationToken);
 
         var postToken = await SavvoriWebAppFactory.GetAntiForgeryTokenAsync(noRedirectClient, "/ShoppingLists");
         var response = await noRedirectClient.PostAsync("/ShoppingLists?handler=Create", new FormUrlEncodedContent(
@@ -52,7 +52,7 @@ public class ShoppingListsTests(SavvoriWebAppFactory factory) : IClassFixture<Sa
             {
                 ["name"] = "My New List",
                 ["__RequestVerificationToken"] = postToken
-            }));
+            }), TestContext.Current.CancellationToken);
 
         // After creating a list, page model redirects to /ShoppingLists/Detail/{newId}
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
@@ -76,7 +76,7 @@ public class ShoppingListsTests(SavvoriWebAppFactory factory) : IClassFixture<Sa
                 ["Email"] = "user@savvori.test",
                 ["Password"] = "TestPassword123",
                 ["__RequestVerificationToken"] = loginToken
-            }));
+            }), TestContext.Current.CancellationToken);
 
         var postToken = await SavvoriWebAppFactory.GetAntiForgeryTokenAsync(client, "/ShoppingLists");
         var response = await client.PostAsync("/ShoppingLists?handler=Rename", new FormUrlEncodedContent(
@@ -85,7 +85,7 @@ public class ShoppingListsTests(SavvoriWebAppFactory factory) : IClassFixture<Sa
                 ["id"] = MockApiHandler.ListId.ToString(),
                 ["name"] = "Renamed List",
                 ["__RequestVerificationToken"] = postToken
-            }));
+            }), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Contains("/ShoppingLists", response.Headers.Location?.ToString() ?? "");
@@ -108,7 +108,7 @@ public class ShoppingListsTests(SavvoriWebAppFactory factory) : IClassFixture<Sa
                 ["Email"] = "user@savvori.test",
                 ["Password"] = "TestPassword123",
                 ["__RequestVerificationToken"] = loginToken
-            }));
+            }), TestContext.Current.CancellationToken);
 
         var postToken = await SavvoriWebAppFactory.GetAntiForgeryTokenAsync(client, "/ShoppingLists");
         var response = await client.PostAsync("/ShoppingLists?handler=Delete", new FormUrlEncodedContent(
@@ -116,7 +116,7 @@ public class ShoppingListsTests(SavvoriWebAppFactory factory) : IClassFixture<Sa
             {
                 ["id"] = MockApiHandler.ListId.ToString(),
                 ["__RequestVerificationToken"] = postToken
-            }));
+            }), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Contains("/ShoppingLists", response.Headers.Location?.ToString() ?? "");
@@ -128,9 +128,9 @@ public class ShoppingListsTests(SavvoriWebAppFactory factory) : IClassFixture<Sa
     public async Task ListDetailPage_Authenticated_ReturnsOk_ShowsListName()
     {
         var client = await factory.CreateAuthenticatedClientAsync();
-        var response = await client.GetAsync($"/ShoppingLists/Detail/{MockApiHandler.ListId}");
+        var response = await client.GetAsync($"/ShoppingLists/Detail/{MockApiHandler.ListId}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var html = await response.Content.ReadAsStringAsync();
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains("Weekly Shopping", html);
     }
 
@@ -143,9 +143,9 @@ public class ShoppingListsTests(SavvoriWebAppFactory factory) : IClassFixture<Sa
             $"/ShoppingLists/Detail/{MockApiHandler.ListId}?handler=SearchProducts&q=milk");
         request.Headers.Add("HX-Request", "true");
 
-        var response = await client.SendAsync(request);
+        var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var html = await response.Content.ReadAsStringAsync();
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains("Test Milk 1L", html);
     }
 
@@ -156,9 +156,9 @@ public class ShoppingListsTests(SavvoriWebAppFactory factory) : IClassFixture<Sa
     {
         // Without mode param — just loads the page UI without running optimization
         var client = await factory.CreateAuthenticatedClientAsync();
-        var response = await client.GetAsync($"/ShoppingLists/Optimize/{MockApiHandler.ListId}");
+        var response = await client.GetAsync($"/ShoppingLists/Optimize/{MockApiHandler.ListId}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var html = await response.Content.ReadAsStringAsync();
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains("Weekly Shopping", html);
     }
 
@@ -167,9 +167,9 @@ public class ShoppingListsTests(SavvoriWebAppFactory factory) : IClassFixture<Sa
     {
         var client = await factory.CreateAuthenticatedClientAsync();
         var response = await client.GetAsync(
-            $"/ShoppingLists/Optimize/{MockApiHandler.ListId}?mode=cheapest-total");
+            $"/ShoppingLists/Optimize/{MockApiHandler.ListId}?mode=cheapest-total", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var html = await response.Content.ReadAsStringAsync();
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains("Continente", html);
     }
 
@@ -178,9 +178,9 @@ public class ShoppingListsTests(SavvoriWebAppFactory factory) : IClassFixture<Sa
     {
         var client = await factory.CreateAuthenticatedClientAsync();
         var response = await client.GetAsync(
-            $"/ShoppingLists/Optimize/{MockApiHandler.ListId}?mode=compare");
+            $"/ShoppingLists/Optimize/{MockApiHandler.ListId}?mode=compare", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var html = await response.Content.ReadAsStringAsync();
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains("Continente", html);
     }
 }

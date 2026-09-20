@@ -26,7 +26,7 @@ public class SavvoriApiClientTests
         handler.SetupRoute("/api/auth/login", ToJson(new { token = "jwt-token-123", isAdmin = false }));
         var client = CreateClient(handler);
 
-        var (success, token, isAdmin, error) = await client.LoginAsync("user@test.com", "password123");
+        var (success, token, isAdmin, error) = await client.LoginAsync("user@test.com", "password123", TestContext.Current.CancellationToken);
 
         Assert.True(success);
         Assert.Equal("jwt-token-123", token);
@@ -41,7 +41,7 @@ public class SavvoriApiClientTests
         handler.SetupRoute("/api/auth/login", "", HttpStatusCode.Unauthorized);
         var client = CreateClient(handler);
 
-        var (success, token, isAdmin, error) = await client.LoginAsync("user@test.com", "wrongpassword");
+        var (success, token, isAdmin, error) = await client.LoginAsync("user@test.com", "wrongpassword", TestContext.Current.CancellationToken);
 
         Assert.False(success);
         Assert.Null(token);
@@ -56,7 +56,7 @@ public class SavvoriApiClientTests
         handler.SetupRoute("/api/auth/register", "");
         var client = CreateClient(handler);
 
-        var (success, error) = await client.RegisterAsync("newuser@test.com", "password123");
+        var (success, error) = await client.RegisterAsync("newuser@test.com", "password123", TestContext.Current.CancellationToken);
 
         Assert.True(success);
         Assert.Null(error);
@@ -69,7 +69,7 @@ public class SavvoriApiClientTests
         handler.SetupRoute("/api/auth/register", "Email already registered", HttpStatusCode.BadRequest);
         var client = CreateClient(handler);
 
-        var (success, error) = await client.RegisterAsync("existing@test.com", "password123");
+        var (success, error) = await client.RegisterAsync("existing@test.com", "password123", TestContext.Current.CancellationToken);
 
         Assert.False(success);
         Assert.Equal("Email already registered", error);
@@ -89,7 +89,7 @@ public class SavvoriApiClientTests
         handler.SetupRoute("/api/products", ToJson(products));
         var client = CreateClient(handler);
 
-        var result = await client.GetProductsAsync(search: "leite");
+        var result = await client.GetProductsAsync(search: "leite", ct: TestContext.Current.CancellationToken);
 
         Assert.NotNull(result);
         Assert.Equal(2, result.Items.Count);
@@ -103,7 +103,7 @@ public class SavvoriApiClientTests
         handler.SetupRoute("/api/products", "", HttpStatusCode.InternalServerError);
         var client = CreateClient(handler);
 
-        var result = await client.GetProductsAsync();
+        var result = await client.GetProductsAsync(ct: TestContext.Current.CancellationToken);
 
         Assert.Null(result);
     }
@@ -124,7 +124,7 @@ public class SavvoriApiClientTests
         handler.SetupRoute($"/api/products/{id}", ToJson(product));
         var client = CreateClient(handler);
 
-        var result = await client.GetProductAsync(id);
+        var result = await client.GetProductAsync(id, TestContext.Current.CancellationToken);
 
         Assert.NotNull(result);
         Assert.Equal("Leite UHT", result.Name);
@@ -139,7 +139,7 @@ public class SavvoriApiClientTests
         handler.SetupRoute("/api/products/", "", HttpStatusCode.NotFound);
         var client = CreateClient(handler);
 
-        var result = await client.GetProductAsync(Guid.NewGuid());
+        var result = await client.GetProductAsync(Guid.NewGuid(), TestContext.Current.CancellationToken);
 
         Assert.Null(result);
     }
@@ -156,7 +156,7 @@ public class SavvoriApiClientTests
         handler.SetupRoute($"/api/products/{productId}/alternatives", ToJson(response));
         var client = CreateClient(handler);
 
-        var result = await client.GetAlternativesAsync(productId);
+        var result = await client.GetAlternativesAsync(productId, TestContext.Current.CancellationToken);
 
         Assert.Single(result);
         Assert.Equal("Leite Magro", result[0].Name);
@@ -169,7 +169,7 @@ public class SavvoriApiClientTests
         handler.SetupRoute("/alternatives", "", HttpStatusCode.InternalServerError);
         var client = CreateClient(handler);
 
-        var result = await client.GetAlternativesAsync(Guid.NewGuid());
+        var result = await client.GetAlternativesAsync(Guid.NewGuid(), TestContext.Current.CancellationToken);
 
         Assert.Empty(result);
     }
@@ -190,7 +190,7 @@ public class SavvoriApiClientTests
         handler.SetupRoute("/api/categories", ToJson(categories));
         var client = CreateClient(handler);
 
-        var result = await client.GetCategoriesAsync();
+        var result = await client.GetCategoriesAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(result);
         Assert.Equal("Laticínios", result[0].Name);
@@ -204,7 +204,7 @@ public class SavvoriApiClientTests
         handler.SetupRoute("/api/categories", "", HttpStatusCode.InternalServerError);
         var client = CreateClient(handler);
 
-        var result = await client.GetCategoriesAsync();
+        var result = await client.GetCategoriesAsync(TestContext.Current.CancellationToken);
 
         Assert.Empty(result);
     }
@@ -227,7 +227,7 @@ public class SavvoriApiClientTests
         handler.SetupRoute("/api/stores/nearby", ToJson(response));
         var client = CreateClient(handler);
 
-        var result = await client.GetNearbyStoresAsync("1000-001", 10);
+        var result = await client.GetNearbyStoresAsync("1000-001", 10, TestContext.Current.CancellationToken);
 
         Assert.NotNull(result);
         Assert.Equal(2, result.StoreCount);
@@ -241,7 +241,7 @@ public class SavvoriApiClientTests
         handler.SetupRoute("/api/stores/nearby", "", HttpStatusCode.BadRequest);
         var client = CreateClient(handler);
 
-        var result = await client.GetNearbyStoresAsync("invalid");
+        var result = await client.GetNearbyStoresAsync("invalid", ct: TestContext.Current.CancellationToken);
 
         Assert.Null(result);
     }
@@ -262,7 +262,7 @@ public class SavvoriApiClientTests
         handler.SetupRoute("/api/shoppinglists", ToJson(lists));
         var client = CreateClient(handler);
 
-        var result = await client.GetShoppingListsAsync();
+        var result = await client.GetShoppingListsAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, result.Count);
     }
@@ -274,7 +274,7 @@ public class SavvoriApiClientTests
         handler.SetupRoute("/api/shoppinglists", "", HttpStatusCode.InternalServerError);
         var client = CreateClient(handler);
 
-        var result = await client.GetShoppingListsAsync();
+        var result = await client.GetShoppingListsAsync(TestContext.Current.CancellationToken);
 
         Assert.Empty(result);
     }
@@ -289,7 +289,7 @@ public class SavvoriApiClientTests
         handler.SetupRoute("/api/shoppinglists", ToJson(created));
         var client = CreateClient(handler);
 
-        var result = await client.CreateShoppingListAsync("My new list");
+        var result = await client.CreateShoppingListAsync("My new list", TestContext.Current.CancellationToken);
 
         Assert.NotNull(result);
         Assert.Equal("My new list", result.Name);
@@ -303,7 +303,7 @@ public class SavvoriApiClientTests
         handler.SetupRoute($"/api/shoppinglists/{id}", "", HttpStatusCode.NoContent);
         var client = CreateClient(handler);
 
-        var result = await client.DeleteShoppingListAsync(id);
+        var result = await client.DeleteShoppingListAsync(id, TestContext.Current.CancellationToken);
 
         Assert.True(result);
     }
@@ -316,7 +316,7 @@ public class SavvoriApiClientTests
         handler.SetupRoute($"/api/shoppinglists/{id}", "", HttpStatusCode.InternalServerError);
         var client = CreateClient(handler);
 
-        var result = await client.DeleteShoppingListAsync(id);
+        var result = await client.DeleteShoppingListAsync(id, TestContext.Current.CancellationToken);
 
         Assert.False(result);
     }
@@ -329,7 +329,7 @@ public class SavvoriApiClientTests
         handler.SetupRoute($"/api/shoppinglists/{id}", "", HttpStatusCode.OK);
         var client = CreateClient(handler);
 
-        var result = await client.UpdateShoppingListAsync(id, "Updated name");
+        var result = await client.UpdateShoppingListAsync(id, "Updated name", TestContext.Current.CancellationToken);
 
         Assert.True(result);
     }
@@ -350,7 +350,7 @@ public class SavvoriApiClientTests
         handler.SetupRoute("/api/admin/scraping/status", ToJson(jobs));
         var client = CreateClient(handler);
 
-        var result = await client.GetScrapingStatusAsync();
+        var result = await client.GetScrapingStatusAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, result.Count);
         Assert.Equal("continente", result[0].ChainSlug);
@@ -365,7 +365,7 @@ public class SavvoriApiClientTests
         handler.SetupRoute("/api/admin/scraping/status", "", HttpStatusCode.InternalServerError);
         var client = CreateClient(handler);
 
-        var result = await client.GetScrapingStatusAsync();
+        var result = await client.GetScrapingStatusAsync(TestContext.Current.CancellationToken);
 
         Assert.Empty(result);
     }
@@ -378,7 +378,7 @@ public class SavvoriApiClientTests
         handler.SetupRoute("/api/admin/scraping/trigger/continente", ToJson(response), HttpStatusCode.Accepted);
         var client = CreateClient(handler);
 
-        var (success, message) = await client.TriggerScrapeAsync("continente");
+        var (success, message) = await client.TriggerScrapeAsync("continente", TestContext.Current.CancellationToken);
 
         Assert.True(success);
         Assert.Contains("continente", message);
@@ -391,7 +391,7 @@ public class SavvoriApiClientTests
         handler.SetupRoute("/api/admin/scraping/trigger/unknown", "No scheduled job found", HttpStatusCode.BadRequest);
         var client = CreateClient(handler);
 
-        var (success, message) = await client.TriggerScrapeAsync("unknown");
+        var (success, message) = await client.TriggerScrapeAsync("unknown", TestContext.Current.CancellationToken);
 
         Assert.False(success);
         Assert.NotNull(message);

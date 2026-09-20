@@ -18,8 +18,8 @@ public class CategorySeederTests
     public async Task SeedAsync_PopulatesCategories()
     {
         await using var db = CreateDb();
-        await CategorySeeder.SeedAsync(db);
-        var count = await db.ProductCategories.CountAsync();
+        await CategorySeeder.SeedAsync(db, ct: TestContext.Current.CancellationToken);
+        var count = await db.ProductCategories.CountAsync(TestContext.Current.CancellationToken);
         Assert.True(count > 0, "Expected categories to be seeded.");
         // Taxonomy has 8 parents + 32 children = 40 total
         Assert.Equal(CategoryTaxonomy.All.Count, count);
@@ -29,9 +29,9 @@ public class CategorySeederTests
     public async Task SeedAsync_IsIdempotent_DoesNotDuplicateOnSecondCall()
     {
         await using var db = CreateDb();
-        await CategorySeeder.SeedAsync(db);
-        await CategorySeeder.SeedAsync(db);
-        var count = await db.ProductCategories.CountAsync();
+        await CategorySeeder.SeedAsync(db, ct: TestContext.Current.CancellationToken);
+        await CategorySeeder.SeedAsync(db, ct: TestContext.Current.CancellationToken);
+        var count = await db.ProductCategories.CountAsync(TestContext.Current.CancellationToken);
         Assert.Equal(CategoryTaxonomy.All.Count, count);
     }
 
@@ -39,13 +39,13 @@ public class CategorySeederTests
     public async Task SeedAsync_HasCorrectParentChildRelationships()
     {
         await using var db = CreateDb();
-        await CategorySeeder.SeedAsync(db);
+        await CategorySeeder.SeedAsync(db, ct: TestContext.Current.CancellationToken);
 
-        var leite = await db.ProductCategories.FirstOrDefaultAsync(c => c.Slug == "leite");
+        var leite = await db.ProductCategories.FirstOrDefaultAsync(c => c.Slug == "leite", TestContext.Current.CancellationToken);
         Assert.NotNull(leite);
         Assert.NotNull(leite.ParentCategoryId);
 
-        var parent = await db.ProductCategories.FindAsync(leite.ParentCategoryId);
+        var parent = await db.ProductCategories.FindAsync([leite.ParentCategoryId], TestContext.Current.CancellationToken);
         Assert.NotNull(parent);
         Assert.Equal("laticinios", parent.Slug);
     }
@@ -54,13 +54,13 @@ public class CategorySeederTests
     public async Task SeedAsync_ParentsHaveNoParent()
     {
         await using var db = CreateDb();
-        await CategorySeeder.SeedAsync(db);
+        await CategorySeeder.SeedAsync(db, ct: TestContext.Current.CancellationToken);
 
         var parents = CategoryTaxonomy.All.Where(d => d.ParentSlug is null).Select(d => d.Slug).ToHashSet();
         var parentCategories = await db.ProductCategories
             .Where(c => c.ParentCategoryId == null)
             .Select(c => c.Slug)
-            .ToListAsync();
+            .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(parents.Count, parentCategories.Count);
         Assert.All(parentCategories, slug => Assert.Contains(slug, parents));
@@ -70,9 +70,9 @@ public class CategorySeederTests
     public async Task SeedAsync_AllSlugsUnique()
     {
         await using var db = CreateDb();
-        await CategorySeeder.SeedAsync(db);
+        await CategorySeeder.SeedAsync(db, ct: TestContext.Current.CancellationToken);
 
-        var slugs = await db.ProductCategories.Select(c => c.Slug).ToListAsync();
+        var slugs = await db.ProductCategories.Select(c => c.Slug).ToListAsync(TestContext.Current.CancellationToken);
         Assert.Equal(slugs.Count, slugs.Distinct().Count());
     }
 
@@ -80,9 +80,9 @@ public class CategorySeederTests
     public async Task SeedAsync_AllTaxonomySlugsPresent()
     {
         await using var db = CreateDb();
-        await CategorySeeder.SeedAsync(db);
+        await CategorySeeder.SeedAsync(db, ct: TestContext.Current.CancellationToken);
 
-        var dbSlugs = (await db.ProductCategories.Select(c => c.Slug).ToListAsync()).ToHashSet();
+        var dbSlugs = (await db.ProductCategories.Select(c => c.Slug).ToListAsync(TestContext.Current.CancellationToken)).ToHashSet();
         foreach (var def in CategoryTaxonomy.All)
             Assert.Contains(def.Slug, dbSlugs);
     }

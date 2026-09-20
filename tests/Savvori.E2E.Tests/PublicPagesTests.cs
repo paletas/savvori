@@ -15,7 +15,7 @@ public class PublicPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savv
     public async Task HomePage_ReturnsOk()
     {
         var client = factory.CreateClient();
-        var response = await client.GetAsync("/");
+        var response = await client.GetAsync("/", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
@@ -25,9 +25,9 @@ public class PublicPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savv
     public async Task ProductsPage_ReturnsOk_ShowsProductList()
     {
         var client = factory.CreateClient();
-        var response = await client.GetAsync("/Products");
+        var response = await client.GetAsync("/Products", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var html = await response.Content.ReadAsStringAsync();
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains("Test Milk 1L", html);
     }
 
@@ -35,9 +35,9 @@ public class PublicPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savv
     public async Task ProductsPage_Search_ReturnsOk_WithFilteredProducts()
     {
         var client = factory.CreateClient();
-        var response = await client.GetAsync("/Products?search=milk");
+        var response = await client.GetAsync("/Products?search=milk", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var html = await response.Content.ReadAsStringAsync();
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains("Test Milk 1L", html);
     }
 
@@ -47,9 +47,9 @@ public class PublicPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savv
         var client = factory.CreateClient();
         var request = new HttpRequestMessage(HttpMethod.Get, "/Products?handler=Search&search=milk");
         request.Headers.Add("HX-Request", "true");
-        var response = await client.SendAsync(request);
+        var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var html = await response.Content.ReadAsStringAsync();
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         // Should contain product anchor links from mock data
         Assert.Contains("Test Milk 1L", html);
     }
@@ -60,18 +60,18 @@ public class PublicPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savv
         var client = factory.CreateClient();
         var request = new HttpRequestMessage(HttpMethod.Get, "/Products?handler=Search&search=m");
         request.Headers.Add("HX-Request", "true");
-        var response = await client.SendAsync(request);
+        var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(string.Empty, await response.Content.ReadAsStringAsync());
+        Assert.Equal(string.Empty, await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
     public async Task ProductDetailPage_ReturnsOk_ShowsProductName()
     {
         var client = factory.CreateClient();
-        var response = await client.GetAsync($"/Products/Detail/{MockApiHandler.ProductId}");
+        var response = await client.GetAsync($"/Products/Detail/{MockApiHandler.ProductId}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var html = await response.Content.ReadAsStringAsync();
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains("Test Milk 1L", html);
     }
 
@@ -81,9 +81,9 @@ public class PublicPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savv
     public async Task CategoriesPage_ReturnsOk_ShowsCategoryList()
     {
         var client = factory.CreateClient();
-        var response = await client.GetAsync("/Categories");
+        var response = await client.GetAsync("/Categories", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var html = await response.Content.ReadAsStringAsync();
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains("Dairy", html);
     }
 
@@ -91,9 +91,9 @@ public class PublicPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savv
     public async Task CategoryDetailPage_ReturnsOk_ShowsProducts()
     {
         var client = factory.CreateClient();
-        var response = await client.GetAsync("/Categories/Detail/dairy");
+        var response = await client.GetAsync("/Categories/Detail/dairy", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var html = await response.Content.ReadAsStringAsync();
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains("Dairy", html);
     }
 
@@ -103,7 +103,7 @@ public class PublicPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savv
     public async Task StoresPage_ReturnsOk()
     {
         var client = factory.CreateClient();
-        var response = await client.GetAsync("/Stores");
+        var response = await client.GetAsync("/Stores", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
@@ -111,9 +111,9 @@ public class PublicPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savv
     public async Task StoresPage_WithPostalCode_ShowsNearbyStores()
     {
         var client = factory.CreateClient();
-        var response = await client.GetAsync("/Stores?postalCode=1000-001&radiusKm=10");
+        var response = await client.GetAsync("/Stores?postalCode=1000-001&radiusKm=10", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var html = await response.Content.ReadAsStringAsync();
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains("Continente", html);
     }
 
@@ -123,7 +123,7 @@ public class PublicPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savv
     public async Task ShoppingListsPage_Unauthenticated_RedirectsToLogin()
     {
         var client = factory.CreateUnauthenticatedClient();
-        var response = await client.GetAsync("/ShoppingLists");
+        var response = await client.GetAsync("/ShoppingLists", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Contains("/Account/Login", response.Headers.Location?.ToString() ?? "");
     }
@@ -132,7 +132,7 @@ public class PublicPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savv
     public async Task ShoppingListsDetailPage_Unauthenticated_RedirectsToLogin()
     {
         var client = factory.CreateUnauthenticatedClient();
-        var response = await client.GetAsync($"/ShoppingLists/Detail/{MockApiHandler.ListId}");
+        var response = await client.GetAsync($"/ShoppingLists/Detail/{MockApiHandler.ListId}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Contains("/Account/Login", response.Headers.Location?.ToString() ?? "");
     }
@@ -141,7 +141,7 @@ public class PublicPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savv
     public async Task AccountSettingsPage_Unauthenticated_RedirectsToLogin()
     {
         var client = factory.CreateUnauthenticatedClient();
-        var response = await client.GetAsync("/Account/Settings");
+        var response = await client.GetAsync("/Account/Settings", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Contains("/Account/Login", response.Headers.Location?.ToString() ?? "");
     }
@@ -150,7 +150,7 @@ public class PublicPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savv
     public async Task AdminPage_Unauthenticated_RedirectsToLogin()
     {
         var client = factory.CreateUnauthenticatedClient();
-        var response = await client.GetAsync("/Admin");
+        var response = await client.GetAsync("/Admin", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Contains("/Account/Login", response.Headers.Location?.ToString() ?? "");
     }
@@ -159,7 +159,7 @@ public class PublicPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savv
     public async Task AdminScrapingPage_Unauthenticated_RedirectsToLogin()
     {
         var client = factory.CreateUnauthenticatedClient();
-        var response = await client.GetAsync("/Admin/Scraping");
+        var response = await client.GetAsync("/Admin/Scraping", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Contains("/Account/Login", response.Headers.Location?.ToString() ?? "");
     }

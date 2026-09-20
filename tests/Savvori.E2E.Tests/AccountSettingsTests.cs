@@ -12,9 +12,9 @@ public class AccountSettingsTests(SavvoriWebAppFactory factory) : IClassFixture<
     public async Task SettingsPage_Authenticated_ReturnsOk_ShowsEmail()
     {
         var client = await factory.CreateAuthenticatedClientAsync();
-        var response = await client.GetAsync("/Account/Settings");
+        var response = await client.GetAsync("/Account/Settings", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var html = await response.Content.ReadAsStringAsync();
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         // Settings page should show the logged-in user's email
         Assert.Contains("user@savvori.test", html, StringComparison.OrdinalIgnoreCase);
     }
@@ -36,10 +36,10 @@ public class AccountSettingsTests(SavvoriWebAppFactory factory) : IClassFixture<
                 ["Email"] = "user@savvori.test",
                 ["Password"] = "TestPassword123",
                 ["__RequestVerificationToken"] = loginToken
-            }));
+            }), TestContext.Current.CancellationToken);
 
         // Follow the redirect from login
-        var loginRedirect = await client.GetAsync("/");
+        var loginRedirect = await client.GetAsync("/", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, loginRedirect.StatusCode);
 
         // Get anti-forgery token from the settings page
@@ -50,7 +50,7 @@ public class AccountSettingsTests(SavvoriWebAppFactory factory) : IClassFixture<
             new Dictionary<string, string>
             {
                 ["__RequestVerificationToken"] = settingsToken
-            }));
+            }), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Redirect, deleteResponse.StatusCode);
         // After sign-out the redirect goes to the home page
@@ -77,19 +77,19 @@ public class AccountSettingsTests(SavvoriWebAppFactory factory) : IClassFixture<
                 ["Email"] = "user@savvori.test",
                 ["Password"] = "TestPassword123",
                 ["__RequestVerificationToken"] = loginToken
-            }));
+            }), TestContext.Current.CancellationToken);
 
         // 2. Verify can reach settings
-        var settingsResp = await client.GetAsync("/Account/Settings");
+        var settingsResp = await client.GetAsync("/Account/Settings", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, settingsResp.StatusCode);
 
         // 3. Get token and log out
-        var settingsToken = SavvoriWebAppFactory.ExtractAntiForgeryToken(await settingsResp.Content.ReadAsStringAsync());
+        var settingsToken = SavvoriWebAppFactory.ExtractAntiForgeryToken(await settingsResp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         await client.PostAsync("/Account/Logout", new FormUrlEncodedContent(
-            new Dictionary<string, string> { ["__RequestVerificationToken"] = settingsToken }));
+            new Dictionary<string, string> { ["__RequestVerificationToken"] = settingsToken }), TestContext.Current.CancellationToken);
 
         // 4. Settings page should now redirect to login
-        var afterLogoutResponse = await client.GetAsync("/Account/Settings");
+        var afterLogoutResponse = await client.GetAsync("/Account/Settings", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Redirect, afterLogoutResponse.StatusCode);
         Assert.Contains("/Account/Login", afterLogoutResponse.Headers.Location?.ToString() ?? "");
     }

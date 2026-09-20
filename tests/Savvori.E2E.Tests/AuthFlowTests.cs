@@ -29,10 +29,10 @@ public class AuthFlowTests(SavvoriWebAppFactory factory) : IClassFixture<Savvori
                 ["Password"] = "StrongPassword123",
                 ["ConfirmPassword"] = "StrongPassword123",
                 ["__RequestVerificationToken"] = token
-            }));
+            }), TestContext.Current.CancellationToken);
 
         // After redirect, should land on the login page showing the success message
-        var html = await response.Content.ReadAsStringAsync();
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains("/Account/Login", response.RequestMessage?.RequestUri?.PathAndQuery ?? html);
     }
 
@@ -49,10 +49,10 @@ public class AuthFlowTests(SavvoriWebAppFactory factory) : IClassFixture<Savvori
                 ["Password"] = "abc",
                 ["ConfirmPassword"] = "abc",
                 ["__RequestVerificationToken"] = token
-            }));
+            }), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var html = await response.Content.ReadAsStringAsync();
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains("at least 6 characters", html, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -69,10 +69,10 @@ public class AuthFlowTests(SavvoriWebAppFactory factory) : IClassFixture<Savvori
                 ["Password"] = "Password123",
                 ["ConfirmPassword"] = "DifferentPassword123",
                 ["__RequestVerificationToken"] = token
-            }));
+            }), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var html = await response.Content.ReadAsStringAsync();
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains("do not match", html, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -90,10 +90,10 @@ public class AuthFlowTests(SavvoriWebAppFactory factory) : IClassFixture<Savvori
                 ["Password"] = "Password123",
                 ["ConfirmPassword"] = "Password123",
                 ["__RequestVerificationToken"] = token
-            }));
+            }), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var html = await response.Content.ReadAsStringAsync();
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains("already registered", html, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -115,7 +115,7 @@ public class AuthFlowTests(SavvoriWebAppFactory factory) : IClassFixture<Savvori
                 ["Email"] = "user@savvori.test",
                 ["Password"] = "TestPassword123",
                 ["__RequestVerificationToken"] = token
-            }));
+            }), TestContext.Current.CancellationToken);
 
         // Should redirect to home after successful login
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
@@ -134,7 +134,7 @@ public class AuthFlowTests(SavvoriWebAppFactory factory) : IClassFixture<Savvori
         // The login model: if already authenticated → RedirectToPage("/Index")
         // We can test this by manually crafting a client with auth cookies.
         // Simpler: verify that CreateAuthenticatedClientAsync lands on home, not login
-        var homeResponse = await client.GetAsync("/");
+        var homeResponse = await client.GetAsync("/", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, homeResponse.StatusCode);
     }
 
@@ -151,10 +151,10 @@ public class AuthFlowTests(SavvoriWebAppFactory factory) : IClassFixture<Savvori
                 ["Email"] = "user@savvori.test",
                 ["Password"] = "WrongPassword123",
                 ["__RequestVerificationToken"] = token
-            }));
+            }), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var html = await response.Content.ReadAsStringAsync();
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains("Invalid email or password", html, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -170,10 +170,10 @@ public class AuthFlowTests(SavvoriWebAppFactory factory) : IClassFixture<Savvori
                 ["Email"] = "",
                 ["Password"] = "",
                 ["__RequestVerificationToken"] = token
-            }));
+            }), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var html = await response.Content.ReadAsStringAsync();
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains("required", html, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -184,21 +184,21 @@ public class AuthFlowTests(SavvoriWebAppFactory factory) : IClassFixture<Savvori
     {
         // 1. Start authenticated
         var client = await factory.CreateAuthenticatedClientAsync();
-        var listResponse = await client.GetAsync("/ShoppingLists");
+        var listResponse = await client.GetAsync("/ShoppingLists", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, listResponse.StatusCode);
 
         // 2. Get a token for the logout form (from any authenticated page)
-        var settingsHtml = await (await client.GetAsync("/Account/Settings")).Content.ReadAsStringAsync();
+        var settingsHtml = await (await client.GetAsync("/Account/Settings", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var token = SavvoriWebAppFactory.ExtractAntiForgeryToken(settingsHtml);
 
         // 3. POST logout
         await client.PostAsync("/Account/Logout", new FormUrlEncodedContent(
-            new Dictionary<string, string> { ["__RequestVerificationToken"] = token }));
+            new Dictionary<string, string> { ["__RequestVerificationToken"] = token }), TestContext.Current.CancellationToken);
 
         // 4. Now the session is gone — create a new non-redirect client using the same cookie container
         //    by checking a protected page: Razor Pages clears the auth cookie on SignOut
         //    The simplest verification: GET /Account/Login succeeds (not redirected away)
-        var loginPageResponse = await client.GetAsync("/Account/Login");
+        var loginPageResponse = await client.GetAsync("/Account/Login", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, loginPageResponse.StatusCode);
     }
 }

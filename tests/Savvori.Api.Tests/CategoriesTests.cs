@@ -42,10 +42,10 @@ public class CategoriesTests : IClassFixture<SavvoriWebApiFactory>
     [Fact]
     public async Task GetCategories_ReturnsHierarchicalTree()
     {
-        var response = await _client.GetAsync("/api/categories");
+        var response = await _client.GetAsync("/api/categories", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.Equal(JsonValueKind.Array, body.ValueKind);
         Assert.True(body.GetArrayLength() >= 1);
 
@@ -59,10 +59,10 @@ public class CategoriesTests : IClassFixture<SavvoriWebApiFactory>
     [Fact]
     public async Task GetCategory_ByGuid_Returns200()
     {
-        var response = await _client.GetAsync($"/api/categories/{_rootCatId}");
+        var response = await _client.GetAsync($"/api/categories/{_rootCatId}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.Equal(_rootCatId.ToString(), body.GetProperty("id").GetString());
         Assert.Equal("Food", body.GetProperty("name").GetString());
     }
@@ -70,27 +70,27 @@ public class CategoriesTests : IClassFixture<SavvoriWebApiFactory>
     [Fact]
     public async Task GetCategory_BySlug_Returns200()
     {
-        var response = await _client.GetAsync("/api/categories/food-cat");
+        var response = await _client.GetAsync("/api/categories/food-cat", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.Equal("food-cat", body.GetProperty("slug").GetString());
     }
 
     [Fact]
     public async Task GetCategory_Unknown_Returns404()
     {
-        var response = await _client.GetAsync($"/api/categories/{Guid.NewGuid()}");
+        var response = await _client.GetAsync($"/api/categories/{Guid.NewGuid()}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]
     public async Task GetCategoryProducts_ReturnsPagedProducts()
     {
-        var response = await _client.GetAsync($"/api/categories/{_childCatId}/products");
+        var response = await _client.GetAsync($"/api/categories/{_childCatId}/products", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.True(body.GetProperty("total").GetInt32() >= 1);
         Assert.Equal(_childCatId.ToString(), body.GetProperty("categoryId").GetString());
     }
@@ -99,10 +99,10 @@ public class CategoriesTests : IClassFixture<SavvoriWebApiFactory>
     public async Task GetCategoryProducts_Recursive_IncludesSubcategoryProducts()
     {
         // Root "food-cat" has no direct products, but child "beverages-cat" does
-        var response = await _client.GetAsync($"/api/categories/{_rootCatId}/products?recursive=true");
+        var response = await _client.GetAsync($"/api/categories/{_rootCatId}/products?recursive=true", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.True(body.GetProperty("total").GetInt32() >= 1);
     }
 
@@ -110,17 +110,17 @@ public class CategoriesTests : IClassFixture<SavvoriWebApiFactory>
     public async Task GetCategoryProducts_NonRecursive_ExcludesSubcategoryProducts()
     {
         // Root "food-cat" has no direct products
-        var response = await _client.GetAsync($"/api/categories/{_rootCatId}/products?recursive=false");
+        var response = await _client.GetAsync($"/api/categories/{_rootCatId}/products?recursive=false", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.Equal(0, body.GetProperty("total").GetInt32());
     }
 
     [Fact]
     public async Task GetCategoryProducts_UnknownCategory_Returns404()
     {
-        var response = await _client.GetAsync($"/api/categories/{Guid.NewGuid()}/products");
+        var response = await _client.GetAsync($"/api/categories/{Guid.NewGuid()}/products", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 }

@@ -20,7 +20,7 @@ public class AuthTests : IClassFixture<SavvoriWebApiFactory>
     public async Task Register_NewEmail_Returns200()
     {
         var response = await _client.PostAsJsonAsync("/api/auth/register",
-            new { Email = $"new_{Guid.NewGuid()}@test.com", Password = "Password123!" });
+            new { Email = $"new_{Guid.NewGuid()}@test.com", Password = "Password123!" }, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
@@ -30,10 +30,10 @@ public class AuthTests : IClassFixture<SavvoriWebApiFactory>
     {
         var email = $"dup_{Guid.NewGuid()}@test.com";
         await _client.PostAsJsonAsync("/api/auth/register",
-            new { Email = email, Password = "Password123!" });
+            new { Email = email, Password = "Password123!" }, TestContext.Current.CancellationToken);
 
         var response = await _client.PostAsJsonAsync("/api/auth/register",
-            new { Email = email, Password = "Password123!" });
+            new { Email = email, Password = "Password123!" }, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -44,13 +44,13 @@ public class AuthTests : IClassFixture<SavvoriWebApiFactory>
         var email = $"login_{Guid.NewGuid()}@test.com";
         var password = "Password123!";
         await _client.PostAsJsonAsync("/api/auth/register",
-            new { Email = email, Password = password });
+            new { Email = email, Password = password }, TestContext.Current.CancellationToken);
 
         var response = await _client.PostAsJsonAsync("/api/auth/login",
-            new { Email = email, Password = password });
+            new { Email = email, Password = password }, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.True(body.TryGetProperty("token", out var tokenProp));
         Assert.False(string.IsNullOrWhiteSpace(tokenProp.GetString()));
     }
@@ -60,10 +60,10 @@ public class AuthTests : IClassFixture<SavvoriWebApiFactory>
     {
         var email = $"wrong_{Guid.NewGuid()}@test.com";
         await _client.PostAsJsonAsync("/api/auth/register",
-            new { Email = email, Password = "Password123!" });
+            new { Email = email, Password = "Password123!" }, TestContext.Current.CancellationToken);
 
         var response = await _client.PostAsJsonAsync("/api/auth/login",
-            new { Email = email, Password = "WrongPassword!" });
+            new { Email = email, Password = "WrongPassword!" }, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -72,7 +72,7 @@ public class AuthTests : IClassFixture<SavvoriWebApiFactory>
     public async Task Login_UnknownEmail_Returns401()
     {
         var response = await _client.PostAsJsonAsync("/api/auth/login",
-            new { Email = "nobody@nowhere.com", Password = "SomePass123!" });
+            new { Email = "nobody@nowhere.com", Password = "SomePass123!" }, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
