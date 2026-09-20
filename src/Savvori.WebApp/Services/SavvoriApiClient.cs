@@ -351,6 +351,34 @@ public class SavvoriApiClient(HttpClient http, ILogger<SavvoriApiClient> logger)
         }
     }
 
+    public async Task<MatchReportDto?> GetMatchReportAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            return await http.GetFromJsonAsync<MatchReportDto>("/api/admin/mapping/match-report", JsonOptions, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to get match report");
+            return null;
+        }
+    }
+
+    public async Task<RecomputeSizesResponse?> RecomputeSizesAsync(bool dryRun = false, CancellationToken ct = default)
+    {
+        try
+        {
+            var resp = await http.PostAsync($"/api/admin/mapping/recompute-sizes?dryRun={dryRun.ToString().ToLowerInvariant()}", null, ct);
+            resp.EnsureSuccessStatusCode();
+            return await resp.Content.ReadFromJsonAsync<RecomputeSizesResponse>(JsonOptions, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to recompute sizes");
+            return null;
+        }
+    }
+
     public async Task<UncategorizedProductsResponse?> GetUncategorizedProductsAsync(
         int page = 1, int pageSize = 20, CancellationToken ct = default)
     {

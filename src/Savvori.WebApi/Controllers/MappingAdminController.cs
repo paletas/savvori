@@ -231,6 +231,60 @@ public class MappingAdminController : ControllerBase
     }
 
     /// <summary>
+    /// Baseline report on how well store products are matched across chains.
+    /// GET /api/admin/mapping/match-report
+    /// </summary>
+    [HttpGet("match-report")]
+    public async Task<IActionResult> GetMatchReport(CancellationToken ct = default)
+    {
+        var totalStoreProducts = await _db.StoreProducts.CountAsync(ct);
+        var totalCanonicals = await _db.Products.CountAsync(ct);
+
+        // (canonical, chain) pairs; one row per store product is enough to count chains and histogram.
+        var links = await _db.StoreProducts
+            .Where(sp => sp.CanonicalProductId != null)
+            .Select(sp => new { CanonicalId = sp.CanonicalProductId!.Value, sp.StoreChainId })
+            .ToListAsync(ct);
+
+        var perCanonical = links
+            .GroupBy(l => l.CanonicalId)
+            .ToDictionary(g => g.Key, g => (Count: g.Count(), Chains: g.Select(l => l.StoreChainId).Distinct().Count()));
+
+        var histogram = perCanonical.Values
+            .GroupBy(v => v.Count)
+            .OrderBy(g => g.Key)
+            .Select(g => new { StoreProducts = g.Key, Canonicals = g.Count() })
+            .ToList();
+        var withoutStoreProducts = totalCanonicals - perCanonical.Count;
+        if (withoutStoreProducts > 0)
+            histogram.Insert(0, new { StoreProducts = 0, Canonicals = withoutStoreProducts });
+
+        var canonicalsWithNoSize = await _db.Products.CountAsync(p => p.SizeValue == null, ct);
+        var canonicalsWithEan = await _db.Products.CountAsync(p => p.EAN != null && p.EAN != "", ct);
+        var storeProductsWithNoSize = await _db.StoreProducts.CountAsync(sp => sp.SizeValue == null, ct);
+        var storeProductsWithEan = await _db.StoreProducts.CountAsync(sp => sp.EAN != null && sp.EAN != "", ct);
+
+        var byMatchMethod = await _db.StoreProducts
+            .GroupBy(sp => sp.MatchMethod)
+            .Select(g => new { Method = g.Key ?? "(none)", Count = g.Count() })
+            .OrderByDescending(g => g.Count)
+            .ToListAsync(ct);
+
+        return Ok(new
+        {
+            TotalStoreProducts = totalStoreProducts,
+            TotalCanonicals = totalCanonicals,
+            StoreProductsPerCanonical = histogram,
+            CanonicalsWithMultipleChains = perCanonical.Values.Count(v => v.Chains >= 2),
+            CanonicalsWithNoSize = canonicalsWithNoSize,
+            StoreProductsWithNoSize = storeProductsWithNoSize,
+            CanonicalsWithEan = canonicalsWithEan,
+            StoreProductsWithEan = storeProductsWithEan,
+            ByMatchMethod = byMatchMethod
+        });
+    }
+
+    /// <summary>
     /// Re-runs Tier 1 (EAN) and Tier 2 (brand+name+size+unit) matching on StoreProducts
     /// that are Unmatched or Failed. Never creates new canonical products.
     /// POST /api/admin/mapping/rematch?chainSlug=continente

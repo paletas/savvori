@@ -28,17 +28,20 @@ public class MappingIndexModel(SavvoriApiClient api) : PageModel
     public List<UnmappedCategoryDto> UnmappedCategories { get; set; } = [];
     public AdminStoreProductsResponse? StoreProducts { get; set; }
     public List<CategoryDto> AllCategories { get; set; } = [];
+    public MatchReportDto? MatchReport { get; set; }
 
     public async Task OnGetAsync(CancellationToken ct)
     {
         if (Page < 1) Page = 1;
 
-        var statsTask = api.GetMappingStatsAsync(ct);
-        var catsTask  = api.GetCategoriesAsync(ct);
+        var statsTask  = api.GetMappingStatsAsync(ct);
+        var catsTask   = api.GetCategoriesAsync(ct);
+        var reportTask = api.GetMatchReportAsync(ct);
 
-        await Task.WhenAll(statsTask, catsTask);
+        await Task.WhenAll(statsTask, catsTask, reportTask);
         Stats = await statsTask;
         AllCategories = await catsTask;
+        MatchReport = await reportTask;
 
         switch (Tab)
         {
@@ -79,6 +82,18 @@ public class MappingIndexModel(SavvoriApiClient api) : PageModel
             TempData["Error"] = "Re-match request failed.";
 
         return RedirectToPage(new { tab = "store-products" });
+    }
+
+    public async Task<IActionResult> OnPostRecomputeSizesAsync(CancellationToken ct)
+    {
+        var result = await api.RecomputeSizesAsync(ct: ct);
+        if (result is not null)
+            TempData["Success"] = $"Sizes recomputed: {result.Changed} of {result.Total} store products changed " +
+                                  $"({result.UnitPriceDisagreements} unit-price disagreements, {result.CanonicalsUpdated} canonicals updated).";
+        else
+            TempData["Error"] = "Recompute sizes request failed.";
+
+        return RedirectToPage(new { tab = Tab });
     }
 
     public async Task<IActionResult> OnPostAssignCategoryAsync(

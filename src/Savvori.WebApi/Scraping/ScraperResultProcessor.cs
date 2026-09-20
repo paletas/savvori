@@ -175,9 +175,9 @@ public sealed class ScraperResultProcessor
             SizeDisagreements++;
             _logger.LogWarning(
                 "Size mismatch for '{Name}' (ExternalId: {ExternalId}) from {Chain}: parsed {Parsed} {Unit}, " +
-                "price {Price} / unit price {UnitPrice} implies {Implied} {Unit}. Using unit-price size.",
+                "price {Price} / unit price {UnitPrice} implies {Implied} {ImpliedUnit}. Using unit-price size.",
                 scraped.Name, scraped.ExternalId, chain.Slug, sizeValue, unit,
-                scraped.Price, scraped.UnitPrice, reconciled.SizeValue);
+                scraped.Price, scraped.UnitPrice, reconciled.SizeValue, unit);
             sizeValue = reconciled.SizeValue;
         }
 

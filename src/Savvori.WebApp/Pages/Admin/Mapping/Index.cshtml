@@ -47,6 +47,68 @@
     </div>
 }
 
+@* ── Match report ───────────────────────────────────────────────────── *@
+@if (Model.MatchReport is { } report)
+{
+    <div class="card bg-base-100 shadow mb-6">
+        <div class="card-body p-4">
+            <h2 class="card-title text-base">Cross-store match report</h2>
+            <div class="stats stats-horizontal w-full overflow-x-auto">
+                <div class="stat">
+                    <div class="stat-title">Store products</div>
+                    <div class="stat-value text-2xl">@report.TotalStoreProducts.ToString("N0")</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-title">Canonical products</div>
+                    <div class="stat-value text-2xl">@report.TotalCanonicals.ToString("N0")</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-title">Canonicals in ≥2 chains</div>
+                    <div class="stat-value text-2xl @(report.CanonicalsWithMultipleChains == 0 ? "text-error" : "text-success")">
+                        @report.CanonicalsWithMultipleChains.ToString("N0")
+                    </div>
+                </div>
+                <div class="stat">
+                    <div class="stat-title">No size (canonical / store)</div>
+                    <div class="stat-value text-2xl">@report.CanonicalsWithNoSize.ToString("N0")</div>
+                    <div class="stat-desc">@report.StoreProductsWithNoSize.ToString("N0") store products</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-title">With EAN (canonical / store)</div>
+                    <div class="stat-value text-2xl">@report.CanonicalsWithEan.ToString("N0")</div>
+                    <div class="stat-desc">@report.StoreProductsWithEan.ToString("N0") store products</div>
+                </div>
+            </div>
+            <div class="grid gap-4 md:grid-cols-2 mt-2">
+                <div>
+                    <h3 class="font-semibold text-sm mb-1">Store products per canonical</h3>
+                    <table class="table table-xs">
+                        <thead><tr><th>Store products</th><th class="text-right">Canonicals</th></tr></thead>
+                        <tbody>
+                        @foreach (var bucket in report.StoreProductsPerCanonical)
+                        {
+                            <tr><td>@bucket.StoreProducts</td><td class="text-right">@bucket.Canonicals.ToString("N0")</td></tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+                <div>
+                    <h3 class="font-semibold text-sm mb-1">By match method</h3>
+                    <table class="table table-xs">
+                        <thead><tr><th>Method</th><th class="text-right">Store products</th></tr></thead>
+                        <tbody>
+                        @foreach (var m in report.ByMatchMethod)
+                        {
+                            <tr><td>@m.Method</td><td class="text-right">@m.Count.ToString("N0")</td></tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @* ── Action buttons ─────────────────────────────────────────────────── *@
 <div class="flex flex-wrap gap-2 mb-6">
     <form method="post" asp-page-handler="Backfill">
@@ -64,6 +126,9 @@
             </svg>
             Re-match Unmatched
         </button>
+    </form>
+    <form method="post" asp-page-handler="RecomputeSizes" asp-route-tab="@Model.Tab">
+        <button type="submit" class="btn btn-sm btn-primary">Recompute Sizes</button>
     </form>
 </div>
 
