@@ -138,6 +138,7 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<SavvoriDbContext>();
     if (!app.Environment.IsEnvironment("Testing"))
     {
+        DatabaseBackup.BackupIfMigrationsPending(db, app.Logger);
         await db.Database.MigrateAsync();
         await CategorySeeder.SeedAsync(db, app.Logger);
         await StoreChainSeeder.SeedAsync(db, app.Configuration, app.Logger);

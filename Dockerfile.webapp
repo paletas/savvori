@@ -1,0 +1,27 @@
+# syntax=docker/dockerfile:1
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+# Node is needed for the Tailwind/DaisyUI CSS build (the MSBuild target is skipped when CI=true).
+RUN apt-get update && apt-get install -y --no-install-recommends nodejs npm && rm -rf /var/lib/apt/lists/*
+ENV CI=true
+COPY global.json ./
+COPY src/Savvori.Shared/Savvori.Shared.csproj src/Savvori.Shared/
+COPY src/Savvori.ServiceDefaults/Savvori.ServiceDefaults.csproj src/Savvori.ServiceDefaults/
+COPY src/Savvori.WebApp/Savvori.WebApp.csproj src/Savvori.WebApp/
+RUN dotnet restore src/Savvori.WebApp/Savvori.WebApp.csproj
+COPY src/Savvori.WebApp/package*.json src/Savvori.WebApp/
+RUN cd src/Savvori.WebApp && npm ci
+COPY src/ src/
+RUN cd src/Savvori.WebApp && npm run build:css
+RUN dotnet publish src/Savvori.WebApp/Savvori.WebApp.csproj -c Release -o /app --no-restore
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
+WORKDIR /app
+COPY --from=build /app .
+
+# Stateless. Point it at the API with services__webapi__http__0=http://<api-host>:8080
+ENV ASPNETCORE_HTTP_PORTS=8080 \
+    HttpsRedirection__Enabled=false
+USER $APP_UID
+EXPOSE 8080
+ENTRYPOINT ["dotnet", "Savvori.WebApp.dll"]

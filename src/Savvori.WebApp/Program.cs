@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.HttpOverrides;
 using Savvori.WebApp.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -17,6 +18,14 @@ builder.Services.AddHttpClient<SavvoriApiClient>(client =>
 })
 .AddStandardResilienceHandler();
 
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
+    // The reverse proxy lives on the homelab network, not a fixed address.
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
 var app = builder.Build();
 
 app.MapDefaultEndpoints();
@@ -27,7 +36,12 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-app.UseHttpsRedirection();
+// TLS is terminated by the reverse proxy in deployment; redirecting inside the container would loop.
+app.UseForwardedHeaders();
+if (app.Configuration.GetValue("HttpsRedirection:Enabled", true))
+{
+    app.UseHttpsRedirection();
+}
 app.UseRouting();
 
 app.MapStaticAssets();

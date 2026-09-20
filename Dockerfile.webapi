@@ -1,0 +1,24 @@
+# syntax=docker/dockerfile:1
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+COPY global.json ./
+COPY src/Savvori.Shared/Savvori.Shared.csproj src/Savvori.Shared/
+COPY src/Savvori.ServiceDefaults/Savvori.ServiceDefaults.csproj src/Savvori.ServiceDefaults/
+COPY src/Savvori.WebApi/Savvori.WebApi.csproj src/Savvori.WebApi/
+RUN dotnet restore src/Savvori.WebApi/Savvori.WebApi.csproj
+COPY src/ src/
+RUN dotnet publish src/Savvori.WebApi/Savvori.WebApi.csproj -c Release -o /app --no-restore
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
+WORKDIR /app
+COPY --from=build /app .
+
+# The SQLite database lives OUTSIDE the image, in /data (mount a host folder or volume there).
+# Replacing/removing the container never touches it. Pre-migration snapshots go in /data/backups.
+ENV ConnectionStrings__savvori="Data Source=/data/savvori.db" \
+    ASPNETCORE_HTTP_PORTS=8080
+RUN mkdir /data && chown $APP_UID /data
+VOLUME /data
+USER $APP_UID
+EXPOSE 8080
+ENTRYPOINT ["dotnet", "Savvori.WebApi.dll"]

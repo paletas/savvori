@@ -160,9 +160,25 @@ Savvori is an ASP.NET Core minimal API (.NET 10) that helps users find the cheap
 - [x] Authentication? → None (single-user homelab deployment; previously JWT + cookies)
 - [x] How to schedule and run background jobs? → Quartz.NET jobs in Web API
 - [x] Will the MVP have a web frontend? → Yes, Razor Pages web app (implemented — TailwindCSS v4, DaisyUI v5, HTMX)
-- [x] How to orchestrate/deploy? → .NET Aspire for local/dev
+- [x] How to orchestrate/deploy? → .NET Aspire for local/dev; container images published to GHCR for the homelab (see *Container images*)
 - [x] How does the WebApp talk to the WebApi? → Typed `SavvoriApiClient` HttpClient with Aspire service discovery
 
 ---
 
 This document describes the technical architecture for the Savvori project. Update as implementation progresses.
+
+## Container images & CI/CD
+
+`.github/workflows/build.yml` runs the tests (excluding `Category=Live`) and builds two images, `ghcr.io/paletas/savvori-webapi` and `ghcr.io/paletas/savvori-webapp` (`Dockerfile.webapi`, `Dockerfile.webapp`):
+
+| Branch | Tags |
+|---|---|
+| `develop` | `beta`, `beta-<sha>` |
+| `main` | `latest`, `sha-<sha>` |
+| manual dispatch | `branch-<name>`, `branch-<name>-<sha>` |
+
+Pull requests build the images without pushing.
+
+**Data safety.** The SQLite database is never inside an image. `savvori-webapi` reads `ConnectionStrings__savvori=Data Source=/data/savvori.db`; mount a host folder or volume at `/data`. Beta and production must use different data folders. On startup, if migrations are pending against an existing database, `DatabaseBackup` writes a consistent `VACUUM INTO` snapshot to `/data/backups/` (last 10 kept) before migrating.
+
+**Runtime config.** `savvori-webapp` finds the API via `services__webapi__http__0=http://<api-host>:8080`. TLS is expected to be terminated by a reverse proxy: forwarded headers are honoured and HTTPS redirection is disabled in the image (`HttpsRedirection__Enabled=false`).

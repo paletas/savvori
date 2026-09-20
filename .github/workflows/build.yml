@@ -1,0 +1,77 @@
+name: Build
+
+on:
+  pull_request:
+  push:
+    branches: [develop, main]
+  workflow_dispatch:   # run manually against any branch to publish a branch-tagged image
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/Savvori.WebApp/package-lock.json
+      - run: npm ci
+        working-directory: src/Savvori.WebApp
+      # LiveScraperTests hit real store websites and are excluded from CI.
+      - run: dotnet test Savvori.sln -c Release -- --filter-not-trait "Category=Live"
+
+  image:
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: webapi
+            dockerfile: Dockerfile.webapi
+          - name: webapp
+            dockerfile: Dockerfile.webapp
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compute tags
+        id: tags
+        env:
+          REPO: ${{ github.repository }}
+          PUBLISH: ${{ github.event_name != 'pull_request' }}
+        run: |
+          image="ghcr.io/${REPO,,}-${{ matrix.name }}"
+          short="${GITHUB_SHA::7}"
+          ref="${GITHUB_REF_NAME}"
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            slug=$(echo "$ref" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/-/g')
+            tags="$image:branch-$slug,$image:branch-$slug-$short"
+          elif [[ "$ref" == "main" ]]; then
+            tags="$image:latest,$image:sha-$short"
+          else
+            tags="$image:beta,$image:beta-$short"
+          fi
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # On PRs the image is built (to catch Dockerfile breakage) but not pushed.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
