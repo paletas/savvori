@@ -1,0 +1,49 @@
+{
+  "numFound": 4,
+  "items": [
+    {
+      "resultClass": "product", "code": "11038070",
+      "gridbox": { "data": {
+        "category": "Food", "itemId": 11038070, "fullTitle": "Mimosa Leite Meio Gordo",
+        "brand": { "name": "Mimosa" },
+        "canonicalUrl": "/p/mimosa-leite-meio-gordo/p11038070",
+        "image": "https://www.lidl.pt/assets/mimosa.png",
+        "keyfacts": { "wonCategoryPrimary": "Mundos de necessidade/Alimentos e quase alimentos/Queijos, laticínios e ovos/Leite e natas" },
+        "price": {
+          "price": 0.89,
+          "discount": { "deletedPrice": 1, "percentageDiscount": 11, "showDiscount": true },
+          "packaging": { "text": "Cada emb. 1 L" }
+        }
+      } }
+    },
+    {
+      "resultClass": "product", "code": "11500001",
+      "gridbox": { "data": {
+        "category": "Food", "itemId": 11500001, "fullTitle": "Agros Leite com Chocolate",
+        "brand": { "name": "Agros" },
+        "canonicalUrl": "/p/agros-leite-com-chocolate/p11500001",
+        "keyfacts": { "wonCategoryPrimary": "" },
+        "price": {
+          "price": 2.8,
+          "discount": { "deletedPrice": 0, "showDiscount": false },
+          "packaging": { "text": "Pack 8x200 ml" },
+          "basePrice": { "prefix": false, "text": "1 L = 1,75" }
+        }
+      } }
+    },
+    {
+      "resultClass": "product", "code": "20000001",
+      "gridbox": { "data": {
+        "category": "Non-Food", "itemId": 20000001, "fullTitle": "Parkside Martelo",
+        "price": { "price": 9.99 }
+      } }
+    },
+    {
+      "resultClass": "product", "code": "11500002",
+      "gridbox": { "data": {
+        "category": "Food", "itemId": 11500002, "fullTitle": "Vemondo Bio Bebida de Aveia",
+        "price": { }
+      } }
+    }
+  ]
+}

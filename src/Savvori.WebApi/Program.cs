@@ -57,25 +57,23 @@ builder.Services.AddHttpClient("auchan", c =>
     c.Timeout = TimeSpan.FromSeconds(60);
 });
 
-builder.Services.AddHttpClient("minipreco", c =>
+builder.Services.AddHttpClient("celeiro", c =>
 {
-    c.BaseAddress = new Uri("https://www.minipreco.pt");
+    c.BaseAddress = new Uri("https://www.celeiro.pt");
     c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent",
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
     c.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "pt-PT,pt;q=0.9");
     c.Timeout = TimeSpan.FromSeconds(60);
 });
 
-// Default HttpClient for stub scrapers (Lidl, Intermarché, Mercadona)
-foreach (var stubSlug in new[] { "lidl", "intermarche", "mercadona" })
+builder.Services.AddHttpClient("lidl", c =>
 {
-    builder.Services.AddHttpClient(stubSlug, c =>
-    {
-        c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
-        c.Timeout = TimeSpan.FromSeconds(30);
-    });
-}
+    c.BaseAddress = new Uri("https://www.lidl.pt");
+    c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
+    c.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "pt-PT,pt;q=0.9");
+    c.Timeout = TimeSpan.FromSeconds(60);
+});
 
 builder.Services.AddScoped<ScraperResultProcessor>();
 
@@ -83,10 +81,8 @@ builder.Services.AddScoped<ScraperResultProcessor>();
 builder.Services.AddScoped<IStoreScraper, ContinenteScraper>();
 builder.Services.AddScoped<IStoreScraper, PingoDoceScraper>();
 builder.Services.AddScoped<IStoreScraper, AuchanScraper>();
-builder.Services.AddScoped<IStoreScraper, MiniprecoScraper>();
+builder.Services.AddScoped<IStoreScraper, CeleiroScraper>();
 builder.Services.AddScoped<IStoreScraper, LidlScraper>();
-builder.Services.AddScoped<IStoreScraper, InterarcheScraper>();
-builder.Services.AddScoped<IStoreScraper, MercadonaScraper>();
 
 // Location and optimization services
 builder.Services.AddHttpClient("geoapi", c =>

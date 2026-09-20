@@ -44,12 +44,36 @@ public static class StoreChainSeeder
             }
         }
 
-        if (seeded > 0 || updated > 0)
+        // Chains dropped from config: delete when they have no data, otherwise just deactivate
+        // (their history stays intact).
+        var configuredSlugs = chains.Select(c => c.Slug).ToHashSet();
+        var removed = 0;
+        foreach (var chain in await db.StoreChains.Where(sc => !configuredSlugs.Contains(sc.Slug)).ToListAsync())
+        {
+            var hasData =
+                await db.StoreProducts.AnyAsync(p => p.StoreChainId == chain.Id) ||
+                await db.ScrapingJobs.AnyAsync(j => j.StoreChainId == chain.Id) ||
+                await db.StoreCategories.AnyAsync(c => c.StoreChainId == chain.Id) ||
+                await db.Stores.AnyAsync(s => s.StoreChainId == chain.Id);
+
+            if (!hasData)
+            {
+                db.StoreChains.Remove(chain);
+                removed++;
+            }
+            else if (chain.IsActive)
+            {
+                chain.IsActive = false;
+                updated++;
+            }
+        }
+
+        if (seeded > 0 || updated > 0 || removed > 0)
         {
             await db.SaveChangesAsync();
             logger.LogInformation(
-                "StoreChainSeeder: seeded {Seeded} chain(s), updated {Updated} chain(s).",
-                seeded, updated);
+                "StoreChainSeeder: seeded {Seeded} chain(s), updated {Updated} chain(s), removed {Removed} chain(s).",
+                seeded, updated, removed);
         }
     }
 }

@@ -18,9 +18,9 @@ public class AuchanScraperTests
     {
         var html = LoadFixture("auchan_products.html");
         var handler = new FakeHttpMessageHandler();
-        // Page 1 returns products, page 2 returns empty (stops pagination)
-        handler.SetupRoute("page=1", html);
-        handler.SetupRoute("page=2", "<html><body></body></html>");
+        // start=0 returns products, start=24 returns empty (stops pagination)
+        handler.SetupRoute("start=0", html);
+        handler.SetupRoute("start=24", "<html><body></body></html>");
 
         var httpClient = new HttpClient(handler);
         var factory = Substitute.For<IHttpClientFactory>();
@@ -157,8 +157,8 @@ public class AuchanScraperTests
             : html;
 
         var handler = new FakeHttpMessageHandler();
-        handler.SetupRoute("page=1", htmlWithDuplicate);
-        handler.SetupRoute("page=2", "<html><body></body></html>");
+        handler.SetupRoute("start=0", htmlWithDuplicate);
+        handler.SetupRoute("start=24", "<html><body></body></html>");
 
         var factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient("auchan").Returns(new HttpClient(handler));
@@ -195,6 +195,24 @@ public class AuchanScraperTests
         var (scraper, _) = CreateScraper();
         var locations = await scraper.ScrapeStoreLocationsAsync(CancellationToken.None);
         Assert.Empty(locations);
+    }
+
+    [Fact]
+    public async Task ScrapeProductsAsync_StopsWhenServerRepeatsSamePage()
+    {
+        // Regression: Auchan ignored an unknown paging param and returned page 1 forever,
+        // which made the scraper loop indefinitely.
+        var handler = new FakeHttpMessageHandler();
+        handler.SetDefaultResponse(LoadFixture("auchan_products.html"));
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient("auchan").Returns(new HttpClient(handler));
+        var scraper = new AuchanScraper(factory, Substitute.For<ILogger<AuchanScraper>>());
+
+        var products = await scraper.ScrapeProductsAsync("ovos", CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(4, products.Count);
+        Assert.True(handler.RequestCount <= 3, $"Expected the loop to stop, made {handler.RequestCount} requests");
     }
 
     [Fact]
