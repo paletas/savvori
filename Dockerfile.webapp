@@ -1,18 +1,23 @@
 # syntax=docker/dockerfile:1
+# Tailwind/DaisyUI CSS build (Tailwind v4 needs Node 20+; scans the Razor pages for class names).
+FROM node:22-slim AS css
+WORKDIR /src/src/Savvori.WebApp
+COPY src/Savvori.WebApp/package*.json ./
+RUN npm ci
+COPY src/Savvori.WebApp/ ./
+RUN npm run build:css
+
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
-# Node is needed for the Tailwind/DaisyUI CSS build (the MSBuild target is skipped when CI=true).
-RUN apt-get update && apt-get install -y --no-install-recommends nodejs npm && rm -rf /var/lib/apt/lists/*
+# The MSBuild Tailwind target is skipped when CI=true; site.css comes from the css stage.
 ENV CI=true
 COPY global.json ./
 COPY src/Savvori.Shared/Savvori.Shared.csproj src/Savvori.Shared/
 COPY src/Savvori.ServiceDefaults/Savvori.ServiceDefaults.csproj src/Savvori.ServiceDefaults/
 COPY src/Savvori.WebApp/Savvori.WebApp.csproj src/Savvori.WebApp/
 RUN dotnet restore src/Savvori.WebApp/Savvori.WebApp.csproj
-COPY src/Savvori.WebApp/package*.json src/Savvori.WebApp/
-RUN cd src/Savvori.WebApp && npm ci
 COPY src/ src/
-RUN cd src/Savvori.WebApp && npm run build:css
+COPY --from=css /src/src/Savvori.WebApp/wwwroot/css/site.css src/Savvori.WebApp/wwwroot/css/site.css
 RUN dotnet publish src/Savvori.WebApp/Savvori.WebApp.csproj -c Release -o /app --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
