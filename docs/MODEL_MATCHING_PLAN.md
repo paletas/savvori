@@ -30,7 +30,7 @@ Status: **approved. Phase 1 implemented; Phase 2 awaiting go-ahead.**
 **Interfaces** (in `Savvori.WebApi/Modeling`):
 - `IEmbeddingClient`: `EmbedAsync(IReadOnlyList<string>) -> EmbeddingResult { vectors, modelName, modelDigest, dimension }`, plus `PingAsync`.
 - `IPairJudge`: `JudgeAsync(a, b) -> JudgeVerdict { Yes | No | Unclear }`. A transport failure throws `ModelUnavailableException` and is never mapped to `No`.
-- `OllamaEmbeddingClient` uses `/api/embed`. `OllamaPairJudge` uses `/api/chat` with temperature 0 and no JSON mode, and parses a one-word answer defensively (anything that isn't clearly yes or no is `Unclear`). The digest comes from `/api/show`, cached per process.
+- `OllamaEmbeddingClient` uses `/api/embed`. `OllamaPairJudge` uses `/api/chat` with temperature 0 and no JSON mode, and parses a one-word answer defensively (anything that isn't clearly yes or no is `Unclear`). The digest comes from `/api/tags` (the model's entry), cached for 10 minutes.
 - Both go through one typed `HttpClient` with a connect timeout (`SocketsHttpHandler.ConnectTimeout`) and a total timeout. They use no standard resilience handler: the retry lives in the queue, so there are no hidden retries and none are unbounded.
 
 **Circuit breaker** (`ModelCircuitBreaker`, singleton, hand-written and small, thread-safe):
@@ -50,7 +50,7 @@ Status: **approved. Phase 1 implemented; Phase 2 awaiting go-ahead.**
 ## Phase 1: Foundation and observability
 
 Deliverables:
-1. `ModelOptions`, the two interfaces, the Ollama implementations, `ModelCircuitBreaker`, and DI registration behind the flag. With the flag off, a no-op client is registered and the drain job exits immediately.
+1. `ModelOptions`, the two interfaces, the Ollama implementations, `ModelCircuitBreaker`, and DI registration behind the flag. The real clients are always registered but nothing invokes them with the flag off; only the drain job is gated, and it exits immediately.
 2. `ModelJobs` table and `ModelQueueDrainJob`. In Phase 1 the only job type is `Embed`, and the handler is a stub that has no consumer yet (see the note below).
 3. `IModelStatusService` (breaker state, last success, last error, queue depth, oldest pending job, stale embeddings count), exposed at `GET /api/admin/model/status` and as a panel on Admin/Mapping. The stale count is 0 until Phase 2 adds embeddings, but the query and its tests exist now.
 4. Fakes in the test project: `FakeEmbeddingClient` (deterministic hash-based vectors) and `FlakyModelClient` (simulated timeouts, 5xx, slow responses, and "down for a while" driven by `TimeProvider`).
@@ -68,6 +68,7 @@ Note on the embedding metadata: I'm putting the `Embedding` entity in Phase 2, n
 ## Phase 2: Embeddings and candidates (outline; detailed after Phase 1 review)
 
 - **Storage: per `StoreProduct`, not per canonical.** The embedding describes one chain's listing text (`"{brand} {name}"`, lower-cased, brand omitted if already in the name). A canonical can be merged, split or unmerged under manual decisions, and a canonical's vector would then need recomputing and would mix texts. Per-StoreProduct vectors are stable and match how candidates are generated (nearest neighbour from a *different chain*). Table `StoreProductEmbeddings`: `StoreProductId` (PK), `Vector` (float32 BLOB), `ModelName`, `ModelDigest`, `Dimension`, `InputTextHash`, `CreatedAt`. Rows are stale when the model name or digest differs from the current one, or the hash differs from the hash of the current text.
+- Watch-out from Phase 1: a `ModelResponseException` (server answers with unusable output) counts as a breaker *success*, so a model that is loaded but broken keeps the breaker closed and would dead-letter the catalogue. Phase 2 should add an alarm (e.g. dead-letter rate in the status panel) or a separate response-failure counter.
 - An `EmbeddingPending` state is derived rather than stored: a StoreProduct with no fresh embedding row and a pending queue job. This avoids a status column on the hot scraping table.
 - The in-memory index is a lazy `float[]` matrix (~18k x 1024 x 4 B ≈ 75 MB), L2-normalised so cosine is a dot product. It is refreshed incrementally by `Version`/`CreatedAt`. Top-8 search is brute force, filtered to other chains, and ignores rows from other models.
 - A post-scrape or nightly job enqueues embed jobs for new or changed products. It then generates candidates with the size and brand filters from the brief and stores them in `MatchCandidates` (pair, cosine, `SizeKnown`, `BrandCheck`, model id). It works on whatever is embedded, so a partial catalogue gives fewer but correct candidates.
@@ -97,3 +98,28 @@ Note on the embedding metadata: I'm putting the `Embedding` entity in Phase 2, n
 - No new NuGet packages. Polly is not used for model calls, because the queue owns retries.
 - New code lives in `Savvori.WebApi/Modeling/`. The entities go in `Savvori.Shared`.
 - Docs (`FUNCTIONAL_REQUIREMENTS.md`, `TECHNICAL_ARCHITECTURE.md`) are updated in each phase.
+
+## Phase 1 report
+
+Commit: `feat: model backend foundation (breaker, job queue, status) behind a feature flag`.
+
+**Verified**
+- `dotnet test Savvori.sln --filter "FullyQualifiedName!~LiveScraperTests"`: 407 passed, 0 failed. `LiveScraperTests` were excluded and not run.
+- 63 of those are the new modelling tests: breaker open/close/probe, guarded clients, queue idempotency/backoff/dead-letter/lease reclaim, drain job with the model down and recovering, no dead-lettering during a long outage, Ollama request/response handling and verdict parsing, stale-embedding detection, status endpoint.
+- Scraping completes and stores products (auto-matched as before) while the model is down and jobs are queued.
+- The `AddModelJobs` migration applied cleanly to a throwaway SQLite file (not your database): `ModelJobs` plus both indexes created, both migrations recorded in `__EFMigrationsHistory`. It is applied to the real DB by the normal startup path, after the existing backup.
+
+**Not verified**
+- No real Ollama and none of your beta data. The `/api/embed`, `/api/tags` and `/api/chat` shapes are only exercised against stub handlers, so first contact with the real server is unvalidated (including whether the model name in `/api/tags` matches `Model:EmbeddingModel` exactly, with or without `:latest`).
+- The Admin/Mapping panel was compiled but not viewed in a browser.
+
+**Before/after match report:** unchanged by design. Phase 1 touches no matching or categorisation path, and all model features are off (`Model:Enabled=false`).
+
+**Deviations from the approved plan**
+- Real Ollama clients are always registered (nothing calls them with the flag off) instead of a no-op client; only the drain job is gated.
+- Model digest is read from `/api/tags`, not `/api/show` (the plan text is corrected above).
+- The build regenerated the tracked `wwwroot/css/site.css` (Tailwind picked up the new panel's classes), so it is in the commit even though `.gitignore` lists it; it was already tracked before this work.
+
+**Threshold caveat:** the defaults planned for later phases (0.90 / 0.95 accept, 0.80 / 0.85 judge band, 0.85 category auto-assign) were tuned on a small hand-labelled sample and must be re-checked against review-queue results.
+
+**To enable:** set `Model:Enabled=true` (and check `Model:BaseUrl`) in configuration.
