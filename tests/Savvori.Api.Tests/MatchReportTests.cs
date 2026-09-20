@@ -40,11 +40,11 @@ public class MatchReportTests : IClassFixture<SavvoriWebApiFactory>
 
         static int Int(JsonElement e, string name) => e.GetProperty(name).GetInt32();
 
-        // 3 canonicals (A: 2 chains, B: 2 store products in 1 chain, C: 1 store product), 5 store products
-        Assert.Equal(Int(before, "totalCanonicals") + 3, Int(after, "totalCanonicals"));
-        Assert.Equal(Int(before, "totalStoreProducts") + 5, Int(after, "totalStoreProducts"));
+        // 4 canonicals (A: 2 priced chains, B: 2 store products in 1 chain, C: 1, D: 2 chains but one unpriced), 7 store products
+        Assert.Equal(Int(before, "totalCanonicals") + 4, Int(after, "totalCanonicals"));
+        Assert.Equal(Int(before, "totalStoreProducts") + 7, Int(after, "totalStoreProducts"));
         Assert.Equal(Int(before, "canonicalsWithMultipleChains") + 1, Int(after, "canonicalsWithMultipleChains"));
-        Assert.Equal(Bucket(before, 2) + 2, Bucket(after, 2));
+        Assert.Equal(Bucket(before, 2) + 3, Bucket(after, 2));
         Assert.Equal(Bucket(before, 1) + 1, Bucket(after, 1));
         // A has no size, B and C have one; only C has an EAN; two store products carry an EAN
         Assert.Equal(Int(before, "canonicalsWithNoSize") + 1, Int(after, "canonicalsWithNoSize"));
@@ -53,7 +53,7 @@ public class MatchReportTests : IClassFixture<SavvoriWebApiFactory>
 
         var methods = after.GetProperty("byMatchMethod").EnumerateArray()
             .ToDictionary(m => m.GetProperty("method").GetString()!, m => m.GetProperty("count").GetInt32());
-        Assert.True(methods.GetValueOrDefault("report-test") >= 5);
+        Assert.True(methods.GetValueOrDefault("report-test") >= 7);
     }
 
     private void factory_Seed(string slug)
@@ -78,6 +78,7 @@ public class MatchReportTests : IClassFixture<SavvoriWebApiFactory>
                 sp.MatchMethod = "report-test";
                 sp.EAN = ean;
                 db.StoreProducts.Add(sp);
+                db.StoreProductPrices.Add(TestDataSeeder.CreateTestStoreProductPrice(sp.Id, 1m));
             }
 
             Link(c1.Id, a, ean: "5600000000000");
@@ -85,6 +86,15 @@ public class MatchReportTests : IClassFixture<SavvoriWebApiFactory>
             Link(c1.Id, b);
             Link(c1.Id, b);
             Link(c2.Id, c, ean: c.EAN);
+
+            // D is linked in two chains but the second store product has no current price: not "priced in 2 chains"
+            var d = TestDataSeeder.CreateTestProduct("D unpriced elsewhere");
+            d.SizeValue = 1m;
+            db.Products.Add(d);
+            Link(c1.Id, d);
+            var unpriced = TestDataSeeder.CreateTestStoreProduct(c2.Id, d.Id);
+            unpriced.MatchMethod = "report-test";
+            db.StoreProducts.Add(unpriced);
         });
     }
 }

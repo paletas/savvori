@@ -49,12 +49,12 @@ public static partial class ProductNormalizer
     /// Accepts decimal commas or points. Multipacks ("6x33cl", "Pack 6 Latas 33cl") return the
     /// total quantity (1980 ml); a bare "Pack 6" returns (6, Pack). Returns null if not found.
     /// </summary>
-    public static (decimal SizeValue, ProductUnit Unit)? ExtractSizeAndUnit(string name)
+    public static (decimal SizeValue, ProductUnit Unit)? ExtractSizeAndUnit(string name, bool allowPackCount = true)
     {
         var match = SizePattern.Match(name);
         if (!match.Success)
         {
-            var bare = PackCountPattern.Match(name);
+            var bare = allowPackCount ? PackCountPattern.Match(name) : Match.Empty;
             return bare.Success && int.TryParse(bare.Groups["count"].Value, out var packCount) && packCount > 0
                 ? (packCount, ProductUnit.Pack)
                 : null;
@@ -81,7 +81,7 @@ public static partial class ProductNormalizer
         // Multipack: "6x33cl" or "Pack 6 ... 33cl" → total quantity
         if (match.Groups["count"].Success && int.TryParse(match.Groups["count"].Value, out var count) && count > 0)
             value *= count;
-        else if (unit is ProductUnit.Kg or ProductUnit.G or ProductUnit.L or ProductUnit.Ml)
+        else if (allowPackCount && unit is ProductUnit.Kg or ProductUnit.G or ProductUnit.L or ProductUnit.Ml)
         {
             var pack = PackCountPattern.Match(name);
             if (pack.Success && int.TryParse(pack.Groups["count"].Value, out var packCount) && packCount > 1)

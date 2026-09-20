@@ -58,6 +58,15 @@ public class ProductNormalizerTests
         Assert.Equal((ProductUnit)expectedUnit, result.Value.Unit);
     }
 
+    [Fact]
+    public void ExtractSizeAndUnit_IgnoresPackCountWhenDisallowed()
+    {
+        // Promo copy in tile text ("Pack 2") must not multiply an unrelated size or invent a pack.
+        var multiplied = ProductNormalizer.ExtractSizeAndUnit("Emb. 1,5 L Oferta Pack 2", allowPackCount: false);
+        Assert.Equal((1.5m, ProductUnit.L), multiplied);
+        Assert.Null(ProductNormalizer.ExtractSizeAndUnit("Oferta Pack 2", allowPackCount: false));
+    }
+
     [Theory]
     // parsed size agrees with the store's unit price: keep it
     [InlineData(1.19, 2.38, 0.5, (int)ProductUnit.L, 0.5, false)]

@@ -12,6 +12,7 @@ public class RecomputeSizesTests : IClassFixture<SavvoriWebApiFactory>
 {
     private readonly SavvoriWebApiFactory _factory;
     private readonly string _chainSlug = $"recompute-{Guid.NewGuid():N}";
+    private readonly Guid _chainId;
     private readonly Guid _decimalCommaId = Guid.NewGuid();
     private readonly Guid _unitPriceWinsId = Guid.NewGuid();
     private readonly Guid _noSizeId = Guid.NewGuid();
@@ -20,6 +21,7 @@ public class RecomputeSizesTests : IClassFixture<SavvoriWebApiFactory>
     {
         _factory = factory;
         var chain = TestDataSeeder.CreateTestStoreChain("Recompute", _chainSlug);
+        _chainId = chain.Id;
 
         factory.SeedData(db =>
         {
@@ -101,6 +103,33 @@ public class RecomputeSizesTests : IClassFixture<SavvoriWebApiFactory>
         Assert.Equal(ProductUnit.Ml, ml.Unit);
 
         Assert.Null(Read(_noSizeId).Size);
+    }
+
+    [Fact]
+    public async Task RecomputeSizes_KeepsStoredStructuredSize_WhenNameParseContradictsIt()
+    {
+        var keptId = Guid.NewGuid();
+        var noUnitPriceId = Guid.NewGuid();
+        _factory.SeedData(db =>
+        {
+            // Structured 500 g agrees with €1.99 at €3.98/kg; the name's "10 un" must not replace it
+            AddStoreProduct(db, _chainId, keptId, "Queijo Flamengo Fatiado 10 un", 500m, ProductUnit.G, 1.99m, 3.98m);
+            // No unit price to arbitrate and not a decimal-comma slip: keep the stored size too
+            AddStoreProduct(db, _chainId, noUnitPriceId, "Queijo Fatiado 10 un", 500m, ProductUnit.G, 1.99m, null);
+        });
+
+        using var client = _factory.CreateClient();
+        var resp = await client.PostAsync(
+            $"/api/admin/mapping/recompute-sizes?chainSlug={_chainSlug}", null,
+            TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        var kept = Read(keptId);
+        Assert.Equal(500m, kept.Size);
+        Assert.Equal(ProductUnit.G, kept.Unit);
+        var noUnitPrice = Read(noUnitPriceId);
+        Assert.Equal(500m, noUnitPrice.Size);
+        Assert.Equal(ProductUnit.G, noUnitPrice.Unit);
     }
 
     [Fact]

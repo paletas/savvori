@@ -240,15 +240,21 @@ public class MappingAdminController : ControllerBase
         var totalStoreProducts = await _db.StoreProducts.CountAsync(ct);
         var totalCanonicals = await _db.Products.CountAsync(ct);
 
-        // (canonical, chain) pairs; one row per store product is enough to count chains and histogram.
+        // One row per store product. "Chains" counts only chains with a latest price, matching the
+        // "has prices from both chains" question; the histogram counts every linked store product.
         var links = await _db.StoreProducts
             .Where(sp => sp.CanonicalProductId != null)
-            .Select(sp => new { CanonicalId = sp.CanonicalProductId!.Value, sp.StoreChainId })
+            .Select(sp => new
+            {
+                CanonicalId = sp.CanonicalProductId!.Value,
+                sp.StoreChainId,
+                HasLatestPrice = sp.Prices.Any(p => p.IsLatest)
+            })
             .ToListAsync(ct);
 
         var perCanonical = links
             .GroupBy(l => l.CanonicalId)
-            .ToDictionary(g => g.Key, g => (Count: g.Count(), Chains: g.Select(l => l.StoreChainId).Distinct().Count()));
+            .ToDictionary(g => g.Key, g => (Count: g.Count(), Chains: g.Where(l => l.HasLatestPrice).Select(l => l.StoreChainId).Distinct().Count()));
 
         var histogram = perCanonical.Values
             .GroupBy(v => v.Count)
@@ -370,11 +376,40 @@ public class MappingAdminController : ControllerBase
 
         foreach (var sp in storeProducts)
         {
+            // The stored size may have come from a structured tile field (better than the name), so a
+            // name parse only replaces it when the unit price prefers it, or, with no unit price to
+            // arbitrate, when it is the stored value with a dropped decimal comma (a power-of-ten ratio).
             var parsed = ProductNormalizer.ExtractSizeAndUnit(sp.Name);
-            var sizeValue = parsed?.SizeValue ?? sp.SizeValue;
-            var unit = parsed?.Unit ?? sp.Unit;
+            var sizeValue = sp.SizeValue;
+            var unit = sp.Unit;
+            latestPrices.TryGetValue(sp.Id, out var price);
 
-            if (latestPrices.TryGetValue(sp.Id, out var price))
+            if (parsed is { } p)
+            {
+                if (sp.SizeValue is null)
+                {
+                    sizeValue = p.SizeValue;
+                    unit = p.Unit;
+                }
+                else if (price?.UnitPrice is not null)
+                {
+                    var storedOk = !ProductNormalizer.ReconcileSizeWithUnitPrice(
+                        price.Price, price.UnitPrice, sp.SizeValue, sp.Unit).Disagreed;
+                    var parsedOk = !ProductNormalizer.ReconcileSizeWithUnitPrice(
+                        price.Price, price.UnitPrice, p.SizeValue, p.Unit).Disagreed;
+                    if (!storedOk && parsedOk)
+                    {
+                        sizeValue = p.SizeValue;
+                        unit = p.Unit;
+                    }
+                }
+                else if (p.Unit == sp.Unit && IsPowerOfTenApart(sp.SizeValue.Value, p.SizeValue))
+                {
+                    sizeValue = p.SizeValue;
+                }
+            }
+
+            if (price is not null)
             {
                 var reconciled = ProductNormalizer.ReconcileSizeWithUnitPrice(
                     price.Price, price.UnitPrice, sizeValue, unit);
@@ -468,6 +503,15 @@ public class MappingAdminController : ControllerBase
             CanonicalProductId = req.CanonicalProductId,
             CanonicalProductName = canonical.Name
         });
+    }
+
+    // 5 vs 0.5, 150 vs 1.5: the signature of a dropped decimal comma.
+    private static bool IsPowerOfTenApart(decimal stored, decimal parsed)
+    {
+        if (stored <= 0 || parsed <= 0 || stored == parsed) return false;
+        var ratio = (double)(stored > parsed ? stored / parsed : parsed / stored);
+        var exponent = Math.Round(Math.Log10(ratio));
+        return exponent >= 1 && Math.Abs(Math.Log10(ratio) - exponent) < 0.001;
     }
 }
 

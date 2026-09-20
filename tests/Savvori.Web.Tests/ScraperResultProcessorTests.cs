@@ -78,6 +78,23 @@ public class ScraperResultProcessorTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ProcessProductsAsync_TakesSizeAndUnitFromOneSource()
+    {
+        // Structured tile size 500 g; the name's "10 un" must not swap the unit to Unit.
+        var scraped = MakeScraped(name: "Queijo Flamengo Fatiado 10 un", price: 1.99m) with
+        {
+            UnitPrice = 3.98m, Unit = ProductUnit.G, SizeValue = 500m
+        };
+
+        await _processor.ProcessProductsAsync("continente", [scraped], TestContext.Current.CancellationToken);
+
+        var sp = await _db.StoreProducts.SingleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(500m, sp.SizeValue);
+        Assert.Equal(ProductUnit.G, sp.Unit);
+        Assert.Equal(0, _processor.SizeDisagreements);
+    }
+
+    [Fact]
     public async Task ProcessProductsAsync_DoesNotCountDisagreement_WhenSizesAgree()
     {
         var scraped = MakeScraped(price: 0.86m) with { UnitPrice = 0.86m };

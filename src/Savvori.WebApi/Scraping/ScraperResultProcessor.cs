@@ -164,9 +164,10 @@ public sealed class ScraperResultProcessor
         CancellationToken ct)
     {
         var normalized = ProductNormalizer.Normalize(scraped.Name);
+        // Size and unit come from one source: the scraper's own pair when it found a size, else the name.
         var sizeUnit = ProductNormalizer.ExtractSizeAndUnit(scraped.Name);
         var sizeValue = scraped.SizeValue ?? sizeUnit?.SizeValue;
-        var unit = sizeUnit?.Unit ?? scraped.Unit;
+        var unit = scraped.SizeValue is not null ? scraped.Unit : sizeUnit?.Unit ?? scraped.Unit;
 
         // Sanity check against the store's own unit price; it wins when the sizes disagree by >5%.
         var reconciled = ProductNormalizer.ReconcileSizeWithUnitPrice(scraped.Price, scraped.UnitPrice, sizeValue, unit);
