@@ -59,6 +59,36 @@ public class ScraperResultProcessorTests : IAsyncLifetime
             Unit: ProductUnit.L,
             SizeValue: 1m);
 
+    // ─── Size sanity check ─────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ProcessProductsAsync_PrefersUnitPriceSize_WhenParsedSizeDisagrees()
+    {
+        // Scraper mis-parsed "0,5L" as 5 L; €1.19 at €2.38/L is really 0.5 L.
+        var scraped = MakeScraped(name: "Refrigerante Cola Zero", price: 1.19m) with
+        {
+            UnitPrice = 2.38m, Unit = ProductUnit.L, SizeValue = 5m
+        };
+
+        await _processor.ProcessProductsAsync("continente", [scraped], TestContext.Current.CancellationToken);
+
+        var sp = await _db.StoreProducts.SingleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(0.5m, sp.SizeValue);
+        Assert.Equal(1, _processor.SizeDisagreements);
+    }
+
+    [Fact]
+    public async Task ProcessProductsAsync_DoesNotCountDisagreement_WhenSizesAgree()
+    {
+        var scraped = MakeScraped(price: 0.86m) with { UnitPrice = 0.86m };
+
+        await _processor.ProcessProductsAsync("continente", [scraped], TestContext.Current.CancellationToken);
+
+        var sp = await _db.StoreProducts.SingleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(1m, sp.SizeValue);
+        Assert.Equal(0, _processor.SizeDisagreements);
+    }
+
     // ─── StoreProduct creation ─────────────────────────────────────────────────
 
     [Fact]

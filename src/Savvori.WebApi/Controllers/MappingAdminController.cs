@@ -283,6 +283,85 @@ public class MappingAdminController : ControllerBase
     }
 
     /// <summary>
+    /// Recomputes size/unit for existing StoreProducts from the stored product name (the raw
+    /// tile text is not persisted), cross-checked against the latest stored unit price.
+    /// A canonical product linked to exactly one StoreProduct follows that StoreProduct's size.
+    /// POST /api/admin/mapping/recompute-sizes?chainSlug=continente&amp;dryRun=true
+    /// </summary>
+    [HttpPost("recompute-sizes")]
+    public async Task<IActionResult> RecomputeSizes(
+        string? chainSlug = null, bool dryRun = false, CancellationToken ct = default)
+    {
+        var query = _db.StoreProducts.AsQueryable();
+        if (!string.IsNullOrWhiteSpace(chainSlug))
+        {
+            var chain = await _db.StoreChains.FirstOrDefaultAsync(c => c.Slug == chainSlug.ToLower(), ct);
+            if (chain is null) return NotFound(new { Message = $"Chain '{chainSlug}' not found." });
+            query = query.Where(sp => sp.StoreChainId == chain.Id);
+        }
+
+        var latestPrices = await _db.StoreProductPrices
+            .Where(p => p.IsLatest)
+            .Select(p => new { p.StoreProductId, p.Price, p.UnitPrice })
+            .ToDictionaryAsync(p => p.StoreProductId, ct);
+
+        var linkedCounts = await _db.StoreProducts
+            .Where(sp => sp.CanonicalProductId != null)
+            .GroupBy(sp => sp.CanonicalProductId!.Value)
+            .Select(g => new { Id = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(g => g.Id, g => g.Count, ct);
+
+        var storeProducts = await query.Include(sp => sp.CanonicalProduct).ToListAsync(ct);
+        int changed = 0, disagreements = 0, canonicalsUpdated = 0;
+
+        foreach (var sp in storeProducts)
+        {
+            var parsed = ProductNormalizer.ExtractSizeAndUnit(sp.Name);
+            var sizeValue = parsed?.SizeValue ?? sp.SizeValue;
+            var unit = parsed?.Unit ?? sp.Unit;
+
+            if (latestPrices.TryGetValue(sp.Id, out var price))
+            {
+                var reconciled = ProductNormalizer.ReconcileSizeWithUnitPrice(
+                    price.Price, price.UnitPrice, sizeValue, unit);
+                if (reconciled.Disagreed) disagreements++;
+                sizeValue = reconciled.SizeValue;
+            }
+
+            if (sizeValue == sp.SizeValue && unit == sp.Unit) continue;
+
+            changed++;
+            sp.SizeValue = sizeValue;
+            sp.Unit = unit;
+
+            var canonical = sp.CanonicalProduct;
+            if (canonical is not null && linkedCounts.GetValueOrDefault(canonical.Id) == 1)
+            {
+                canonical.SizeValue = sizeValue;
+                canonical.Unit = unit;
+                canonicalsUpdated++;
+            }
+        }
+
+        if (!dryRun && changed > 0)
+            await _db.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "Recompute sizes (dryRun={DryRun}): {Changed}/{Total} store products changed, " +
+            "{Disagreements} unit-price disagreements, {Canonicals} canonicals updated.",
+            dryRun, changed, storeProducts.Count, disagreements, canonicalsUpdated);
+
+        return Ok(new
+        {
+            DryRun = dryRun,
+            Total = storeProducts.Count,
+            Changed = changed,
+            UnitPriceDisagreements = disagreements,
+            CanonicalsUpdated = canonicalsUpdated
+        });
+    }
+
+    /// <summary>
     /// Assigns a canonical category to a Product.
     /// PUT /api/admin/mapping/products/{id}/category
     /// Body: { "categoryId": "guid" }

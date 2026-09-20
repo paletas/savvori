@@ -13,6 +13,12 @@ public sealed class ScraperResultProcessor
     private readonly ILogger<ScraperResultProcessor> _logger;
     private readonly ProductMatcher _matcher;
 
+    /// <summary>
+    /// Number of products whose parsed size disagreed (&gt;5%) with the store's unit price
+    /// during this processor's lifetime (one per scrape job).
+    /// </summary>
+    public int SizeDisagreements { get; private set; }
+
     // In-memory cache populated once per ProcessProductsAsync call: slug -> Guid
     private Dictionary<string, Guid> _categoryCache = [];
 
@@ -93,8 +99,9 @@ public sealed class ScraperResultProcessor
 
         await _db.SaveChangesAsync(ct);
         _logger.LogInformation(
-            "Processed {Count}/{Total} products for {Chain}. Skipped {Skipped}. Marked {Stale} inactive.",
-            processedCount, scraped.Count, storeChainSlug, skippedCount, staleProducts.Count);
+            "Processed {Count}/{Total} products for {Chain}. Skipped {Skipped}. Marked {Stale} inactive. " +
+            "Size/unit-price disagreements: {SizeDisagreements}.",
+            processedCount, scraped.Count, storeChainSlug, skippedCount, staleProducts.Count, SizeDisagreements);
         return processedCount;
     }
 
@@ -160,6 +167,20 @@ public sealed class ScraperResultProcessor
         var sizeUnit = ProductNormalizer.ExtractSizeAndUnit(scraped.Name);
         var sizeValue = scraped.SizeValue ?? sizeUnit?.SizeValue;
         var unit = sizeUnit?.Unit ?? scraped.Unit;
+
+        // Sanity check against the store's own unit price; it wins when the sizes disagree by >5%.
+        var reconciled = ProductNormalizer.ReconcileSizeWithUnitPrice(scraped.Price, scraped.UnitPrice, sizeValue, unit);
+        if (reconciled.Disagreed)
+        {
+            SizeDisagreements++;
+            _logger.LogWarning(
+                "Size mismatch for '{Name}' (ExternalId: {ExternalId}) from {Chain}: parsed {Parsed} {Unit}, " +
+                "price {Price} / unit price {UnitPrice} implies {Implied} {Unit}. Using unit-price size.",
+                scraped.Name, scraped.ExternalId, chain.Slug, sizeValue, unit,
+                scraped.Price, scraped.UnitPrice, reconciled.SizeValue);
+            sizeValue = reconciled.SizeValue;
+        }
+
         var unitPrice = scraped.UnitPrice ?? ProductNormalizer.ComputeUnitPrice(scraped.Price, unit, sizeValue);
         var now = DateTime.UtcNow;
 
