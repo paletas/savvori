@@ -101,7 +101,7 @@
                         <a asp-page="/Products/Index"
                            asp-route-search="@Model.Search"
                            asp-route-category="@Model.SelectedCategory"
-                           asp-route-page="@(Model.Products.Page - 1)"
+                           asp-route-p="@(Model.Products.Page - 1)"
                            class="btn btn-sm btn-ghost">← Prev</a>
                     }
                     @for (var i = Math.Max(1, Model.Products.Page - 2); i <= Math.Min(Model.Products.TotalPages, Model.Products.Page + 2); i++)
@@ -109,7 +109,7 @@
                         <a asp-page="/Products/Index"
                            asp-route-search="@Model.Search"
                            asp-route-category="@Model.SelectedCategory"
-                           asp-route-page="@i"
+                           asp-route-p="@i"
                            class="btn btn-sm @(i == Model.Products.Page ? "btn-primary" : "btn-ghost")">@i</a>
                     }
                     @if (Model.Products.Page < Model.Products.TotalPages)
@@ -117,7 +117,7 @@
                         <a asp-page="/Products/Index"
                            asp-route-search="@Model.Search"
                            asp-route-category="@Model.SelectedCategory"
-                           asp-route-page="@(Model.Products.Page + 1)"
+                           asp-route-p="@(Model.Products.Page + 1)"
                            class="btn btn-sm btn-ghost">Next →</a>
                     }
                 </div>

@@ -214,7 +214,7 @@
                             <td>
                                 <form method="post" asp-page-handler="AssignCategory" class="flex gap-2 items-center">
                                     <input type="hidden" name="productId" value="@p.Id" />
-                                    <input type="hidden" name="page" value="@Model.Page" />
+                                    <input type="hidden" name="p" value="@Model.PageNumber" />
                                     <select name="categoryId" class="select select-bordered select-xs">
                                         <option value="">— pick category —</option>
                                         @foreach (var parent in Model.AllCategories)
@@ -248,7 +248,7 @@
                 {
                     <a asp-page="/Admin/Mapping/Index"
                        asp-route-tab="uncategorized"
-                       asp-route-page="@(Model.UncategorizedProducts.Page - 1)"
+                       asp-route-p="@(Model.UncategorizedProducts.Page - 1)"
                        class="btn btn-sm">← Prev</a>
                 }
                 <span class="btn btn-sm btn-ghost no-animation">
@@ -258,7 +258,7 @@
                 {
                     <a asp-page="/Admin/Mapping/Index"
                        asp-route-tab="uncategorized"
-                       asp-route-page="@(Model.UncategorizedProducts.Page + 1)"
+                       asp-route-p="@(Model.UncategorizedProducts.Page + 1)"
                        class="btn btn-sm">Next →</a>
                 }
             </div>
@@ -414,7 +414,7 @@
                                             <input type="hidden" name="storeProductId" value="@sp.Id" />
                                             <input type="hidden" name="statusFilter" value="@Model.StatusFilter" />
                                             <input type="hidden" name="chainFilter" value="@Model.ChainFilter" />
-                                            <input type="hidden" name="page" value="@Model.Page" />
+                                            <input type="hidden" name="p" value="@Model.PageNumber" />
                                             <label class="text-xs font-semibold">Canonical Product ID (GUID)</label>
                                             <input type="text" name="canonicalProductId" required
                                                    placeholder="00000000-0000-0000-0000-000000000000"
@@ -438,7 +438,7 @@
                 {
                     <a asp-page="/Admin/Mapping/Index"
                        asp-route-tab="store-products"
-                       asp-route-page="@(Model.StoreProducts.Page - 1)"
+                       asp-route-p="@(Model.StoreProducts.Page - 1)"
                        asp-route-statusFilter="@Model.StatusFilter"
                        asp-route-chainFilter="@Model.ChainFilter"
                        class="btn btn-sm">← Prev</a>
@@ -450,7 +450,7 @@
                 {
                     <a asp-page="/Admin/Mapping/Index"
                        asp-route-tab="store-products"
-                       asp-route-page="@(Model.StoreProducts.Page + 1)"
+                       asp-route-p="@(Model.StoreProducts.Page + 1)"
                        asp-route-statusFilter="@Model.StatusFilter"
                        asp-route-chainFilter="@Model.ChainFilter"
                        class="btn btn-sm">Next →</a>

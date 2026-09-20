@@ -19,12 +19,16 @@ public class MockApiHandler : HttpMessageHandler
 
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
 
+    /// <summary>Every request seen by any handler instance ("METHOD /path?query"), for asserting what the WebApp sent.</summary>
+    public static readonly System.Collections.Concurrent.ConcurrentQueue<string> RequestLog = new();
+
     protected override async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request, CancellationToken ct)
     {
         var path = request.RequestUri?.AbsolutePath ?? "";
         var query = request.RequestUri?.Query ?? "";
         var method = request.Method.Method.ToUpperInvariant();
+        RequestLog.Enqueue($"{method} {path}{query}");
         var pathLower = path.ToLowerInvariant();
 
         // ===== Categories =====

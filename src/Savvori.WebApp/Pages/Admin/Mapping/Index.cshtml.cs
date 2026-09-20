@@ -12,8 +12,8 @@ public class MappingIndexModel(SavvoriApiClient api) : PageModel
     public string Tab { get; set; } = "uncategorized";
 
     // ── Pagination ─────────────────────────────────────────────────────────
-    [BindProperty(SupportsGet = true)]
-    public new int Page { get; set; } = 1;
+    [BindProperty(Name = "p", SupportsGet = true)]
+    public int PageNumber { get; set; } = 1;
 
     // ── Store Products filter ──────────────────────────────────────────────
     [BindProperty(SupportsGet = true)]
@@ -32,7 +32,7 @@ public class MappingIndexModel(SavvoriApiClient api) : PageModel
 
     public async Task OnGetAsync(CancellationToken ct)
     {
-        if (Page < 1) Page = 1;
+        if (PageNumber < 1) PageNumber = 1;
 
         var statsTask  = api.GetMappingStatsAsync(ct);
         var catsTask   = api.GetCategoriesAsync(ct);
@@ -50,12 +50,12 @@ public class MappingIndexModel(SavvoriApiClient api) : PageModel
                 break;
 
             case "store-products":
-                StoreProducts = await api.GetAdminStoreProductsAsync(StatusFilter, ChainFilter, Page, 20, ct);
+                StoreProducts = await api.GetAdminStoreProductsAsync(StatusFilter, ChainFilter, PageNumber, 20, ct);
                 break;
 
             default: // "uncategorized"
                 Tab = "uncategorized";
-                UncategorizedProducts = await api.GetUncategorizedProductsAsync(Page, 20, ct);
+                UncategorizedProducts = await api.GetUncategorizedProductsAsync(PageNumber, 20, ct);
                 break;
         }
     }
@@ -105,7 +105,7 @@ public class MappingIndexModel(SavvoriApiClient api) : PageModel
         else
             TempData["Error"] = error ?? "Failed to assign category.";
 
-        return RedirectToPage(new { tab = "uncategorized", page = Page });
+        return RedirectToPage(new { tab = "uncategorized", p = PageNumber });
     }
 
     public async Task<IActionResult> OnPostAssignCanonicalAsync(
@@ -117,6 +117,6 @@ public class MappingIndexModel(SavvoriApiClient api) : PageModel
         else
             TempData["Error"] = error ?? "Failed to link canonical product.";
 
-        return RedirectToPage(new { tab = "store-products", page = Page, statusFilter = StatusFilter, chainFilter = ChainFilter });
+        return RedirectToPage(new { tab = "store-products", p = PageNumber, statusFilter = StatusFilter, chainFilter = ChainFilter });
     }
 }
