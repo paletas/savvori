@@ -85,6 +85,8 @@ dotnet test tests/Savvori.Api.Tests/Savvori.Api.Tests.csproj
 | GET | `/api/admin/mapping/store-products?status=&chainSlug=` | Store products filtered by match status/chain|
 | POST | `/api/admin/mapping/backfill-categories` | Re-run category mapping for uncategorized products|
 | POST | `/api/admin/mapping/rematch?chainSlug=` | Re-run EAN/name matching for unmatched store products|
+| GET | `/api/admin/mapping/match-report` | Cross-store matching baseline report|
+| POST | `/api/admin/mapping/recompute-sizes?chainSlug=&dryRun=` | Recompute size/unit for existing store products|
 | PUT | `/api/admin/mapping/products/{id}/category` | Manually assign a category to a product|
 | PUT | `/api/admin/mapping/store-products/{id}/canonical` | Manually link a store product to a canonical product|
 

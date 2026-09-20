@@ -245,12 +245,10 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
         var match = SizeUnitPricePattern().Match(text);
         if (match.Success)
         {
-            var rawSize = match.Groups["size"].Value.Replace(",", ".");
             var rawUnit = match.Groups["unit"].Value.ToLowerInvariant();
-            var rawUnitPrice = match.Groups["uprice"].Value.Replace(",", ".");
 
-            decimal.TryParse(rawSize, NumberStyles.Any, CultureInfo.InvariantCulture, out var sizeVal);
-            decimal.TryParse(rawUnitPrice, NumberStyles.Any, CultureInfo.InvariantCulture, out var unitPriceVal);
+            ProductNormalizer.TryParseDecimal(match.Groups["size"].Value, out var sizeVal);
+            ProductNormalizer.TryParseDecimal(match.Groups["uprice"].Value, out var unitPriceVal);
 
             var unit = rawUnit switch
             {
@@ -285,7 +283,7 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
 
     // Matches patterns like "1 L | 0,86 €/L" or "500 g | 2,50 €/kg"
     [GeneratedRegex(
-        @"(?<size>[\d,]+)\s*(?<unit>kg|g|l|ml|cl)\s*\|\s*(?<uprice>[\d,]+)\s*€/(?:kg|g|l|ml)",
+        @"(?<![\d.,])(?<size>\d+(?:[.,]\d+)?)\s*(?<unit>kg|g|l|ml|cl)\s*\|\s*(?<uprice>\d+(?:[.,]\d+)?)\s*€/(?:kg|g|l|ml)",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex SizeUnitPricePattern();
 

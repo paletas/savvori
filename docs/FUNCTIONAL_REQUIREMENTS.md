@@ -115,6 +115,8 @@ The `/api/shoppinglists/{id}/optimize` endpoint supports four modes via `?mode=`
 - `GET /api/admin/mapping/store-products?status=&chainSlug=` supports filtering by match status and store chain.
 - `POST /api/admin/mapping/backfill-categories` assigns canonical categories to uncategorized products wherever a mapping now resolves, without erroring on unresolved ones.
 - `POST /api/admin/mapping/rematch?chainSlug=` re-attempts EAN and brand/name/size/unit matching for unmatched or failed store products, optionally scoped to one chain, and never creates duplicate canonical products.
+- `GET /api/admin/mapping/match-report` returns cross-store matching numbers: store-product and canonical totals, a store-products-per-canonical histogram, canonicals with prices from at least two chains, no-size and EAN counts, and counts by match method.
+- `POST /api/admin/mapping/recompute-sizes?chainSlug=&dryRun=` recomputes size/unit for existing store products from their stored names (raw tile text is not persisted), cross-checked against the latest stored unit price. During scraping, a parsed size that differs from the size implied by the store's unit price by more than 5% is replaced by the unit-price size and counted in the job log.
 - `PUT /api/admin/mapping/products/{id}/category` and `PUT /api/admin/mapping/store-products/{id}/canonical` allow manual, per-item correction.
 
 - The Web App admin area (`/Admin/Mapping`) provides a UI over this same API.

@@ -146,3 +146,17 @@ public record AdminStoreProductsResponse(
 
 public record BackfillCategoriesResponse(int Updated, int Skipped);
 public record RematchResponse(int Matched, int Remaining);
+
+public record MatchReportDto(
+    int TotalStoreProducts,
+    int TotalCanonicals,
+    List<MatchHistogramBucketDto> StoreProductsPerCanonical,
+    int CanonicalsWithMultipleChains,
+    int CanonicalsWithNoSize,
+    int StoreProductsWithNoSize,
+    int CanonicalsWithEan,
+    int StoreProductsWithEan,
+    List<MatchMethodCountDto> ByMatchMethod);
+
+public record MatchHistogramBucketDto(int StoreProducts, int Canonicals);
+public record RecomputeSizesResponse(bool DryRun, int Total, int Changed, int UnitPriceDisagreements, int CanonicalsUpdated);

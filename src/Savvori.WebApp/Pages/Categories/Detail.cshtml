@@ -43,7 +43,7 @@ else
             @for (var i = 1; i <= Model.TotalPages; i++)
             {
                 <a asp-page="/Categories/Detail" asp-route-slug="@Model.Slug"
-                   asp-route-page="@i"
+                   asp-route-p="@i"
                    class="btn btn-sm @(i == Model.CurrentPage ? "btn-primary" : "btn-ghost")">@i</a>
             }
         </div>
