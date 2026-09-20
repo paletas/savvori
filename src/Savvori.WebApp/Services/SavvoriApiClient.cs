@@ -351,6 +351,19 @@ public class SavvoriApiClient(HttpClient http, ILogger<SavvoriApiClient> logger)
         }
     }
 
+    public async Task<ModelStatusDto?> GetModelStatusAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            return await http.GetFromJsonAsync<ModelStatusDto>("/api/admin/model/status", JsonOptions, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to get model status");
+            return null;
+        }
+    }
+
     public async Task<UncategorizedProductsResponse?> GetUncategorizedProductsAsync(
         int page = 1, int pageSize = 20, CancellationToken ct = default)
     {

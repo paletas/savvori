@@ -24,6 +24,7 @@ public class MappingIndexModel(SavvoriApiClient api) : PageModel
 
     // ── Data ───────────────────────────────────────────────────────────────
     public MappingStatsDto? Stats { get; set; }
+    public ModelStatusDto? ModelStatus { get; set; }
     public UncategorizedProductsResponse? UncategorizedProducts { get; set; }
     public List<UnmappedCategoryDto> UnmappedCategories { get; set; } = [];
     public AdminStoreProductsResponse? StoreProducts { get; set; }
@@ -35,9 +36,11 @@ public class MappingIndexModel(SavvoriApiClient api) : PageModel
 
         var statsTask = api.GetMappingStatsAsync(ct);
         var catsTask  = api.GetCategoriesAsync(ct);
+        var modelTask = api.GetModelStatusAsync(ct);
 
-        await Task.WhenAll(statsTask, catsTask);
+        await Task.WhenAll(statsTask, catsTask, modelTask);
         Stats = await statsTask;
+        ModelStatus = await modelTask;
         AllCategories = await catsTask;
 
         switch (Tab)

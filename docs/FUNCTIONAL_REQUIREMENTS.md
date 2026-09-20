@@ -119,6 +119,9 @@ The `/api/shoppinglists/{id}/optimize` endpoint supports four modes via `?mode=`
 
 - The Web App admin area (`/Admin/Mapping`) provides a UI over this same API.
 
+### Model backend status (optional feature)
+- Admin/Mapping shows whether the optional model backend is enabled, its circuit-breaker state, queue depth, oldest pending job, dead-lettered jobs and stale embeddings. All model features are off by default and every existing feature works unchanged when the model is disabled or unreachable.
+
 ## 10. Web Application (Frontend UI)
 
 ### User Stories

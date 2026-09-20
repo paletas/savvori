@@ -109,6 +109,21 @@ public record MappingStatsDto(
     List<MatchStatusCountDto> ByMatchStatus,
     List<MatchMethodCountDto> ByMatchMethod);
 
+public record ModelStatusDto(
+    bool Enabled,
+    string BreakerState,
+    int ConsecutiveFailures,
+    DateTime? BreakerRetryAt,
+    DateTime? LastSuccessAt,
+    DateTime? LastErrorAt,
+    string? LastError,
+    int QueueDepth,
+    DateTime? OldestPendingAt,
+    int DeadLetterCount,
+    int StaleEmbeddings,
+    string EmbeddingModel,
+    string JudgeModel);
+
 public record MatchStatusCountDto(string Status, int Count);
 public record MatchMethodCountDto(string Method, int Count);
 

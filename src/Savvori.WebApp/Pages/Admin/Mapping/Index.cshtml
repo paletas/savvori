@@ -47,6 +47,43 @@
     </div>
 }
 
+@* ── Model backend status ───────────────────────────────────────────── *@
+@if (Model.ModelStatus is { } ms)
+{
+    var breakerClass = ms.BreakerState == "Closed" ? "badge-success" : "badge-error";
+    <div class="card bg-base-100 shadow mb-6">
+        <div class="card-body p-4">
+            <div class="flex flex-wrap items-center gap-3">
+                <h2 class="font-semibold">Model backend</h2>
+                @if (!ms.Enabled)
+                {
+                    <span class="badge badge-ghost">Disabled</span>
+                    <span class="text-sm text-base-content/60">Feature flag <code>Model:Enabled</code> is off; matching and categorisation run without the ms.</span>
+                }
+                else
+                {
+                    <span class="badge @breakerClass">Breaker: @ms.BreakerState</span>
+                    @if (ms.BreakerState != "Closed")
+                    {
+                        <span class="text-sm text-warning">Degraded mode: model features paused@(ms.BreakerRetryAt is { } retry ? $", next probe after {retry:HH:mm:ss} UTC" : "").</span>
+                    }
+                }
+            </div>
+            @if (ms.Enabled)
+            {
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3 text-sm">
+                    <div><div class="text-base-content/60">Queue depth</div><div class="font-semibold">@ms.QueueDepth.ToString("N0")</div></div>
+                    <div><div class="text-base-content/60">Oldest pending</div><div class="font-semibold">@(ms.OldestPendingAt?.ToString("yyyy-MM-dd HH:mm") ?? "–")</div></div>
+                    <div><div class="text-base-content/60">Dead-lettered</div><div class="font-semibold">@ms.DeadLetterCount.ToString("N0")</div></div>
+                    <div><div class="text-base-content/60">Stale embeddings</div><div class="font-semibold">@ms.StaleEmbeddings.ToString("N0")</div></div>
+                    <div><div class="text-base-content/60">Last success</div><div class="font-semibold">@(ms.LastSuccessAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? "never")</div></div>
+                    <div class="col-span-2"><div class="text-base-content/60">Last error</div><div class="font-semibold break-words">@(ms.LastError ?? "–")</div></div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
 @* ── Action buttons ─────────────────────────────────────────────────── *@
 <div class="flex flex-wrap gap-2 mb-6">
     <form method="post" asp-page-handler="Backfill">

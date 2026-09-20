@@ -80,6 +80,17 @@ Chains dropped from `Scraping:Chains` are pruned at startup by `StoreChainSeeder
 - `MappingAdminController` (`/api/admin/mapping/*`) exposes mapping statistics, uncategorized products, unmapped category strings, and store-product match status, plus repair actions: `backfill-categories` (re-runs `CategoryMapper` over uncategorized products), `rematch` (re-runs Tier 1/2 matching over unmatched/failed store products), and manual per-item category/canonical-product assignment.
 - Web App: `Pages/Admin/Mapping/Index.cshtml` provides an admin UI over this same API for reviewing and repairing mappings.
 
+### 6b. Remote Model Backend (feature-flagged, off by default)
+
+Optional model-assisted matching/categorisation runs against a remote, unreliable server (Ollama today). Design rules: the model is only ever called from background jobs; scraping, pages, optimisation and admin actions never depend on it; deterministic matching stays first.
+
+- `Modeling/` in `Savvori.WebApi`: `IEmbeddingClient` / `IPairJudge` (Ollama implementations use `/api/embed` and `/api/chat`), configured under `Model:*` (base URL, model names, timeouts, breaker and queue settings). `Model:Enabled` defaults to `false`.
+- `ModelCircuitBreaker`: opens after N consecutive transport failures, refuses calls during a cool-down, then lets one probe through. All clients are wrapped by it (`BreakerEmbeddingClient`, `BreakerPairJudge`). Malformed responses do not count as outages.
+- `ModelJobs` table + `ModelQueueDrainJob` (Quartz, every `Model:Queue:PollSeconds`): idempotent durable queue, exponential backoff with jitter, dead-letter after `MaxAttempts`. While the breaker is open, jobs are deferred without consuming attempts, so an outage never dead-letters healthy work. The drain job only probes while the breaker is open.
+- The model HTTP client opts out of the ServiceDefaults standard resilience handler (retries belong to the queue; timeouts to `Model:ConnectTimeoutSeconds` / `RequestTimeoutSeconds`).
+- Stored embeddings (Phase 2) must record model name, digest, dimension and input-text hash; `EmbeddingFreshness.IsStale` decides when to recompute.
+- Observability: `GET /api/admin/model/status` and a panel on Admin/Mapping. Plan and later phases: `docs/MODEL_MATCHING_PLAN.md`.
+
 ### 7. Location Services
 - `ILocationService` / `GeoApiLocationService`
 - Integrates with [geoapi.pt](https://geo.iotech.pt) (free, no auth): `GET https://geo.iotech.pt/cp/{postalCode}?json=1`
@@ -127,6 +138,10 @@ Chains dropped from `Scraping:Chains` are pruned at startup by `StoreChainSeeder
 ### Admin — Scraping
 - `GET /api/admin/scraping/status` – Current status of all scraping jobs
 - `POST /api/admin/scraping/trigger/{chainSlug}` – Manually trigger a scrape for a store chain
+
+### Admin — Model Backend
+- `GET /api/admin/model/status` — breaker state, last success/error, queue depth, oldest pending job, dead-lettered and stale-embedding counts (never calls the model).
+- `POST /api/admin/model/requeue-dead-letters` — gives dead-lettered jobs a fresh attempt budget.
 
 ### Admin — Category & Product Mapping
 - `GET /api/admin/mapping/stats` – Aggregate category/match statistics

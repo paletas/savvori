@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Quartz;
 using Savvori.Shared;
 using Savvori.WebApi;
+using Savvori.WebApi.Modeling;
 using Savvori.WebApi.Scraping;
 using Savvori.WebApi.Scraping.Scrapers;
 using Savvori.WebApi.Services;
@@ -94,9 +95,20 @@ builder.Services.AddHttpClient("geoapi", c =>
 builder.Services.AddScoped<ILocationService, GeoApiLocationService>();
 builder.Services.AddScoped<IShoppingOptimizer, ShoppingOptimizer>();
 
+// --- Remote model backend (feature-flagged, off by default; never called from request or scrape paths) ---
+builder.Services.AddModelServices(builder.Configuration);
+
 // --- Quartz scheduler ---
 builder.Services.AddQuartz(q =>
 {
+    // Drains the model job queue; a no-op unless Model:Enabled and the circuit breaker is closed.
+    var modelPollSeconds = Math.Max(10, builder.Configuration.GetValue("Model:Queue:PollSeconds", 60));
+    q.AddJob<ModelQueueDrainJob>(opts => opts.WithIdentity("model-queue-drain"));
+    q.AddTrigger(opts => opts
+        .ForJob("model-queue-drain")
+        .WithIdentity("model-queue-drain-trigger")
+        .WithSimpleSchedule(s => s.WithIntervalInSeconds(modelPollSeconds).RepeatForever()));
+
     // Jobs are registered per StoreChain slug.
     // Each active store chain gets two daily trigger: 06:00 and 18:00 UTC.
     var chains = builder.Configuration

@@ -19,6 +19,7 @@ public class SavvoriDbContext : DbContext
     public DbSet<StoreCategoryMapping> StoreCategoryMappings { get; set; } = default!;
     public DbSet<StoreProduct> StoreProducts { get; set; } = default!;
     public DbSet<StoreProductPrice> StoreProductPrices { get; set; } = default!;
+    public DbSet<ModelJob> ModelJobs { get; set; } = default!;
 
     // SQLite has no native decimal type: EF stores it as TEXT, which breaks ORDER BY / MIN / SUM
     // (prices would sort lexically, or the query fails to translate). Store prices as REAL instead.
@@ -154,6 +155,13 @@ public class SavvoriDbContext : DbContext
             .HasIndex(spp => new { spp.StoreProductId, spp.ScrapedAt });
         modelBuilder.Entity<StoreProductPrice>()
             .HasIndex(spp => new { spp.StoreProductId, spp.IsLatest });
+        // ModelJob: one active (Pending=0/Running=1) job per subject+input makes enqueueing idempotent
+        modelBuilder.Entity<ModelJob>()
+            .HasIndex(j => new { j.Type, j.SubjectId, j.PayloadHash })
+            .HasDatabaseName("ix_model_jobs_active_unique")
+            .IsUnique()
+            .HasFilter("\"Status\" IN (0, 1)");
+        modelBuilder.Entity<ModelJob>().HasIndex(j => new { j.Status, j.NextAttemptAt });
         // Only one IsLatest row per StoreProduct (partial unique index)
         modelBuilder.Entity<StoreProductPrice>()
             .HasIndex(spp => spp.StoreProductId)
