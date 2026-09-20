@@ -135,6 +135,8 @@ Savvori is an ASP.NET Core minimal API (.NET 10) that helps users find the cheap
 - `GET /api/admin/mapping/store-products?status=&chainSlug=&page=&pageSize=` – Store products filtered by match status/chain
 - `POST /api/admin/mapping/backfill-categories` – Re-run `CategoryMapper` over uncategorized products
 - `POST /api/admin/mapping/rematch?chainSlug=` – Re-run Tier 1/2 matching over unmatched/failed store products
+- `GET /api/admin/mapping/match-report` – Cross-store matching baseline (totals, histogram, multi-chain canonicals, no-size/EAN counts, by match method)
+- `POST /api/admin/mapping/recompute-sizes?chainSlug=&dryRun=` – Re-derive size/unit for existing store products from stored names + latest unit price
 - `PUT /api/admin/mapping/products/{id}/category` – Manually assign a category to a product
 - `PUT /api/admin/mapping/store-products/{id}/canonical` – Manually link a store product to a canonical product
 
