@@ -212,3 +212,16 @@ public record TaxonomyPlanRowDto(
 public record TaxonomyPlanDto(
     bool V2Active, int ProductsWithCategory, int ProductsAlreadyMigrated, int Unchanged, int MovedToUncategorised,
     List<TaxonomyPlanRowDto> Rows, Dictionary<string, int> Tags, Dictionary<string, int>? SeedTargets = null);
+public record MatchReportDto(
+    int TotalStoreProducts,
+    int TotalCanonicals,
+    List<MatchHistogramBucketDto> StoreProductsPerCanonical,
+    int CanonicalsWithMultipleChains,
+    int CanonicalsWithNoSize,
+    int StoreProductsWithNoSize,
+    int CanonicalsWithEan,
+    int StoreProductsWithEan,
+    List<MatchMethodCountDto> ByMatchMethod);
+
+public record MatchHistogramBucketDto(int StoreProducts, int Canonicals);
+public record RecomputeSizesResponse(bool DryRun, int Total, int Changed, int UnitPriceDisagreements, int CanonicalsUpdated);

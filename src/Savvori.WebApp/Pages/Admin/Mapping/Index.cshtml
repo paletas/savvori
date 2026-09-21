@@ -39,36 +39,9 @@
             var unmatchedCount = (unmatchedStat?.Count ?? 0) + (failedStat?.Count ?? 0);
         }
         <div class="stat">
-            <div class="stat-title">Products priced by 2+ chains</div>
-            <div class="stat-value text-2xl">@Model.Stats.MultiChainCanonicals.ToString("N0")</div>
-            <div class="stat-desc"><a class="link" asp-page="/Admin/Matching/Index">Match review</a></div>
-        </div>
-        <div class="stat">
             <div class="stat-title">Unmatched / Failed StoreProducts</div>
             <div class="stat-value text-2xl @(unmatchedCount == 0 ? "text-success" : "text-error")">
                 @unmatchedCount
-            </div>
-        </div>
-    </div>
-}
-
-@* ── Match report by method ─────────────────────────────────────────── *@
-@if (Model.Stats is { ByMatchMethod.Count: > 0 } report)
-{
-    <div class="card bg-base-100 shadow mb-6">
-        <div class="card-body p-4">
-            <h2 class="font-semibold">Store products by match method</h2>
-            <div class="flex flex-wrap gap-2 mt-2">
-                @foreach (var m in report.ByMatchMethod)
-                {
-                    <span class="badge badge-lg @(m.Method.StartsWith("embedding") ? "badge-info" : m.Method.StartsWith("manual") ? "badge-accent" : "badge-ghost")">
-                        @m.Method: @m.Count.ToString("N0")
-                    </span>
-                }
-            </div>
-            <div class="text-xs text-base-content/60 mt-1">
-                Deterministic tiers: <code>ean</code>, <code>brand+name+size+unit</code>, <code>created-new</code>.
-                Model tiers: <code>embedding-cosine</code>, <code>embedding-judge</code>. Human: <code>manual*</code>.
             </div>
         </div>
     </div>
@@ -113,6 +86,68 @@
     </div>
 }
 
+@* ── Match report ───────────────────────────────────────────────────── *@
+@if (Model.MatchReport is { } report)
+{
+    <div class="card bg-base-100 shadow mb-6">
+        <div class="card-body p-4">
+            <h2 class="card-title text-base">Cross-store match report</h2>
+            <div class="stats stats-horizontal w-full overflow-x-auto">
+                <div class="stat">
+                    <div class="stat-title">Store products</div>
+                    <div class="stat-value text-2xl">@report.TotalStoreProducts.ToString("N0")</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-title">Canonical products</div>
+                    <div class="stat-value text-2xl">@report.TotalCanonicals.ToString("N0")</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-title">Canonicals in ≥2 chains</div>
+                    <div class="stat-value text-2xl @(report.CanonicalsWithMultipleChains == 0 ? "text-error" : "text-success")">
+                        @report.CanonicalsWithMultipleChains.ToString("N0")
+                    </div>
+                </div>
+                <div class="stat">
+                    <div class="stat-title">No size (canonical / store)</div>
+                    <div class="stat-value text-2xl">@report.CanonicalsWithNoSize.ToString("N0")</div>
+                    <div class="stat-desc">@report.StoreProductsWithNoSize.ToString("N0") store products</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-title">With EAN (canonical / store)</div>
+                    <div class="stat-value text-2xl">@report.CanonicalsWithEan.ToString("N0")</div>
+                    <div class="stat-desc">@report.StoreProductsWithEan.ToString("N0") store products</div>
+                </div>
+            </div>
+            <div class="grid gap-4 md:grid-cols-2 mt-2">
+                <div>
+                    <h3 class="font-semibold text-sm mb-1">Store products per canonical</h3>
+                    <table class="table table-xs">
+                        <thead><tr><th>Store products</th><th class="text-right">Canonicals</th></tr></thead>
+                        <tbody>
+                        @foreach (var bucket in report.StoreProductsPerCanonical)
+                        {
+                            <tr><td>@bucket.StoreProducts</td><td class="text-right">@bucket.Canonicals.ToString("N0")</td></tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+                <div>
+                    <h3 class="font-semibold text-sm mb-1">By match method</h3>
+                    <table class="table table-xs">
+                        <thead><tr><th>Method</th><th class="text-right">Store products</th></tr></thead>
+                        <tbody>
+                        @foreach (var m in report.ByMatchMethod)
+                        {
+                            <tr><td>@m.Method</td><td class="text-right">@m.Count.ToString("N0")</td></tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @* ── Action buttons ─────────────────────────────────────────────────── *@
 <div class="flex flex-wrap gap-2 mb-6">
     <form method="post" asp-page-handler="Backfill">
@@ -130,6 +165,9 @@
             </svg>
             Re-match Unmatched
         </button>
+    </form>
+    <form method="post" asp-page-handler="RecomputeSizes" asp-route-tab="@Model.Tab">
+        <button type="submit" class="btn btn-sm btn-primary">Recompute Sizes</button>
     </form>
 </div>
 
@@ -215,7 +253,7 @@
                             <td>
                                 <form method="post" asp-page-handler="AssignCategory" class="flex gap-2 items-center">
                                     <input type="hidden" name="productId" value="@p.Id" />
-                                    <input type="hidden" name="page" value="@Model.Page" />
+                                    <input type="hidden" name="p" value="@Model.PageNumber" />
                                     <select name="categoryId" class="select select-bordered select-xs">
                                         <option value="">— pick category —</option>
                                         @foreach (var parent in Model.AllCategories)
@@ -249,7 +287,7 @@
                 {
                     <a asp-page="/Admin/Mapping/Index"
                        asp-route-tab="uncategorized"
-                       asp-route-page="@(Model.UncategorizedProducts.Page - 1)"
+                       asp-route-p="@(Model.UncategorizedProducts.Page - 1)"
                        class="btn btn-sm">← Prev</a>
                 }
                 <span class="btn btn-sm btn-ghost no-animation">
@@ -259,7 +297,7 @@
                 {
                     <a asp-page="/Admin/Mapping/Index"
                        asp-route-tab="uncategorized"
-                       asp-route-page="@(Model.UncategorizedProducts.Page + 1)"
+                       asp-route-p="@(Model.UncategorizedProducts.Page + 1)"
                        class="btn btn-sm">Next →</a>
                 }
             </div>
@@ -415,7 +453,7 @@
                                             <input type="hidden" name="storeProductId" value="@sp.Id" />
                                             <input type="hidden" name="statusFilter" value="@Model.StatusFilter" />
                                             <input type="hidden" name="chainFilter" value="@Model.ChainFilter" />
-                                            <input type="hidden" name="page" value="@Model.Page" />
+                                            <input type="hidden" name="p" value="@Model.PageNumber" />
                                             <label class="text-xs font-semibold">Canonical Product ID (GUID)</label>
                                             <input type="text" name="canonicalProductId" required
                                                    placeholder="00000000-0000-0000-0000-000000000000"
@@ -439,7 +477,7 @@
                 {
                     <a asp-page="/Admin/Mapping/Index"
                        asp-route-tab="store-products"
-                       asp-route-page="@(Model.StoreProducts.Page - 1)"
+                       asp-route-p="@(Model.StoreProducts.Page - 1)"
                        asp-route-statusFilter="@Model.StatusFilter"
                        asp-route-chainFilter="@Model.ChainFilter"
                        class="btn btn-sm">← Prev</a>
@@ -451,7 +489,7 @@
                 {
                     <a asp-page="/Admin/Mapping/Index"
                        asp-route-tab="store-products"
-                       asp-route-page="@(Model.StoreProducts.Page + 1)"
+                       asp-route-p="@(Model.StoreProducts.Page + 1)"
                        asp-route-statusFilter="@Model.StatusFilter"
                        asp-route-chainFilter="@Model.ChainFilter"
                        class="btn btn-sm">Next →</a>

@@ -11,17 +11,17 @@ public class MatchingIndexModel(SavvoriApiClient api) : PageModel
     [BindProperty(SupportsGet = true)]
     public string Filter { get; set; } = "all";
 
-    [BindProperty(SupportsGet = true)]
-    public new int Page { get; set; } = 1;
+    [BindProperty(Name = "p", SupportsGet = true)]
+    public int PageNumber { get; set; } = 1;
 
     public MatchingSummaryDto? Summary { get; set; }
     public ReviewPageDto? Review { get; set; }
 
     public async Task OnGetAsync(CancellationToken ct)
     {
-        if (Page < 1) Page = 1;
+        if (PageNumber < 1) PageNumber = 1;
         var summary = api.GetMatchingSummaryAsync(ct);
-        var review = api.GetMatchingReviewAsync(Filter, Page, ct);
+        var review = api.GetMatchingReviewAsync(Filter, PageNumber, ct);
         await Task.WhenAll(summary, review);
         Summary = await summary;
         Review = await review;
@@ -57,6 +57,6 @@ public class MatchingIndexModel(SavvoriApiClient api) : PageModel
         var (success, error) = await api.MatchingActionAsync(id, action, force, ct);
         if (success) TempData["Success"] = ok;
         else TempData["Error"] = error ?? "The action failed.";
-        return RedirectToPage(new { filter = Filter, page = Page });
+        return RedirectToPage(new { filter = Filter, p = PageNumber });
     }
 }

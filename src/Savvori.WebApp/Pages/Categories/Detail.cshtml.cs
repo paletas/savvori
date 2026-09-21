@@ -14,7 +14,7 @@ public class CategoryDetailModel(SavvoriApiClient api) : PageModel
     public int TotalPages { get; set; }
     public int CurrentPage { get; set; } = 1;
 
-    public async Task<IActionResult> OnGetAsync(string slug, int page = 1, CancellationToken ct = default)
+    public async Task<IActionResult> OnGetAsync(string slug, [FromQuery(Name = "p")] int page = 1, CancellationToken ct = default)
     {
         Slug = slug;
         CurrentPage = page;

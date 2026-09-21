@@ -10,14 +10,14 @@ public class ProductsIndexModel(SavvoriApiClient api) : PageModel
     [BindProperty(SupportsGet = true)]
     public string? Search { get; set; }
 
-    [BindProperty(SupportsGet = true)]
-    public int Page { get; set; } = 1;
+    [BindProperty(Name = "p", SupportsGet = true)]
+    public int PageNumber { get; set; } = 1;
 
     public ProductsResponse? Result { get; set; }
 
     public async Task OnGetAsync(CancellationToken ct)
     {
-        if (Page < 1) Page = 1;
-        Result = await api.GetProductsAsync(Search, page: Page, pageSize: 20, ct: ct);
+        if (PageNumber < 1) PageNumber = 1;
+        Result = await api.GetProductsAsync(Search, page: PageNumber, pageSize: 20, ct: ct);
     }
 }

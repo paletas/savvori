@@ -99,7 +99,7 @@ else
             {
                 <a asp-page="/Admin/Products/Index"
                    asp-route-search="@Model.Search"
-                   asp-route-page="@(Model.Result.Page - 1)"
+                   asp-route-p="@(Model.Result.Page - 1)"
                    class="btn btn-sm btn-ghost">← Prev</a>
             }
             <span class="btn btn-sm btn-disabled no-animation">
@@ -109,7 +109,7 @@ else
             {
                 <a asp-page="/Admin/Products/Index"
                    asp-route-search="@Model.Search"
-                   asp-route-page="@(Model.Result.Page + 1)"
+                   asp-route-p="@(Model.Result.Page + 1)"
                    class="btn btn-sm btn-ghost">Next →</a>
             }
         </div>

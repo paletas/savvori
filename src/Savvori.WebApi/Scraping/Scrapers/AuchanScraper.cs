@@ -177,7 +177,7 @@ public sealed partial class AuchanScraper : BaseHttpScraper
         }
 
         var sizeUnit = ProductNormalizer.ExtractSizeAndUnit(name)
-            ?? ProductNormalizer.ExtractSizeAndUnit(tile.TextContent ?? string.Empty);
+            ?? ProductNormalizer.ExtractSizeAndUnit(tile.TextContent ?? string.Empty, allowPackCount: false);
 
         return new ScrapedProduct(
             Name: name,

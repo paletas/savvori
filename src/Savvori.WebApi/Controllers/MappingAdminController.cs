@@ -235,6 +235,66 @@ public class MappingAdminController : ControllerBase
     }
 
     /// <summary>
+    /// Baseline report on how well store products are matched across chains.
+    /// GET /api/admin/mapping/match-report
+    /// </summary>
+    [HttpGet("match-report")]
+    public async Task<IActionResult> GetMatchReport(CancellationToken ct = default)
+    {
+        var totalStoreProducts = await _db.StoreProducts.CountAsync(ct);
+        var totalCanonicals = await _db.Products.CountAsync(ct);
+
+        // One row per store product. "Chains" counts only chains with a latest price, matching the
+        // "has prices from both chains" question; the histogram counts every linked store product.
+        var links = await _db.StoreProducts
+            .Where(sp => sp.CanonicalProductId != null)
+            .Select(sp => new
+            {
+                CanonicalId = sp.CanonicalProductId!.Value,
+                sp.StoreChainId,
+                HasLatestPrice = sp.Prices.Any(p => p.IsLatest)
+            })
+            .ToListAsync(ct);
+
+        var perCanonical = links
+            .GroupBy(l => l.CanonicalId)
+            .ToDictionary(g => g.Key, g => (Count: g.Count(), Chains: g.Where(l => l.HasLatestPrice).Select(l => l.StoreChainId).Distinct().Count()));
+
+        var histogram = perCanonical.Values
+            .GroupBy(v => v.Count)
+            .OrderBy(g => g.Key)
+            .Select(g => new { StoreProducts = g.Key, Canonicals = g.Count() })
+            .ToList();
+        var withoutStoreProducts = totalCanonicals - perCanonical.Count;
+        if (withoutStoreProducts > 0)
+            histogram.Insert(0, new { StoreProducts = 0, Canonicals = withoutStoreProducts });
+
+        var canonicalsWithNoSize = await _db.Products.CountAsync(p => p.SizeValue == null, ct);
+        var canonicalsWithEan = await _db.Products.CountAsync(p => p.EAN != null && p.EAN != "", ct);
+        var storeProductsWithNoSize = await _db.StoreProducts.CountAsync(sp => sp.SizeValue == null, ct);
+        var storeProductsWithEan = await _db.StoreProducts.CountAsync(sp => sp.EAN != null && sp.EAN != "", ct);
+
+        var byMatchMethod = await _db.StoreProducts
+            .GroupBy(sp => sp.MatchMethod)
+            .Select(g => new { Method = g.Key ?? "(none)", Count = g.Count() })
+            .OrderByDescending(g => g.Count)
+            .ToListAsync(ct);
+
+        return Ok(new
+        {
+            TotalStoreProducts = totalStoreProducts,
+            TotalCanonicals = totalCanonicals,
+            StoreProductsPerCanonical = histogram,
+            CanonicalsWithMultipleChains = perCanonical.Values.Count(v => v.Chains >= 2),
+            CanonicalsWithNoSize = canonicalsWithNoSize,
+            StoreProductsWithNoSize = storeProductsWithNoSize,
+            CanonicalsWithEan = canonicalsWithEan,
+            StoreProductsWithEan = storeProductsWithEan,
+            ByMatchMethod = byMatchMethod
+        });
+    }
+
+    /// <summary>
     /// Re-runs Tier 1 (EAN) and Tier 2 (brand+name+size+unit) matching on StoreProducts
     /// that are Unmatched or Failed. Never creates new canonical products.
     /// POST /api/admin/mapping/rematch?chainSlug=continente
@@ -284,6 +344,114 @@ public class MappingAdminController : ControllerBase
             "Rematch: matched {Matched}/{Total} store products.", matchedCount, products.Count);
 
         return Ok(new { Matched = matchedCount, Remaining = products.Count - matchedCount });
+    }
+
+    /// <summary>
+    /// Recomputes size/unit for existing StoreProducts from the stored product name (the raw
+    /// tile text is not persisted), cross-checked against the latest stored unit price.
+    /// A canonical product linked to exactly one StoreProduct follows that StoreProduct's size.
+    /// POST /api/admin/mapping/recompute-sizes?chainSlug=continente&amp;dryRun=true
+    /// </summary>
+    [HttpPost("recompute-sizes")]
+    public async Task<IActionResult> RecomputeSizes(
+        string? chainSlug = null, bool dryRun = false, CancellationToken ct = default)
+    {
+        var query = _db.StoreProducts.AsQueryable();
+        if (!string.IsNullOrWhiteSpace(chainSlug))
+        {
+            var chain = await _db.StoreChains.FirstOrDefaultAsync(c => c.Slug == chainSlug.ToLower(), ct);
+            if (chain is null) return NotFound(new { Message = $"Chain '{chainSlug}' not found." });
+            query = query.Where(sp => sp.StoreChainId == chain.Id);
+        }
+
+        var latestPrices = await _db.StoreProductPrices
+            .Where(p => p.IsLatest)
+            .Select(p => new { p.StoreProductId, p.Price, p.UnitPrice })
+            .ToDictionaryAsync(p => p.StoreProductId, ct);
+
+        var linkedCounts = await _db.StoreProducts
+            .Where(sp => sp.CanonicalProductId != null)
+            .GroupBy(sp => sp.CanonicalProductId!.Value)
+            .Select(g => new { Id = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(g => g.Id, g => g.Count, ct);
+
+        var storeProducts = await query.Include(sp => sp.CanonicalProduct).ToListAsync(ct);
+        int changed = 0, disagreements = 0, canonicalsUpdated = 0;
+
+        foreach (var sp in storeProducts)
+        {
+            // The stored size may have come from a structured tile field (better than the name), so a
+            // name parse only replaces it when the unit price prefers it, or, with no unit price to
+            // arbitrate, when it is the stored value with a dropped decimal comma (a power-of-ten ratio).
+            var parsed = ProductNormalizer.ExtractSizeAndUnit(sp.Name);
+            var sizeValue = sp.SizeValue;
+            var unit = sp.Unit;
+            latestPrices.TryGetValue(sp.Id, out var price);
+
+            if (parsed is { } p)
+            {
+                if (sp.SizeValue is null)
+                {
+                    sizeValue = p.SizeValue;
+                    unit = p.Unit;
+                }
+                else if (price?.UnitPrice is not null)
+                {
+                    var storedOk = !ProductNormalizer.ReconcileSizeWithUnitPrice(
+                        price.Price, price.UnitPrice, sp.SizeValue, sp.Unit).Disagreed;
+                    var parsedOk = !ProductNormalizer.ReconcileSizeWithUnitPrice(
+                        price.Price, price.UnitPrice, p.SizeValue, p.Unit).Disagreed;
+                    if (!storedOk && parsedOk)
+                    {
+                        sizeValue = p.SizeValue;
+                        unit = p.Unit;
+                    }
+                }
+                else if (p.Unit == sp.Unit && IsPowerOfTenApart(sp.SizeValue.Value, p.SizeValue))
+                {
+                    sizeValue = p.SizeValue;
+                }
+            }
+
+            if (price is not null)
+            {
+                var reconciled = ProductNormalizer.ReconcileSizeWithUnitPrice(
+                    price.Price, price.UnitPrice, sizeValue, unit);
+                if (reconciled.Disagreed) disagreements++;
+                sizeValue = reconciled.SizeValue;
+            }
+
+            if (sizeValue == sp.SizeValue && unit == sp.Unit) continue;
+
+            changed++;
+            sp.SizeValue = sizeValue;
+            sp.Unit = unit;
+
+            var canonical = sp.CanonicalProduct;
+            if (canonical is not null && linkedCounts.GetValueOrDefault(canonical.Id) == 1)
+            {
+                canonical.SizeValue = sizeValue;
+                canonical.Unit = unit;
+                canonicalsUpdated++;
+            }
+        }
+
+        if (!dryRun && changed > 0)
+            await _db.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "Recompute sizes (dryRun={DryRun}): {Changed}/{Total} store products changed, " +
+            "{Disagreements} unit-price disagreements, {Canonicals} canonicals updated.",
+            dryRun, changed, storeProducts.Count, disagreements, canonicalsUpdated);
+
+        return Ok(new
+        {
+            DryRun = dryRun,
+            Total = storeProducts.Count,
+            Changed = changed,
+            UnitPriceDisagreements = disagreements,
+            CanonicalsUpdated = canonicalsUpdated
+        });
     }
 
     /// <summary>
@@ -340,6 +508,15 @@ public class MappingAdminController : ControllerBase
             CanonicalProductId = req.CanonicalProductId,
             CanonicalProductName = canonical.Name
         });
+    }
+
+    // 5 vs 0.5, 150 vs 1.5: the signature of a dropped decimal comma.
+    private static bool IsPowerOfTenApart(decimal stored, decimal parsed)
+    {
+        if (stored <= 0 || parsed <= 0 || stored == parsed) return false;
+        var ratio = (double)(stored > parsed ? stored / parsed : parsed / stored);
+        var exponent = Math.Round(Math.Log10(ratio));
+        return exponent >= 1 && Math.Abs(Math.Log10(ratio) - exponent) < 0.001;
     }
 }
 

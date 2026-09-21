@@ -132,7 +132,7 @@ else
                         <form method="post" asp-page-handler="Undo">
                             <input type="hidden" name="id" value="@item.Id" />
                             <input type="hidden" name="Filter" value="@Model.Filter" />
-                            <input type="hidden" name="Page" value="@Model.Page" />
+                            <input type="hidden" name="p" value="@Model.PageNumber" />
                             <button class="btn btn-sm btn-warning" type="submit">Undo this match</button>
                         </form>
                     }
@@ -141,7 +141,7 @@ else
                         <form method="post" asp-page-handler="Accept" class="flex items-center gap-2">
                             <input type="hidden" name="id" value="@item.Id" />
                             <input type="hidden" name="Filter" value="@Model.Filter" />
-                            <input type="hidden" name="Page" value="@Model.Page" />
+                            <input type="hidden" name="p" value="@Model.PageNumber" />
                             <button class="btn btn-sm btn-success" type="submit">Same product</button>
                             @if (item.Warning is not null)
                             {
@@ -154,13 +154,13 @@ else
                         <form method="post" asp-page-handler="Variant">
                             <input type="hidden" name="id" value="@item.Id" />
                             <input type="hidden" name="Filter" value="@Model.Filter" />
-                            <input type="hidden" name="Page" value="@Model.Page" />
+                            <input type="hidden" name="p" value="@Model.PageNumber" />
                             <button class="btn btn-sm" type="submit">Different variant</button>
                         </form>
                         <form method="post" asp-page-handler="Reject">
                             <input type="hidden" name="id" value="@item.Id" />
                             <input type="hidden" name="Filter" value="@Model.Filter" />
-                            <input type="hidden" name="Page" value="@Model.Page" />
+                            <input type="hidden" name="p" value="@Model.PageNumber" />
                             <button class="btn btn-sm btn-error btn-outline" type="submit">Not the same</button>
                         </form>
                     }
@@ -175,7 +175,7 @@ else
             @for (var p = 1; p <= Model.Review.TotalPages; p++)
             {
                 <a class="join-item btn btn-sm @(p == Model.Review.Page ? "btn-active" : "")"
-                   asp-page="/Admin/Matching/Index" asp-route-filter="@Model.Filter" asp-route-page="@p">@p</a>
+                   asp-page="/Admin/Matching/Index" asp-route-filter="@Model.Filter" asp-route-p="@p">@p</a>
             }
         </div>
     }

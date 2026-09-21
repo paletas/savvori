@@ -11,8 +11,8 @@ public class CategorisationIndexModel(SavvoriApiClient api) : PageModel
     [BindProperty(SupportsGet = true)]
     public string Filter { get; set; } = "suggested";
 
-    [BindProperty(SupportsGet = true)]
-    public new int Page { get; set; } = 1;
+    [BindProperty(Name = "p", SupportsGet = true)]
+    public int PageNumber { get; set; } = 1;
 
     public CategorisationSummaryDto? Summary { get; set; }
     public CategorySuggestionPageDto? Suggestions { get; set; }
@@ -20,9 +20,9 @@ public class CategorisationIndexModel(SavvoriApiClient api) : PageModel
 
     public async Task OnGetAsync(CancellationToken ct)
     {
-        if (Page < 1) Page = 1;
+        if (PageNumber < 1) PageNumber = 1;
         var summary = api.GetCategorisationSummaryAsync(ct);
-        var suggestions = api.GetCategorySuggestionsAsync(Filter, Page, ct);
+        var suggestions = api.GetCategorySuggestionsAsync(Filter, PageNumber, ct);
         var strings = api.GetCategoryStringProposalsAsync(ct);
         await Task.WhenAll(summary, suggestions, strings);
         Summary = await summary;
@@ -63,6 +63,6 @@ public class CategorisationIndexModel(SavvoriApiClient api) : PageModel
         var (success, error) = await api.CategorisationActionAsync(kind, id, action, ct);
         if (success) TempData["Success"] = ok;
         else TempData["Error"] = error ?? "The action failed.";
-        return RedirectToPage(new { filter = Filter, page = Page });
+        return RedirectToPage(new { filter = Filter, p = PageNumber });
     }
 }

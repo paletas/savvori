@@ -10,11 +10,11 @@ public class ProductsIndexModel(SavvoriApiClient api) : PageModel
     [BindProperty(SupportsGet = true)]
     public string? Search { get; set; }
 
-    [BindProperty(SupportsGet = true)]
+    [BindProperty(Name = "category", SupportsGet = true)]
     public Guid? SelectedCategory { get; set; }
 
-    [BindProperty(SupportsGet = true)]
-    public new int Page { get; set; } = 1;
+    [BindProperty(Name = "p", SupportsGet = true)]
+    public int PageNumber { get; set; } = 1;
 
     public ProductsResponse? Products { get; set; }
     public List<CategoryDto> Categories { get; set; } = [];
@@ -25,7 +25,7 @@ public class ProductsIndexModel(SavvoriApiClient api) : PageModel
         var productsTask = api.GetProductsAsync(
             search: Search,
             category: SelectedCategory,
-            page: Page < 1 ? 1 : Page,
+            page: PageNumber < 1 ? 1 : PageNumber,
             pageSize: 20,
             ct: ct);
 

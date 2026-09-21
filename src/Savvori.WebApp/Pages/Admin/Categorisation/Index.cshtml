@@ -107,12 +107,12 @@ else
                     <td class="flex gap-2">
                         @if (s.Status == "Applied")
                         {
-                            <form method="post" asp-page-handler="Undo"><input type="hidden" name="id" value="@s.Id" /><input type="hidden" name="Filter" value="@Model.Filter" /><input type="hidden" name="Page" value="@Model.Page" /><button class="btn btn-xs btn-warning">Undo</button></form>
+                            <form method="post" asp-page-handler="Undo"><input type="hidden" name="id" value="@s.Id" /><input type="hidden" name="Filter" value="@Model.Filter" /><input type="hidden" name="p" value="@Model.PageNumber" /><button class="btn btn-xs btn-warning">Undo</button></form>
                         }
                         else
                         {
-                            <form method="post" asp-page-handler="Accept"><input type="hidden" name="id" value="@s.Id" /><input type="hidden" name="Filter" value="@Model.Filter" /><input type="hidden" name="Page" value="@Model.Page" /><button class="btn btn-xs btn-success">Accept</button></form>
-                            <form method="post" asp-page-handler="Reject"><input type="hidden" name="id" value="@s.Id" /><input type="hidden" name="Filter" value="@Model.Filter" /><input type="hidden" name="Page" value="@Model.Page" /><button class="btn btn-xs btn-error btn-outline">Reject</button></form>
+                            <form method="post" asp-page-handler="Accept"><input type="hidden" name="id" value="@s.Id" /><input type="hidden" name="Filter" value="@Model.Filter" /><input type="hidden" name="p" value="@Model.PageNumber" /><button class="btn btn-xs btn-success">Accept</button></form>
+                            <form method="post" asp-page-handler="Reject"><input type="hidden" name="id" value="@s.Id" /><input type="hidden" name="Filter" value="@Model.Filter" /><input type="hidden" name="p" value="@Model.PageNumber" /><button class="btn btn-xs btn-error btn-outline">Reject</button></form>
                         }
                     </td>
                 </tr>
@@ -125,7 +125,7 @@ else
         <div class="join mt-3">
             @for (var n = 1; n <= Model.Suggestions.TotalPages; n++)
             {
-                <a class="join-item btn btn-sm @(n == Model.Suggestions.Page ? "btn-active" : "")" asp-page="/Admin/Categorisation/Index" asp-route-filter="@Model.Filter" asp-route-page="@n">@n</a>
+                <a class="join-item btn btn-sm @(n == Model.Suggestions.Page ? "btn-active" : "")" asp-page="/Admin/Categorisation/Index" asp-route-filter="@Model.Filter" asp-route-p="@n">@n</a>
             }
         </div>
     }
