@@ -5,13 +5,13 @@
 @{
     ViewData["Title"] = "Match review";
     Layout = "../_AdminLayout";
-    var filters = new[] { ("all", "Needs review"), ("suggested", "Dry-run suggestions"), ("blocked", "Blocked by safety rule"), ("judge", "Judge answered"), ("applied", "Applied (undo)"), ("bulk", "Bulk apply") };
+    var filters = new[] { ("all", "To review"), ("applied", "Applied (undo)"), ("bulk", "Bulk apply") };
 }
 
 <div class="mb-6">
     <h1 class="text-2xl font-bold">Match review</h1>
     <p class="text-base-content/60 text-sm mt-1">
-        Cross-chain matches proposed by the model that need your decision. Rejected pairs are never proposed again.
+        One queue of cross-chain pairs that need your decision. Each pair shows why it is here (a suggestion, the judge's answer, or a safety rule that stopped it). Rejected pairs are never proposed again.
     </p>
 </div>
 
