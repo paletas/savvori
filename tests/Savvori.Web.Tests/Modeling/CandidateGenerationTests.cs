@@ -80,6 +80,20 @@ public sealed class CandidateGenerationTests : IDisposable
     }
 
     [Fact]
+    public async Task DietaryVariants_AreNotProposedAsTheSameProduct()
+    {
+        var a = _h.AddProduct(_h.ChainA, "Tortitas Chocolate Negro", "Bicentury", 100, ProductUnit.G);
+        var b = _h.AddProduct(_h.ChainB, "Tortitas Chocolate Negro sem Açúcar", "Bicentury", 100, ProductUnit.G);
+        _h.SetEmbedding(a, V(0));
+        _h.SetEmbedding(b, V(3));
+
+        var run = await _h.GenerateAsync();
+
+        Assert.Empty(Candidates());
+        Assert.Equal(1, run.RejectedTags);
+    }
+
+    [Fact]
     public async Task UnknownBrand_IsKeptAndFlaggedUnknown()
     {
         var a = _h.AddProduct(_h.ChainA, "Arroz Agulha", "Cigala", 1, ProductUnit.Kg);

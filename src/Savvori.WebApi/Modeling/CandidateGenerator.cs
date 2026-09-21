@@ -7,7 +7,7 @@ namespace Savvori.WebApi.Modeling;
 
 public sealed record CandidateRunResult(
     int Indexed, int Considered, int RejectedSize, int RejectedBrand, int AlreadySameCanonical,
-    int Added, int Updated, int Removed)
+    int Added, int Updated, int Removed, int RejectedTags = 0)
 {
     public int Kept => Added + Updated;
 }
@@ -38,7 +38,7 @@ public sealed class CandidateGenerator(
 
         var found = new Dictionary<(Guid, Guid), (double Cosine, bool SizeKnown, CandidateBrandCheck Brand)>();
         var seen = new HashSet<(Guid, Guid)>();
-        int considered = 0, rejSize = 0, rejBrand = 0, same = 0;
+        int considered = 0, rejSize = 0, rejBrand = 0, same = 0, rejTags = 0;
         for (var row = 0; row < snapshot.Count; row++)
         {
             if (!facts.TryGetValue(snapshot.Entries[row].StoreProductId, out var a)) continue;
@@ -54,6 +54,7 @@ public sealed class CandidateGenerator(
                 if (size == SizeVerdict.Conflict) { rejSize++; continue; }
                 var brand = CandidateRules.CompareBrands(a, b);
                 if (brand == BrandVerdict.Conflict) { rejBrand++; continue; }
+                if (CandidateRules.TagsConflict(a, b)) { rejTags++; continue; }
 
                 found[key] = (n.Cosine, size == SizeVerdict.Compatible,
                     brand == BrandVerdict.Ok ? CandidateBrandCheck.Ok : CandidateBrandCheck.Unknown);
@@ -93,7 +94,7 @@ public sealed class CandidateGenerator(
         db.MatchCandidates.RemoveRange(stale);
         await db.SaveChangesAsync(ct);
 
-        return new(snapshot.Count, considered, rejSize, rejBrand, same, added, updated, stale.Count);
+        return new(snapshot.Count, considered, rejSize, rejBrand, same, added, updated, stale.Count, rejTags);
     }
 }
 
@@ -109,7 +110,7 @@ public sealed class CandidateGenerationJob(
         var r = await scope.ServiceProvider.GetRequiredService<CandidateGenerator>().GenerateAsync(context.CancellationToken);
         logger.LogInformation(
             "Candidate generation: {Indexed} embedded products, {Considered} pairs considered, {Size} rejected on size, " +
-            "{Brand} on brand, {Same} already same canonical; {Added} added, {Updated} updated, {Removed} removed.",
-            r.Indexed, r.Considered, r.RejectedSize, r.RejectedBrand, r.AlreadySameCanonical, r.Added, r.Updated, r.Removed);
+            "{Brand} on brand, {Tags} on dietary tags, {Same} already same canonical; {Added} added, {Updated} updated, {Removed} removed.",
+            r.Indexed, r.Considered, r.RejectedSize, r.RejectedBrand, r.RejectedTags, r.AlreadySameCanonical, r.Added, r.Updated, r.Removed);
     }
 }

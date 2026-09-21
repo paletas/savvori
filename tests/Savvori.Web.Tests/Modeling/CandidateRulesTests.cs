@@ -60,6 +60,15 @@ public sealed class CandidateRulesTests
             Item(brand: "Mimosa"), Item(name: "Leite Meio Gordo 1L")));
     }
 
+    [Theory]
+    [InlineData("Tortitas Chocolate Negro", "Tortitas Chocolate Negro sem Açúcar", true)]
+    [InlineData("Leite Meio Gordo", "Leite Sem Lactose Meio Gordo", true)]
+    [InlineData("Arroz", "Arroz Bio", true)]
+    [InlineData("Massa Sem Glúten", "Massa sem Gluten Fusilli", false)]   // both gluten free
+    [InlineData("Bolachas Maria", "Bolacha Maria Dourada", false)]         // no dietary tags either side
+    public void TagsConflict_WhenOneSideIsADietaryVariantAndTheOtherIsNot(string a, string b, bool conflict) =>
+        Assert.Equal(conflict, CandidateRules.TagsConflict(Item(name: a), Item(name: b)));
+
     [Fact]
     public void CompareBrands_BothMissing_IsUnknown() =>
         Assert.Equal(BrandVerdict.Unknown, CandidateRules.CompareBrands(Item(), Item()));
