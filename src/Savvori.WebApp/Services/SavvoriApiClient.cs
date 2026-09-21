@@ -460,6 +460,59 @@ public class SavvoriApiClient(HttpClient http, ILogger<SavvoriApiClient> logger)
         catch (Exception ex) { logger.LogError(ex, "Failed to run matching"); return null; }
     }
 
+    // ===== Admin: model-suggested categories =====
+
+    public async Task<CategorisationSummaryDto?> GetCategorisationSummaryAsync(CancellationToken ct = default)
+    {
+        try { return await http.GetFromJsonAsync<CategorisationSummaryDto>("/api/admin/categorisation/summary", JsonOptions, ct); }
+        catch (Exception ex) { logger.LogError(ex, "Failed to get categorisation summary"); return null; }
+    }
+
+    public async Task<CategorySuggestionPageDto?> GetCategorySuggestionsAsync(string filter, int page, CancellationToken ct = default)
+    {
+        try
+        {
+            return await http.GetFromJsonAsync<CategorySuggestionPageDto>(
+                $"/api/admin/categorisation/review?filter={Uri.EscapeDataString(filter)}&page={page}", JsonOptions, ct);
+        }
+        catch (Exception ex) { logger.LogError(ex, "Failed to get category suggestions"); return null; }
+    }
+
+    public async Task<List<CategoryStringProposalDto>> GetCategoryStringProposalsAsync(CancellationToken ct = default)
+    {
+        try { return await http.GetFromJsonAsync<List<CategoryStringProposalDto>>("/api/admin/categorisation/strings", JsonOptions, ct) ?? []; }
+        catch (Exception ex) { logger.LogError(ex, "Failed to get category string proposals"); return []; }
+    }
+
+    /// <summary>kind: suggestions | strings; action: accept | reject | undo</summary>
+    public async Task<(bool Success, string? Error)> CategorisationActionAsync(
+        string kind, Guid id, string action, CancellationToken ct = default)
+    {
+        try
+        {
+            var resp = await http.PostAsync($"/api/admin/categorisation/{kind}/{id}/{action}", null, ct);
+            if (resp.IsSuccessStatusCode) return (true, null);
+            var body = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(JsonOptions, ct);
+            return (false, body.TryGetProperty("message", out var m) ? m.GetString() : "The action failed.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Categorisation action {Kind}/{Action} failed", kind, action);
+            return (false, "The action failed.");
+        }
+    }
+
+    public async Task<ClassifierRunDto?> RunClassifierAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var resp = await http.PostAsync("/api/admin/categorisation/run", null, ct);
+            resp.EnsureSuccessStatusCode();
+            return await resp.Content.ReadFromJsonAsync<ClassifierRunDto>(JsonOptions, ct);
+        }
+        catch (Exception ex) { logger.LogError(ex, "Failed to run classifier"); return null; }
+    }
+
     public async Task<BackfillCategoriesResponse?> BackfillCategoriesAsync(CancellationToken ct = default)
     {
         try

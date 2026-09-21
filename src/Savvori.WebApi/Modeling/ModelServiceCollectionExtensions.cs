@@ -58,6 +58,7 @@ public static class ModelServiceCollectionExtensions
         services.AddScoped<IModelJobHandler, JudgeJobHandler>();
         services.AddScoped<MatchApplier>();
         services.AddScoped<MatchingService>();
+        services.AddScoped<CategoryClassifier>();
         services.AddScoped<IStaleEmbeddingSource, DbStaleEmbeddingSource>();
         services.AddScoped<IModelStatusService, ModelStatusService>();
         return services;

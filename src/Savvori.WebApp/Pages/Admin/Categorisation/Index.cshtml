@@ -1,0 +1,132 @@
+@page
+@model CategorisationIndexModel
+@using Savvori.WebApp.Pages.Admin.Categorisation
+@{
+    ViewData["Title"] = "Category suggestions";
+    Layout = "../_AdminLayout";
+}
+
+<div class="mb-6">
+    <h1 class="text-2xl font-bold">Category suggestions</h1>
+    <p class="text-base-content/60 text-sm mt-1">
+        Categories predicted from similar, already categorised products. Only products without a category are ever considered,
+        so existing categories are never changed.
+    </p>
+</div>
+
+@if (Model.Summary is { } summary)
+{
+    <div class="card bg-base-100 shadow mb-6">
+        <div class="card-body p-4">
+            <div class="flex flex-wrap items-center gap-3">
+                @if (summary.DryRun)
+                {
+                    <span class="badge badge-warning">Dry run</span>
+                    <span class="text-sm">Nothing is assigned automatically; predictions wait here (<code>Model:Categories:DryRun</code> is on).</span>
+                }
+                else
+                {
+                    <span class="badge badge-success">Applying</span>
+                    <span class="text-sm">Confident predictions are assigned automatically and can be undone under "Applied".</span>
+                }
+                <span class="badge badge-outline">Uncategorised products: @summary.Uncategorised.ToString("N0")</span>
+                @foreach (var s in summary.ByStatus)
+                {
+                    <span class="badge badge-ghost">@s.Status: @s.Count.ToString("N0")</span>
+                }
+            </div>
+            <form method="post" asp-page-handler="Run" class="mt-3">
+                <input type="hidden" name="Filter" value="@Model.Filter" />
+                <button type="submit" class="btn btn-sm btn-primary">Run classifier now</button>
+                <span class="text-xs text-base-content/60 ml-2">Uses stored embeddings only; never waits for the model.</span>
+            </form>
+        </div>
+    </div>
+}
+
+@if (Model.Strings.Count > 0)
+{
+    <div class="card bg-base-100 shadow mb-6">
+        <div class="card-body p-4">
+            <h2 class="font-semibold">Store categories that look uniform</h2>
+            <p class="text-xs text-base-content/60">One decision applies to every uncategorised product carrying that store category.</p>
+            <table class="table table-sm">
+                <thead><tr><th>Store category</th><th>Products</th><th>Suggested</th><th>Agreement</th><th></th></tr></thead>
+                <tbody>
+                @foreach (var d in Model.Strings)
+                {
+                    <tr>
+                        <td><code>@d.RawString</code></td>
+                        <td>@d.Support</td>
+                        <td>@d.Category</td>
+                        <td>@d.Confidence.ToString("P0")</td>
+                        <td class="flex gap-2">
+                            <form method="post" asp-page-handler="AcceptString"><input type="hidden" name="id" value="@d.Id" /><input type="hidden" name="Filter" value="@Model.Filter" /><button class="btn btn-xs btn-success">Apply to all</button></form>
+                            <form method="post" asp-page-handler="RejectString"><input type="hidden" name="id" value="@d.Id" /><input type="hidden" name="Filter" value="@Model.Filter" /><button class="btn btn-xs btn-error btn-outline">Decide one by one</button></form>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+<div role="tablist" class="tabs tabs-bordered mb-4">
+    <a role="tab" asp-page="/Admin/Categorisation/Index" asp-route-filter="suggested" class="tab @(Model.Filter == "suggested" ? "tab-active" : "")">Needs review</a>
+    <a role="tab" asp-page="/Admin/Categorisation/Index" asp-route-filter="applied" class="tab @(Model.Filter == "applied" ? "tab-active" : "")">Assigned by the model (undo)</a>
+</div>
+
+@if (Model.Suggestions is null)
+{
+    <div class="alert alert-error">Could not load suggestions.</div>
+}
+else if (Model.Suggestions.Items.Count == 0)
+{
+    <div class="alert alert-info">Nothing here.</div>
+}
+else
+{
+    <div class="overflow-x-auto">
+        <table class="table table-sm bg-base-100">
+            <thead><tr><th>Product</th><th>Store category</th><th>Suggested</th><th>Runner-up</th><th>Confidence</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var s in Model.Suggestions.Items)
+            {
+                <tr>
+                    <td>
+                        <div class="flex items-center gap-2">
+                            @if (!string.IsNullOrEmpty(s.ImageUrl)) { <img src="@s.ImageUrl" alt="" class="w-10 h-10 object-contain rounded bg-base-200" loading="lazy" /> }
+                            <div><div class="font-medium">@s.ProductName</div><div class="text-xs text-base-content/60">@s.Brand</div></div>
+                        </div>
+                    </td>
+                    <td>@(s.RawCategory ?? "–")</td>
+                    <td><span class="badge badge-info">@s.Suggested</span> <span class="text-xs text-base-content/50">@s.Method</span></td>
+                    <td>@(s.RunnerUp ?? "–")</td>
+                    <td>@s.Confidence.ToString("P0") <span class="text-xs text-base-content/50">(@s.NeighbourCount neighbours)</span></td>
+                    <td class="flex gap-2">
+                        @if (s.Status == "Applied")
+                        {
+                            <form method="post" asp-page-handler="Undo"><input type="hidden" name="id" value="@s.Id" /><input type="hidden" name="Filter" value="@Model.Filter" /><input type="hidden" name="Page" value="@Model.Page" /><button class="btn btn-xs btn-warning">Undo</button></form>
+                        }
+                        else
+                        {
+                            <form method="post" asp-page-handler="Accept"><input type="hidden" name="id" value="@s.Id" /><input type="hidden" name="Filter" value="@Model.Filter" /><input type="hidden" name="Page" value="@Model.Page" /><button class="btn btn-xs btn-success">Accept</button></form>
+                            <form method="post" asp-page-handler="Reject"><input type="hidden" name="id" value="@s.Id" /><input type="hidden" name="Filter" value="@Model.Filter" /><input type="hidden" name="Page" value="@Model.Page" /><button class="btn btn-xs btn-error btn-outline">Reject</button></form>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+    @if (Model.Suggestions.TotalPages > 1)
+    {
+        <div class="join mt-3">
+            @for (var n = 1; n <= Model.Suggestions.TotalPages; n++)
+            {
+                <a class="join-item btn btn-sm @(n == Model.Suggestions.Page ? "btn-active" : "")" asp-page="/Admin/Categorisation/Index" asp-route-filter="@Model.Filter" asp-route-page="@n">@n</a>
+            }
+        </div>
+    }
+}

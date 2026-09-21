@@ -1,6 +1,6 @@
 # Model-assisted matching and categorisation: plan
 
-Status: **approved. Phases 1, 2 and 3 implemented; Phase 4 in progress (taxonomy document awaiting approval).**
+Status: **approved. Phases 1, 2 and 3 implemented; Phase 4: taxonomy v2 document written and awaiting your approval (no label migration done); the classifier is implemented and ships in dry run.**
 
 ## Principles (from the brief)
 
@@ -170,3 +170,27 @@ Commit: `feat: model backend foundation (breaker, job queue, status) behind a fe
 **Not verified.** Nothing was run against a real Ollama or your data; the review page was not viewed in a browser; the size of the nightly matching run on 18k products is untested. Judge "no" answers are shown in the review queue (with the verdict) rather than hidden, because a 7B judge's recall is only about 52%.
 
 **Threshold caveat.** All defaults (0.90 / 0.95 / 0.80 / 0.85 / 0.70) were tuned on a small hand-labelled sample and should be re-checked on review-queue results before switching off the dry run.
+
+## Phase 4 report
+
+**Taxonomy v2.** Proposed as a document only: `docs/TAXONOMY_V2.md` (12 aisles, 87 categories, Bio / sem lactose / sem glúten as tags, and a mapping from each of today's 32 assignable categories, marking which are 1:1 and which split and how). **Nothing has been migrated and no category was changed.** The migration steps (additive columns, `LegacyCategoryId` kept for reversal, dry-run report first) are described in the document and wait for your approval; the "points for you to decide" at its end need your answers first.
+
+**Classifier (implemented, works with the categories that exist today).** k=7, similarity-weighted vote over stored embeddings of categorised products. Confidence >= 0.85 auto-assign, 0.5 to 0.85 review queue, lower uncategorised (all configurable under `Model:Categories`; `MinNeighbourCosine` 0.5 stops weak neighbours from voting). It only considers products with no category, never learns from its own decisions, and skips products whose suggestion you rejected. `Model:Categories:DryRun` defaults to **true**. It decides nothing while the flag is off or the breaker is not closed, so the existing rule-based `CategoryMapper` stays the degraded-mode path and the model step only adds to it.
+
+**Store-category strings.** Raw strings such as Celeiro's `alimentacao` are normalised and decided once as a whole when at least 5 uncategorised products carry them and the k-NN agreement reaches the auto-assign level; that decision is cached (`CategoryStringDecisions`) and reused for later products with the same string, without re-running the vote. A string whose products disagree (as a generic `alimentacao` will) is stored as Mixed and its products are decided one by one. In dry run a whole-string proposal is offered once as "Apply to all".
+
+**Audit and reversal.** Every decision is a `CategorySuggestions` row: method (`embedding-knn`, `string-cache`, `manual-review`), confidence, embedding model and digest, timestamps, previous category. Undo restores the previous category and rejects the suggestion.
+
+**Migration `AddCategorySuggestions`.** Adds two new tables (`CategorySuggestions`, `CategoryStringDecisions`) and their indexes. No existing table is altered.
+
+**Verified.** `dotnet test Savvori.sln --filter "FullyQualifiedName!~LiveScraperTests"`: all pass (LiveScraperTests not run). New tests cover: vote arithmetic, feature off and degraded mode, assignment with provenance, dry run, existing categories untouched, far-away products staying uncategorised, mixed neighbourhoods not auto-assigned, configurable thresholds, not learning from its own decisions, rejected products not re-proposed, accept / undo / refusal after a manual categorisation, whole-string decisions cached and reused, mixed strings decided per product, small strings not decided as a whole, accepting a string, and the review API against real SQLite.
+
+**Not verified.** The 86% / 95.5% / ~98% accuracy figures from the prototype are not reproduced here (no real embeddings or beta data). The classifier has never seen real categories. Speed of the k-NN pass on about 4,000 uncategorised x 14,000 categorised products was not measured. The pages were not viewed in a browser.
+
+**Before / after.** No categories changed yet, so the uncategorised share (shown on Admin > Mapping) is unchanged. Expected after a real run: most of the 24% uncategorised products get a prediction, about three quarters of them at the auto-assign level. That is the prototype's estimate, not a measured result.
+
+**Threshold caveat.** 0.85 / 0.5 / k=7 were tuned on a small hand-labelled sample and must be re-checked on the review queue before turning the dry run off.
+
+**What to do next (your decisions).**
+1. Answer the open points in `docs/TAXONOMY_V2.md` and approve or change the taxonomy; then I implement the additive migration and the v1 to v2 mapping (dry-run report first).
+2. Deploy dark (`Model:Enabled=false`), enable it against your Ollama, let embeddings fill, look at the match dry run and the category dry run, and only then switch off `Model:Matching:DryRun` / `Model:Categories:DryRun`.

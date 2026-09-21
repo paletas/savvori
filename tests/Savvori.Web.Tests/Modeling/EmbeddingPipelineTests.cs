@@ -65,6 +65,7 @@ public sealed class PipelineHost : IDisposable
         s.AddScoped<IModelJobHandler, JudgeJobHandler>();
         s.AddScoped<MatchApplier>();
         s.AddScoped<MatchingService>();
+        s.AddScoped<CategoryClassifier>();
         s.AddTransient<ModelQueueDrainJob>();
         Services = s.BuildServiceProvider();
 

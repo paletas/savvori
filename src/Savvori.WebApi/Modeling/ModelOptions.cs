@@ -20,6 +20,7 @@ public sealed class ModelOptions
     public ScanOptions Scan { get; set; } = new();
     public CandidateOptions Candidates { get; set; } = new();
     public MatchingOptions Matching { get; set; } = new();
+    public CategoryOptions Categories { get; set; } = new();
 
     public sealed class BreakerOptions
     {
@@ -42,6 +43,23 @@ public sealed class ModelOptions
     {
         /// <summary>Quartz cron for finding products that need (re-)embedding.</summary>
         public string Cron { get; set; } = "0 15 * * * ?";
+    }
+
+    public sealed class CategoryOptions
+    {
+        /// <summary>While true nothing is assigned: every prediction goes to the review queue. Defaults to TRUE.</summary>
+        public bool DryRun { get; set; } = true;
+        public string Cron { get; set; } = "0 0 4 * * ?";
+        /// <summary>Nearest labelled neighbours per listing.</summary>
+        public int K { get; set; } = 7;
+        /// <summary>Auto-assign at or above this similarity-weighted vote share.</summary>
+        public double AutoAssignConfidence { get; set; } = 0.85;
+        /// <summary>From here up to the auto-assign level goes to the review queue; lower stays uncategorised.</summary>
+        public double ReviewMinConfidence { get; set; } = 0.5;
+        /// <summary>Neighbours less similar than this do not vote.</summary>
+        public double MinNeighbourCosine { get; set; } = 0.5;
+        /// <summary>A raw store-category string is decided as a whole only with at least this many uncategorised products.</summary>
+        public int MinStringSupport { get; set; } = 5;
     }
 
     public sealed class MatchingOptions

@@ -187,3 +187,19 @@ public record ReviewPageDto(int Page, int PageSize, int Total, int TotalPages, L
 public record MatchingRunDto(
     string? SkippedReason, bool DryRun, int Evaluated, int AutoAccepted, int WouldAccept,
     int JudgeQueued, int SentToReview, int Blocked, int Left);
+
+// ===== Admin Categorisation (model-suggested categories) =====
+public record CategorisationSummaryDto(
+    bool DryRun, int Uncategorised, List<MatchStatusCountDto> ByStatus, List<MatchStatusCountDto> StringsByStatus);
+
+public record CategorySuggestionDto(
+    Guid Id, Guid ProductId, string ProductName, string? Brand, string? ImageUrl, string? RawCategory,
+    string Suggested, string? RunnerUp, double Confidence, int NeighbourCount, string Status, string Method);
+
+public record CategorySuggestionPageDto(int Page, int PageSize, int Total, int TotalPages, List<CategorySuggestionDto> Items);
+
+public record CategoryStringProposalDto(Guid Id, string RawString, int Support, double Confidence, string Category);
+
+public record ClassifierRunDto(
+    string? SkippedReason, bool DryRun, int Targets, int AutoAssigned, int WouldAssign, int ToReview,
+    int NoSuggestion, int StringsDecided, int StringsMixed);

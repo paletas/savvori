@@ -23,6 +23,8 @@ public class SavvoriDbContext : DbContext
     public DbSet<StoreProductEmbedding> StoreProductEmbeddings { get; set; } = default!;
     public DbSet<MatchCandidate> MatchCandidates { get; set; } = default!;
     public DbSet<MatchMerge> MatchMerges { get; set; } = default!;
+    public DbSet<CategorySuggestion> CategorySuggestions { get; set; } = default!;
+    public DbSet<CategoryStringDecision> CategoryStringDecisions { get; set; } = default!;
 
     // SQLite has no native decimal type: EF stores it as TEXT, which breaks ORDER BY / MIN / SUM
     // (prices would sort lexically, or the query fails to translate). Store prices as REAL instead.
@@ -184,6 +186,17 @@ public class SavvoriDbContext : DbContext
         modelBuilder.Entity<MatchCandidate>().HasIndex(c => c.Cosine);
         modelBuilder.Entity<MatchCandidate>().HasIndex(c => c.Status);
         modelBuilder.Entity<MatchMerge>().HasIndex(m => m.CandidateId);
+
+        // Category suggestions: one live decision per product; cached decision per raw store-category string
+        modelBuilder.Entity<CategorySuggestion>()
+            .HasOne(s => s.Product).WithMany().HasForeignKey(s => s.ProductId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<CategorySuggestion>()
+            .HasOne(s => s.SuggestedCategory).WithMany().HasForeignKey(s => s.SuggestedCategoryId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<CategorySuggestion>().HasIndex(s => s.ProductId).IsUnique();
+        modelBuilder.Entity<CategorySuggestion>().HasIndex(s => s.Status);
+        modelBuilder.Entity<CategoryStringDecision>()
+            .HasOne(d => d.Category).WithMany().HasForeignKey(d => d.CategoryId).OnDelete(DeleteBehavior.SetNull);
+        modelBuilder.Entity<CategoryStringDecision>().HasIndex(d => d.RawString).IsUnique();
 
         // Only one IsLatest row per StoreProduct (partial unique index)
         modelBuilder.Entity<StoreProductPrice>()

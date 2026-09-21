@@ -128,6 +128,10 @@ The `/api/shoppinglists/{id}/optimize` endpoint supports four modes via `?mode=`
 - The first matching run is a dry run: proposals appear in the review queue and nothing is linked until the dry-run setting is turned off.
 - Admin > Mapping shows store products by match method and how many products are priced by two or more chains.
 
+### Category suggestions (optional feature)
+- Admin > Category suggestions lists categories predicted for products that have none, with the confidence and the runner-up category. Actions: Accept, Reject (never proposed again) and Undo for categories the model assigned. A store category that maps uniformly to one category (for example a store's "bolachas") is offered once as "Apply to all".
+- Existing categories are never changed. The first run is a dry run: predictions wait in the queue until the dry-run setting is turned off. When the model is unavailable, categories keep coming from the built-in rules only.
+
 ## 10. Web Application (Frontend UI)
 
 ### User Stories
