@@ -17,6 +17,8 @@ public sealed class ModelOptions
     public int MaxConcurrency { get; set; } = 2;
     public BreakerOptions Breaker { get; set; } = new();
     public QueueOptions Queue { get; set; } = new();
+    public ScanOptions Scan { get; set; } = new();
+    public CandidateOptions Candidates { get; set; } = new();
 
     public sealed class BreakerOptions
     {
@@ -31,5 +33,23 @@ public sealed class ModelOptions
         public int BaseDelaySeconds { get; set; } = 30;
         public int MaxDelaySeconds { get; set; } = 3600;
         public int LeaseSeconds { get; set; } = 600;
+        /// <summary>Upper bound on claim-process cycles per drain run, so one run cannot go on forever.</summary>
+        public int MaxBatchesPerRun { get; set; } = 50;
+    }
+
+    public sealed class ScanOptions
+    {
+        /// <summary>Quartz cron for finding products that need (re-)embedding.</summary>
+        public string Cron { get; set; } = "0 15 * * * ?";
+    }
+
+    public sealed class CandidateOptions
+    {
+        /// <summary>Quartz cron for candidate-pair generation (needs no model call, only stored embeddings).</summary>
+        public string Cron { get; set; } = "0 30 3 * * ?";
+        public double MinCosine { get; set; } = 0.6;
+        public int TopK { get; set; } = 8;
+        /// <summary>Relative size difference allowed when both sizes are known.</summary>
+        public double SizeTolerance { get; set; } = 0.02;
     }
 }

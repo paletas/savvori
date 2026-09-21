@@ -1,6 +1,6 @@
 # Model-assisted matching and categorisation: plan
 
-Status: **approved. Phase 1 implemented; Phase 2 awaiting go-ahead.**
+Status: **approved. Phases 1 and 2 implemented; Phase 3 awaiting go-ahead.**
 
 ## Principles (from the brief)
 
@@ -123,3 +123,28 @@ Commit: `feat: model backend foundation (breaker, job queue, status) behind a fe
 **Threshold caveat:** the defaults planned for later phases (0.90 / 0.95 accept, 0.80 / 0.85 judge band, 0.85 category auto-assign) were tuned on a small hand-labelled sample and must be re-checked against review-queue results.
 
 **To enable:** set `Model:Enabled=true` (and check `Model:BaseUrl`) in configuration.
+
+## Phase 2 report
+
+**What it does.** Embeddings are stored per StoreProduct (`StoreProductEmbeddings`, float32 blob plus model name, digest, dimension, input-text hash, `EmbeddedAt`). An hourly `EmbeddingScanJob` queues idempotent embed jobs for new, changed or stale products, and the drain job (now looping in batches, one model request per `Model:BatchSize` products) embeds them. A nightly `CandidateGenerationJob` builds `MatchCandidates` from stored vectors only, so it also runs while the model is down. Nothing is matched or merged yet: that is Phase 3.
+
+**Rules as implemented (all configurable under `Model:Candidates`).** Top-8 neighbours per product from a different chain with cosine >= 0.6, then hard filters: both sizes known means same unit class (mass / volume / count) and within 2%, otherwise the pair is rejected; either size unknown keeps the pair and marks `SizeKnown=false`. Brands: equal or token-subset is Ok; different is rejected; one missing is Ok if the other brand appears in that listing's name, otherwise `Unknown`. Pairs already on the same canonical are skipped. Each candidate stores cosine, `SizeKnown`, `BrandCheck`, model name and digest.
+
+**Migration `AddEmbeddingsAndCandidates`.** Adds two tables (`StoreProductEmbeddings`, `MatchCandidates`) and four indexes, no changes to existing tables. Applied to a throwaway SQLite file only, together with the two earlier migrations. It is applied to the real database at next startup, after the automatic backup.
+
+**Design decisions worth knowing**
+- Stored per StoreProduct, not per canonical (reasons under Phase 2 above).
+- The index serves vectors of one identity only: the identity of the most recently embedded vector. After a model or digest change the index shrinks to the recomputed vectors and grows as re-embedding proceeds: fewer candidates, never mixed-model ones.
+- An empty index leaves existing candidates untouched instead of wiping them.
+- The Phase 1 watch-out is addressed: a response the model sends but that is unusable is now recorded as the breaker's last error (visible in the status panel) instead of being invisible.
+- Outage handling from Phase 1 applies to embed jobs unchanged: they wait without using up attempts.
+
+**Verified.** `dotnet test Savvori.sln --filter "FullyQualifiedName!~LiveScraperTests"`: 449 passed, 0 failed (LiveScraperTests not run). The new tests cover: pure size and brand rules; scan and drain storing embeddings with full provenance and batching (10 products, batch size 4, 3 requests); idempotent scanning; text change and digest change marking embeddings stale and recomputing; obsolete jobs; model down leaves products saved and jobs pending, then recovers; dead-lettered jobs not resurrected; inactive products skipped; candidate ordering, score and flags; same-chain and low-cosine exclusion; partially embedded catalogue giving fewer correct candidates; other-model vectors never compared; regeneration removing pairs that stopped qualifying; empty index; incremental index refresh and normalisation; top-K selection.
+
+**Not verified**
+- No real embeddings or beta data, so the numbers from the prototype (candidate counts, 862 auto-accept pairs, 2,634 borderline) are not reproduced here and this phase does not change the match report: no product is matched yet, so the before/after match report is identical.
+- Speed of brute-force search at 18k x 1024 was not measured. It should be tolerable for a nightly job (it runs in parallel), but check the "Candidate generation" log line and duration on the beta.
+- Memory of the index (~75 MB of vectors plus overhead) is an estimate.
+- The status panel additions were compiled but not viewed in a browser.
+
+**Threshold caveat.** The defaults (0.6 minimum, top-8, 2% size tolerance) came from a small hand-labelled sample and must be re-checked on real review-queue results.

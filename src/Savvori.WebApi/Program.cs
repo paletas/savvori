@@ -111,6 +111,14 @@ builder.Services.AddQuartz(q =>
 
     // Jobs are registered per StoreChain slug.
     // Each active store chain gets two daily trigger: 06:00 and 18:00 UTC.
+    // Embedding scan (queues embed jobs) and nightly candidate generation; both no-ops unless Model:Enabled.
+    q.AddJob<EmbeddingScanJob>(opts => opts.WithIdentity("model-embedding-scan"));
+    q.AddTrigger(opts => opts.ForJob("model-embedding-scan").WithIdentity("model-embedding-scan-trigger")
+        .WithCronSchedule(builder.Configuration.GetValue("Model:Scan:Cron", "0 15 * * * ?")!));
+    q.AddJob<CandidateGenerationJob>(opts => opts.WithIdentity("model-candidate-generation"));
+    q.AddTrigger(opts => opts.ForJob("model-candidate-generation").WithIdentity("model-candidate-generation-trigger")
+        .WithCronSchedule(builder.Configuration.GetValue("Model:Candidates:Cron", "0 30 3 * * ?")!));
+
     var chains = builder.Configuration
         .GetSection("Scraping:Chains")
         .Get<List<ScrapingChainConfig>>() ?? [];

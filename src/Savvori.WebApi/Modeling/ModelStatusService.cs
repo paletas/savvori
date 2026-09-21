@@ -16,6 +16,9 @@ public sealed record ModelStatus(
     DateTime? OldestPendingAt,
     int DeadLetterCount,
     int StaleEmbeddings,
+    int ActiveProducts,
+    int EmbeddedProducts,
+    int Candidates,
     string EmbeddingModel,
     string JudgeModel);
 
@@ -47,6 +50,9 @@ public sealed class ModelStatusService(
             options.Value.Enabled, snap.State.ToString(), snap.ConsecutiveFailures, snap.RetryAt,
             snap.LastSuccessAt, snap.LastErrorAt, snap.LastError,
             depth, oldest, dead, await stale.CountStaleAsync(ct),
+            await db.StoreProducts.CountAsync(sp => sp.IsActive, ct),
+            await db.StoreProductEmbeddings.CountAsync(e => e.ModelName == options.Value.EmbeddingModel, ct),
+            await db.MatchCandidates.CountAsync(ct),
             options.Value.EmbeddingModel, options.Value.JudgeModel);
     }
 }

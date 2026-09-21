@@ -11,6 +11,15 @@ public interface IModelJobHandler
     Task HandleAsync(ModelJob job, CancellationToken ct);
 }
 
+/// <summary>
+/// A handler that processes many jobs of its type in one model request. Throwing fails every job in the batch
+/// (with the usual retry/breaker rules); jobs it decides are obsolete are simply completed.
+/// </summary>
+public interface IBatchModelJobHandler : IModelJobHandler
+{
+    Task HandleBatchAsync(IReadOnlyList<ModelJob> jobs, CancellationToken ct);
+}
+
 /// <summary>Durable, idempotent work queue over the <c>ModelJobs</c> table.</summary>
 public sealed class ModelJobQueue(SavvoriDbContext db, IOptions<ModelOptions> options, TimeProvider time)
 {
@@ -42,6 +51,43 @@ public sealed class ModelJobQueue(SavvoriDbContext db, IOptions<ModelOptions> op
             return await FindActiveAsync(type, subjectId, payloadHash, ct) ?? throw new InvalidOperationException(
                 "Could not enqueue model job.");
         }
+    }
+
+    /// <summary>
+    /// Bulk enqueue. Skips subjects that already have an active job for the same input, and ones whose identical
+    /// job was dead-lettered (an admin requeues those), so a scan cannot resurrect a poison job every run.
+    /// </summary>
+    public async Task<int> EnqueueManyAsync(
+        ModelJobType type, IReadOnlyCollection<(Guid SubjectId, string PayloadHash)> items, CancellationToken ct = default)
+    {
+        var added = 0;
+        var now = Now;
+        foreach (var chunk in items.Chunk(500))
+        {
+            var ids = chunk.Select(c => c.SubjectId).ToList();
+            var blocked = (await db.ModelJobs
+                    .Where(j => j.Type == type && ids.Contains(j.SubjectId) &&
+                                (j.Status == ModelJobStatus.Pending || j.Status == ModelJobStatus.Running ||
+                                 j.Status == ModelJobStatus.DeadLetter))
+                    .Select(j => new { j.SubjectId, j.PayloadHash })
+                    .ToListAsync(ct))
+                .Select(j => (j.SubjectId, j.PayloadHash))
+                .ToHashSet();
+
+            foreach (var (subjectId, hash) in chunk.Distinct())
+            {
+                if (blocked.Contains((subjectId, hash))) continue;
+                db.ModelJobs.Add(new ModelJob
+                {
+                    Id = Guid.NewGuid(), Type = type, SubjectId = subjectId, PayloadHash = hash,
+                    Status = ModelJobStatus.Pending, NextAttemptAt = now, CreatedAt = now, UpdatedAt = now
+                });
+                added++;
+            }
+            await db.SaveChangesAsync(ct);
+            db.ChangeTracker.Clear();
+        }
+        return added;
     }
 
     private Task<ModelJob?> FindActiveAsync(ModelJobType type, Guid subjectId, string payloadHash, CancellationToken ct) =>

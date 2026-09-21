@@ -22,9 +22,9 @@ internal static class BreakerGuard
             breaker.RecordFailure(ex.Message);
             throw;
         }
-        catch (ModelResponseException)
+        catch (ModelResponseException ex)
         {
-            breaker.RecordSuccess();
+            breaker.RecordReachableButBad(ex.Message);
             throw;
         }
     }
@@ -35,6 +35,9 @@ public sealed class BreakerEmbeddingClient(IEmbeddingClient inner, ModelCircuitB
 {
     public Task<EmbeddingResult> EmbedAsync(IReadOnlyList<string> texts, CancellationToken ct = default) =>
         BreakerGuard.RunAsync(breaker, () => inner.EmbedAsync(texts, ct));
+
+    public Task<ModelInfo> GetModelInfoAsync(CancellationToken ct = default) =>
+        BreakerGuard.RunAsync(breaker, () => inner.GetModelInfoAsync(ct));
 
     public Task PingAsync(CancellationToken ct = default) =>
         BreakerGuard.RunAsync(breaker, async () => { await inner.PingAsync(ct); return true; });

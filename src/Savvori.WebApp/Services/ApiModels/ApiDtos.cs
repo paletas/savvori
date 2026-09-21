@@ -121,6 +121,9 @@ public record ModelStatusDto(
     DateTime? OldestPendingAt,
     int DeadLetterCount,
     int StaleEmbeddings,
+    int ActiveProducts,
+    int EmbeddedProducts,
+    int Candidates,
     string EmbeddingModel,
     string JudgeModel);
 

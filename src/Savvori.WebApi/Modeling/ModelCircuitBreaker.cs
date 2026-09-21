@@ -70,6 +70,22 @@ public sealed class ModelCircuitBreaker(IOptions<ModelOptions> options, TimeProv
         }
     }
 
+    /// <summary>
+    /// The server answered but with something unusable. It is reachable, so this closes a probing breaker and resets
+    /// the outage count, but it is not a success: it is surfaced as the last error instead of a last-success time.
+    /// </summary>
+    public void RecordReachableButBad(string error)
+    {
+        lock (_gate)
+        {
+            _state = BreakerState.Closed;
+            _failures = 0;
+            _openedAt = null;
+            _lastErrorAt = Now;
+            _lastError = error;
+        }
+    }
+
     public void RecordFailure(string error)
     {
         lock (_gate)

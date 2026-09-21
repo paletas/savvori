@@ -16,8 +16,14 @@ public sealed class ModelResponseException(string message, Exception? inner = nu
 public sealed record EmbeddingResult(
     IReadOnlyList<float[]> Vectors, string ModelName, string ModelDigest, int Dimension);
 
+/// <summary>Identity of the embedding model currently served: vectors are only comparable within one identity.</summary>
+public sealed record ModelInfo(string ModelName, string ModelDigest);
+
 public interface IEmbeddingClient
 {
+    /// <summary>Which model (name + digest) is being served right now. Throws <see cref="ModelUnavailableException"/> when unknown.</summary>
+    Task<ModelInfo> GetModelInfoAsync(CancellationToken ct = default);
+
     /// <summary>Embeds the texts in order. Throws <see cref="ModelUnavailableException"/> on transport failure.</summary>
     Task<EmbeddingResult> EmbedAsync(IReadOnlyList<string> texts, CancellationToken ct = default);
 

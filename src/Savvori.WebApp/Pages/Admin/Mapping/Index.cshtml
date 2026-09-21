@@ -76,6 +76,8 @@
                     <div><div class="text-base-content/60">Oldest pending</div><div class="font-semibold">@(ms.OldestPendingAt?.ToString("yyyy-MM-dd HH:mm") ?? "–")</div></div>
                     <div><div class="text-base-content/60">Dead-lettered</div><div class="font-semibold">@ms.DeadLetterCount.ToString("N0")</div></div>
                     <div><div class="text-base-content/60">Stale embeddings</div><div class="font-semibold">@ms.StaleEmbeddings.ToString("N0")</div></div>
+                    <div><div class="text-base-content/60">Embedded products</div><div class="font-semibold">@ms.EmbeddedProducts.ToString("N0") / @ms.ActiveProducts.ToString("N0")</div></div>
+                    <div><div class="text-base-content/60">Match candidates</div><div class="font-semibold">@ms.Candidates.ToString("N0")</div></div>
                     <div><div class="text-base-content/60">Last success</div><div class="font-semibold">@(ms.LastSuccessAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? "never")</div></div>
                     <div class="col-span-2"><div class="text-base-content/60">Last error</div><div class="font-semibold break-words">@(ms.LastError ?? "–")</div></div>
                 </div>

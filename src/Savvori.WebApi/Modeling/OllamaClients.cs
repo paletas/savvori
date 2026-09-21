@@ -81,6 +81,12 @@ public sealed class OllamaEmbeddingClient(HttpClient http, IOptions<ModelOptions
         (await OllamaHttp.SendAsync(http, request, ct)).Dispose();
     }
 
+    public async Task<ModelInfo> GetModelInfoAsync(CancellationToken ct = default)
+    {
+        var model = options.Value.EmbeddingModel;
+        return new ModelInfo(model, await GetDigestAsync(model, ct));
+    }
+
     public async Task<EmbeddingResult> EmbedAsync(IReadOnlyList<string> texts, CancellationToken ct = default)
     {
         var model = options.Value.EmbeddingModel;

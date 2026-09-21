@@ -29,6 +29,9 @@ public sealed class FakeEmbeddingClient : IEmbeddingClient
 
     public Task PingAsync(CancellationToken ct = default) => Task.CompletedTask;
 
+    public Task<ModelInfo> GetModelInfoAsync(CancellationToken ct = default) =>
+        Task.FromResult(new ModelInfo(ModelName, ModelDigest));
+
     public float[] Vector(string text)
     {
         var hash = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(text));
@@ -94,6 +97,12 @@ public sealed class FlakyEmbeddingClient(IEmbeddingClient inner, FaultPlan plan)
     {
         await plan.ApplyAsync(ct);
         await inner.PingAsync(ct);
+    }
+
+    public async Task<ModelInfo> GetModelInfoAsync(CancellationToken ct = default)
+    {
+        await plan.ApplyAsync(ct);
+        return await inner.GetModelInfoAsync(ct);
     }
 }
 

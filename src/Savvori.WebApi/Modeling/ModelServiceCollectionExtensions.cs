@@ -50,7 +50,12 @@ public static class ModelServiceCollectionExtensions
             sp.GetRequiredService<ModelCircuitBreaker>()));
 
         services.AddScoped<ModelJobQueue>();
-        services.TryAddSingleton<IStaleEmbeddingSource, NullStaleEmbeddingSource>();
+        services.AddSingleton<CurrentModelState>();
+        services.AddSingleton<EmbeddingIndex>();
+        services.AddScoped<EmbeddingScanner>();
+        services.AddScoped<CandidateGenerator>();
+        services.AddScoped<IModelJobHandler, EmbedJobHandler>();
+        services.AddScoped<IStaleEmbeddingSource, DbStaleEmbeddingSource>();
         services.AddScoped<IModelStatusService, ModelStatusService>();
         return services;
     }

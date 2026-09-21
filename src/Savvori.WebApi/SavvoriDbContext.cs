@@ -20,6 +20,8 @@ public class SavvoriDbContext : DbContext
     public DbSet<StoreProduct> StoreProducts { get; set; } = default!;
     public DbSet<StoreProductPrice> StoreProductPrices { get; set; } = default!;
     public DbSet<ModelJob> ModelJobs { get; set; } = default!;
+    public DbSet<StoreProductEmbedding> StoreProductEmbeddings { get; set; } = default!;
+    public DbSet<MatchCandidate> MatchCandidates { get; set; } = default!;
 
     // SQLite has no native decimal type: EF stores it as TEXT, which breaks ORDER BY / MIN / SUM
     // (prices would sort lexically, or the query fails to translate). Store prices as REAL instead.
@@ -162,6 +164,24 @@ public class SavvoriDbContext : DbContext
             .IsUnique()
             .HasFilter("\"Status\" IN (0, 1)");
         modelBuilder.Entity<ModelJob>().HasIndex(j => new { j.Status, j.NextAttemptAt });
+        // StoreProductEmbedding: one per StoreProduct, removed with it
+        modelBuilder.Entity<StoreProductEmbedding>().HasKey(e => e.StoreProductId);
+        modelBuilder.Entity<StoreProductEmbedding>()
+            .HasOne(e => e.StoreProduct)
+            .WithOne()
+            .HasForeignKey<StoreProductEmbedding>(e => e.StoreProductId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<StoreProductEmbedding>().HasIndex(e => e.EmbeddedAt);
+
+        // MatchCandidate: one row per unordered pair (stored with A < B), removed with either product
+        modelBuilder.Entity<MatchCandidate>()
+            .HasOne(c => c.StoreProductA).WithMany().HasForeignKey(c => c.StoreProductAId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<MatchCandidate>()
+            .HasOne(c => c.StoreProductB).WithMany().HasForeignKey(c => c.StoreProductBId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<MatchCandidate>().HasIndex(c => new { c.StoreProductAId, c.StoreProductBId }).IsUnique();
+        modelBuilder.Entity<MatchCandidate>().HasIndex(c => c.StoreProductBId);
+        modelBuilder.Entity<MatchCandidate>().HasIndex(c => c.Cosine);
+
         // Only one IsLatest row per StoreProduct (partial unique index)
         modelBuilder.Entity<StoreProductPrice>()
             .HasIndex(spp => spp.StoreProductId)
