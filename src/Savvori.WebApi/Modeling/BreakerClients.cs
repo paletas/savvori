@@ -1,3 +1,4 @@
+using Savvori.Shared;
 namespace Savvori.WebApi.Modeling;
 
 /// <summary>

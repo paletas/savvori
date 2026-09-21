@@ -1,3 +1,5 @@
+using Savvori.Shared;
+
 namespace Savvori.WebApi.Modeling;
 
 /// <summary>
@@ -34,7 +36,6 @@ public interface IEmbeddingClient
 /// <summary>Only product text (no user data) is ever sent to the judge.</summary>
 public sealed record JudgeItem(string Name, string? Brand, string? Size, string Chain);
 
-public enum JudgeVerdict { Yes, No, Unclear }
 
 public interface IPairJudge
 {

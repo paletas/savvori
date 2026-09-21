@@ -119,6 +119,10 @@ builder.Services.AddQuartz(q =>
     q.AddTrigger(opts => opts.ForJob("model-candidate-generation").WithIdentity("model-candidate-generation-trigger")
         .WithCronSchedule(builder.Configuration.GetValue("Model:Candidates:Cron", "0 30 3 * * ?")!));
 
+    q.AddJob<MatchingJob>(opts => opts.WithIdentity("model-matching"));
+    q.AddTrigger(opts => opts.ForJob("model-matching").WithIdentity("model-matching-trigger")
+        .WithCronSchedule(builder.Configuration.GetValue("Model:Matching:Cron", "0 45 3 * * ?")!));
+
     var chains = builder.Configuration
         .GetSection("Scraping:Chains")
         .Get<List<ScrapingChainConfig>>() ?? [];

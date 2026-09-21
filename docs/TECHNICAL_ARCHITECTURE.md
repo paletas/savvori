@@ -92,6 +92,8 @@ Optional model-assisted matching/categorisation runs against a remote, unreliabl
 - Embeddings (Phase 2): `StoreProductEmbeddings` holds one float32 vector per StoreProduct with model name, digest, dimension, input-text hash and `EmbeddedAt`. `EmbeddingScanJob` (hourly) queues idempotent `Embed` jobs for missing/stale products; `EmbedJobHandler` embeds them in batches. Stale = model name/digest or exact input text changed; a dead-lettered job is not re-queued by the scan.
 - `EmbeddingIndex`: in-memory brute-force index over active products, refreshed incrementally; only vectors of one model identity (the newest embedded) are served, so vectors from different models are never compared.
 - `MatchCandidates` (Phase 2): unapplied proposals for cross-chain pairs. `CandidateGenerationJob` (nightly, needs no model call) takes each product's top-K neighbours from other chains above `Model:Candidates:MinCosine`, then applies hard filters (size within tolerance and same unit class when both known; brand conflict rejected; unknown size/brand kept and flagged) and skips pairs already on one canonical. Nothing is linked or merged.
+- Tiered matching (Phase 3): Tier A (EAN, exact brand+name+size+unit) is unchanged and needs no model. `MatchingService` (nightly `MatchingJob`, or "Run matching now") evaluates stored candidates: Tier B auto-accepts by cosine (0.90 sizes known / 0.95 size unknown, brand check must be Ok); Tier C queues `Judge` jobs for the band below (0.80 / 0.85) and accepts only on an explicit judge "yes"; a failed or timed-out judge call is "no decision" and is retried; Tier D (uncertain, judge "no"/"unclear", blocked merges) goes to the review queue. Nothing runs while the flag is off or the breaker is not closed. `Model:Matching:DryRun` defaults to true: proposals go to the review queue instead of being applied.
+- `MatchApplier` links products safely and reversibly: it never merges canonicals that both have active prices from the same chain or carry different EANs unless a human forces it, never moves manually matched products for a job, redirects shopping list items to the surviving canonical, deletes the retired canonical only after snapshotting it in `MatchMerges`, and can undo (recreates the canonical, restores products, list items and statuses, and rejects the pair). Rejected and "different variant" pairs are stored and never proposed again; candidate regeneration never deletes decided pairs. Method labels on store products: `embedding-cosine`, `embedding-judge`, `manual-review`.
 - Observability: `GET /api/admin/model/status` and a panel on Admin/Mapping. Plan and later phases: `docs/MODEL_MATCHING_PLAN.md`.
 
 ### 7. Location Services
@@ -141,6 +143,12 @@ Optional model-assisted matching/categorisation runs against a remote, unreliabl
 ### Admin — Scraping
 - `GET /api/admin/scraping/status` – Current status of all scraping jobs
 - `POST /api/admin/scraping/trigger/{chainSlug}` – Manually trigger a scrape for a store chain
+
+### Admin — Match Review
+- `GET /api/admin/matching/summary` — candidates by status, applied by method, products priced by 2+ chains.
+- `GET /api/admin/matching/review?filter=all|suggested|blocked|judge|applied&page=` — side-by-side listings (image, size, price) with cosine, flags, judge verdict, safety warning.
+- `POST /api/admin/matching/candidates/{id}/accept?force=` | `reject` | `different-variant` | `undo` — human decisions (always win).
+- `POST /api/admin/matching/run` — evaluate stored candidates now; makes no model call.
 
 ### Admin — Model Backend
 - `GET /api/admin/model/status` — breaker state, last success/error, queue depth, oldest pending job, dead-lettered and stale-embedding counts (never calls the model).

@@ -1,6 +1,6 @@
 # Model-assisted matching and categorisation: plan
 
-Status: **approved. Phases 1 and 2 implemented; Phase 3 awaiting go-ahead.**
+Status: **approved. Phases 1, 2 and 3 implemented; Phase 4 in progress (taxonomy document awaiting approval).**
 
 ## Principles (from the brief)
 
@@ -148,3 +148,25 @@ Commit: `feat: model backend foundation (breaker, job queue, status) behind a fe
 - The status panel additions were compiled but not viewed in a browser.
 
 **Threshold caveat.** The defaults (0.6 minimum, top-8, 2% size tolerance) came from a small hand-labelled sample and must be re-checked on real review-queue results.
+
+## Phase 3 report
+
+**What it does.** `MatchingService` (nightly, or "Run matching now" on Admin > Match review) evaluates stored candidates in tiers. Tier A (EAN, exact brand+name+size+unit) is unchanged. Tier B: cosine >= 0.90 (both sizes known) or >= 0.95 (a size unknown) and the brand check passed: auto-accept. Tier C: from 0.80 / 0.85 up to the accept threshold, and confident pairs whose brand is unknown: a `Judge` job is queued; only an explicit judge "yes" accepts. A failed, timed-out or malformed judge call is "no decision": the candidate stays pending and the queue retries, and it is never recorded as a "no". Tier D: everything else from `ReviewMinCosine` (0.70) up, plus judge "no"/"unclear" answers and merges blocked by a safety rule, goes to the review queue. Lower pairs stay unqueued proposals.
+
+**Safety rules.** Two canonicals that both have active prices from the same chain, or carry different EANs, are never merged automatically ("probably different packs"); the reviewer sees the warning and must tick a confirmation. A model decision never moves a manually matched product, or any product in a canonical group that contains one. Human decisions mark both products manually matched so no later job changes them. Groups of three or more merge pairwise through the same checks. Shopping list items follow the surviving canonical.
+
+**Reversibility.** Every applied merge is stored in `MatchMerges` with a snapshot of the retired canonical, the moved products (previous canonical, status, method) and the redirected list items. Undo restores all of it and rejects the pair. Every decision stores method (`embedding-cosine`, `embedding-judge`, `manual-review`), cosine, embedding model and digest, judge model and verdict, and timestamp. Rejected and "different variant" pairs are never proposed again, and candidate regeneration never deletes or overwrites decided pairs.
+
+**Dry run.** `Model:Matching:DryRun` defaults to **true**: Tier B and judge "yes" results become suggestions in the review queue and nothing is linked. Turn it off in configuration for the first real run; suggestions that came from the judge are applied without asking the judge again.
+
+**Degraded mode.** With the flag off, or the breaker not closed, a matching run decides nothing and queues nothing; existing matches and categories are untouched.
+
+**Migration `AddMatchDecisions`.** Adds seven nullable/defaulted decision columns (status, method, suggestion, judge verdict, judge model, decided-at, note) and an index to `MatchCandidates` (the Phase 2 table, empty until the first candidate run), plus the new `MatchMerges` table and index. Nothing existing is altered. Applied to a throwaway SQLite file only; the real database gets it at next startup after the automatic backup.
+
+**Verified.** `dotnet test Savvori.sln --filter "FullyQualifiedName!~LiveScraperTests"`: all pass (LiveScraperTests not run). New tests cover the tier thresholds (and that they are configurable), dry run, degraded mode, judge yes/no/unclear, judge failure and recovery, dry-run judge suggestion applied later without re-asking, idempotent runs, stale-digest candidates, same-chain and EAN blocks with human force, manual protection (product and group), transitive groups, shopping-list redirect, full undo, undo refusal, rejected pairs never re-proposed, regeneration keeping decisions, and the review API against real SQLite (listing, accept/force/undo, reject, different-variant, 404/409, run, mapping stats). The review page renders side by side with the warning and confirmation checkbox (against a mock API).
+
+**Before/after match report.** Not measurable here: it needs your real embeddings. Expected shape from your prototype on the full data: 862 auto-accept pairs forming 647 groups over 1,478 products, and 2,634 borderline pairs for the judge or you. Products priced by 2+ chains is now shown on Admin > Mapping and Match review so you can watch the effect; today it is 1 on the beta.
+
+**Not verified.** Nothing was run against a real Ollama or your data; the review page was not viewed in a browser; the size of the nightly matching run on 18k products is untested. Judge "no" answers are shown in the review queue (with the verdict) rather than hidden, because a 7B judge's recall is only about 52%.
+
+**Threshold caveat.** All defaults (0.90 / 0.95 / 0.80 / 0.85 / 0.70) were tuned on a small hand-labelled sample and should be re-checked on review-queue results before switching off the dry run.

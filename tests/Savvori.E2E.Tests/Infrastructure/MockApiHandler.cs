@@ -27,6 +27,43 @@ public class MockApiHandler : HttpMessageHandler
         var method = request.Method.Method.ToUpperInvariant();
         var pathLower = path.ToLowerInvariant();
 
+        // ===== Admin: matching review queue =====
+        if (method == "GET" && pathLower == "/api/admin/matching/summary")
+            return Json(new
+            {
+                dryRun = true,
+                byStatus = new[] { new { status = "NeedsReview", count = 1 } },
+                appliedByMethod = Array.Empty<object>(),
+                multiChainCanonicals = 3
+            });
+
+        if (method == "GET" && pathLower == "/api/admin/matching/review")
+        {
+            object Listing(string chain, string name, decimal price) => new
+            {
+                id = Guid.NewGuid(), name, brand = "Mimosa", sizeValue = 1m, unit = "L", imageUrl = (string?)null,
+                sourceUrl = (string?)null, chain, canonicalProductId = Guid.NewGuid(), price
+            };
+            return Json(new
+            {
+                page = 1, pageSize = 10, total = 1, totalPages = 1,
+                items = new[]
+                {
+                    new
+                    {
+                        id = Guid.NewGuid(), cosine = 0.93, sizeKnown = true, brandCheck = "Ok", status = "NeedsReview",
+                        suggestion = "embedding-cosine", verdict = (string?)null, note = (string?)null, method = (string?)null,
+                        warning = "Both already have prices from the same chain: probably different packs.",
+                        a = Listing("Continente", "Leite Meio Gordo Mimosa 1L", 0.89m),
+                        b = Listing("Auchan", "Leite M. Gordo Mimosa 1L", 0.85m)
+                    }
+                }
+            });
+        }
+
+        if (method == "POST" && pathLower.StartsWith("/api/admin/matching/"))
+            return Json(new { status = "ok" });
+
         // ===== Categories =====
         if (method == "GET" && pathLower == "/api/categories")
             return Json(GetCategories());

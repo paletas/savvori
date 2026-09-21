@@ -19,6 +19,7 @@ public sealed class ModelOptions
     public QueueOptions Queue { get; set; } = new();
     public ScanOptions Scan { get; set; } = new();
     public CandidateOptions Candidates { get; set; } = new();
+    public MatchingOptions Matching { get; set; } = new();
 
     public sealed class BreakerOptions
     {
@@ -41,6 +42,29 @@ public sealed class ModelOptions
     {
         /// <summary>Quartz cron for finding products that need (re-)embedding.</summary>
         public string Cron { get; set; } = "0 15 * * * ?";
+    }
+
+    public sealed class MatchingOptions
+    {
+        /// <summary>
+        /// While true nothing is linked: proposals go to the review queue instead. Defaults to TRUE so the first
+        /// run is a dry run; set to false to let the tiers apply matches.
+        /// </summary>
+        public bool DryRun { get; set; } = true;
+        public string Cron { get; set; } = "0 45 3 * * ?";
+        /// <summary>Tier B: auto-accept at or above this cosine when both sizes are known.</summary>
+        public double AcceptCosineSizeKnown { get; set; } = 0.90;
+        /// <summary>Tier B: auto-accept at or above this cosine when a size is unknown.</summary>
+        public double AcceptCosineSizeUnknown { get; set; } = 0.95;
+        /// <summary>Tier C: ask the judge from this cosine up (size known) to the accept threshold.</summary>
+        public double JudgeLowerSizeKnown { get; set; } = 0.80;
+        public double JudgeLowerSizeUnknown { get; set; } = 0.85;
+        /// <summary>Below the judge band, pairs from this cosine up go to the review queue; lower ones just stay proposals.</summary>
+        public double ReviewMinCosine { get; set; } = 0.70;
+        /// <summary>Tier B needs the brand check to have positively passed (Ok), not merely "unknown".</summary>
+        public bool AutoAcceptRequiresBrandOk { get; set; } = true;
+        /// <summary>Cap on judge requests queued per matching run, so the first run cannot flood the model.</summary>
+        public int MaxJudgeJobsPerRun { get; set; } = 1000;
     }
 
     public sealed class CandidateOptions

@@ -68,6 +68,9 @@ public sealed class CandidateGenerator(
         {
             if (existing.Remove(key, out var row))
             {
+                // Decided pairs (applied, rejected, different variant) are history: never touched, never re-proposed.
+                if (row.Status is CandidateStatus.Applied or CandidateStatus.Rejected or CandidateStatus.DifferentVariant)
+                    continue;
                 row.Cosine = v.Cosine; row.SizeKnown = v.SizeKnown; row.BrandCheck = v.Brand;
                 row.ModelName = identity.ModelName; row.ModelDigest = identity.ModelDigest;
                 updated++;
@@ -83,11 +86,14 @@ public sealed class CandidateGenerator(
                 added++;
             }
         }
-        // Whatever is left no longer qualifies (text/size/brand/embedding changed, or already merged).
-        db.MatchCandidates.RemoveRange(existing.Values);
+        // Whatever is left no longer qualifies (text/size/brand/embedding changed, or already merged). Only undecided
+        // proposals are removed: decisions (and above all rejections) must survive so a pair is never proposed again.
+        var stale = existing.Values.Where(c =>
+            c.Status is CandidateStatus.Proposed or CandidateStatus.PendingJudge or CandidateStatus.NeedsReview).ToList();
+        db.MatchCandidates.RemoveRange(stale);
         await db.SaveChangesAsync(ct);
 
-        return new(snapshot.Count, considered, rejSize, rejBrand, same, added, updated, existing.Count);
+        return new(snapshot.Count, considered, rejSize, rejBrand, same, added, updated, stale.Count);
     }
 }
 

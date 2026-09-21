@@ -22,6 +22,7 @@ public class SavvoriDbContext : DbContext
     public DbSet<ModelJob> ModelJobs { get; set; } = default!;
     public DbSet<StoreProductEmbedding> StoreProductEmbeddings { get; set; } = default!;
     public DbSet<MatchCandidate> MatchCandidates { get; set; } = default!;
+    public DbSet<MatchMerge> MatchMerges { get; set; } = default!;
 
     // SQLite has no native decimal type: EF stores it as TEXT, which breaks ORDER BY / MIN / SUM
     // (prices would sort lexically, or the query fails to translate). Store prices as REAL instead.
@@ -181,6 +182,8 @@ public class SavvoriDbContext : DbContext
         modelBuilder.Entity<MatchCandidate>().HasIndex(c => new { c.StoreProductAId, c.StoreProductBId }).IsUnique();
         modelBuilder.Entity<MatchCandidate>().HasIndex(c => c.StoreProductBId);
         modelBuilder.Entity<MatchCandidate>().HasIndex(c => c.Cosine);
+        modelBuilder.Entity<MatchCandidate>().HasIndex(c => c.Status);
+        modelBuilder.Entity<MatchMerge>().HasIndex(m => m.CandidateId);
 
         // Only one IsLatest row per StoreProduct (partial unique index)
         modelBuilder.Entity<StoreProductPrice>()

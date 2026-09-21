@@ -107,7 +107,9 @@ public record MappingStatsDto(
     double CategorizedPercent,
     int UnmappedCategoryStrings,
     List<MatchStatusCountDto> ByMatchStatus,
-    List<MatchMethodCountDto> ByMatchMethod);
+    List<MatchMethodCountDto> ByMatchMethod,
+    int MultiChainCanonicals = 0,
+    List<MatchStatusCountDto>? CandidatesByStatus = null);
 
 public record ModelStatusDto(
     bool Enabled,
@@ -164,3 +166,24 @@ public record AdminStoreProductsResponse(
 
 public record BackfillCategoriesResponse(int Updated, int Skipped);
 public record RematchResponse(int Matched, int Remaining);
+
+// ===== Admin Matching (review queue) =====
+public record MatchingSummaryDto(
+    bool DryRun,
+    List<MatchStatusCountDto> ByStatus,
+    List<MatchMethodCountDto> AppliedByMethod,
+    int MultiChainCanonicals);
+
+public record ReviewListingDto(
+    Guid Id, string Name, string? Brand, decimal? SizeValue, string Unit, string? ImageUrl, string? SourceUrl,
+    string Chain, Guid? CanonicalProductId, decimal? Price);
+
+public record ReviewItemDto(
+    Guid Id, double Cosine, bool SizeKnown, string BrandCheck, string Status, string? Suggestion, string? Verdict,
+    string? Note, string? Method, string? Warning, ReviewListingDto A, ReviewListingDto B);
+
+public record ReviewPageDto(int Page, int PageSize, int Total, int TotalPages, List<ReviewItemDto> Items);
+
+public record MatchingRunDto(
+    string? SkippedReason, bool DryRun, int Evaluated, int AutoAccepted, int WouldAccept,
+    int JudgeQueued, int SentToReview, int Blocked, int Left);

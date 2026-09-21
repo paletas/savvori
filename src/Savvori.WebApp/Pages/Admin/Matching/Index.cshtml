@@ -1,0 +1,182 @@
+@page
+@model MatchingIndexModel
+@using Savvori.WebApp.Pages.Admin.Matching
+@using Savvori.WebApp.Services.ApiModels
+@{
+    ViewData["Title"] = "Match review";
+    Layout = "../_AdminLayout";
+    var filters = new[] { ("all", "Needs review"), ("suggested", "Dry-run suggestions"), ("blocked", "Blocked by safety rule"), ("judge", "Judge answered"), ("applied", "Applied (undo)") };
+}
+
+<div class="mb-6">
+    <h1 class="text-2xl font-bold">Match review</h1>
+    <p class="text-base-content/60 text-sm mt-1">
+        Cross-chain matches proposed by the model that need your decision. Rejected pairs are never proposed again.
+    </p>
+</div>
+
+@if (Model.Summary is { } summary)
+{
+    <div class="card bg-base-100 shadow mb-6">
+        <div class="card-body p-4">
+            <div class="flex flex-wrap items-center gap-3">
+                @if (summary.DryRun)
+                {
+                    <span class="badge badge-warning">Dry run</span>
+                    <span class="text-sm">Nothing is linked automatically. Suggestions below are what a real run would do (<code>Model:Matching:DryRun</code> is on).</span>
+                }
+                else
+                {
+                    <span class="badge badge-success">Applying</span>
+                    <span class="text-sm">Confident matches are applied automatically and can be undone under "Applied".</span>
+                }
+            </div>
+            <div class="flex flex-wrap gap-2 mt-2">
+                @foreach (var s in summary.ByStatus)
+                {
+                    <span class="badge badge-outline">@s.Status: @s.Count.ToString("N0")</span>
+                }
+                <span class="badge badge-info">Products priced by 2+ chains: @summary.MultiChainCanonicals.ToString("N0")</span>
+                @foreach (var m in summary.AppliedByMethod)
+                {
+                    <span class="badge badge-ghost">applied via @m.Method: @m.Count.ToString("N0")</span>
+                }
+            </div>
+            <form method="post" asp-page-handler="Run" class="mt-3">
+                <input type="hidden" name="Filter" value="@Model.Filter" />
+                <button type="submit" class="btn btn-sm btn-primary">Run matching now</button>
+                <span class="text-xs text-base-content/60 ml-2">Evaluates stored scores and queues judge requests; never waits for the model.</span>
+            </form>
+        </div>
+    </div>
+}
+
+<div role="tablist" class="tabs tabs-bordered mb-4">
+    @foreach (var (key, label) in filters)
+    {
+        <a role="tab" asp-page="/Admin/Matching/Index" asp-route-filter="@key" class="tab @(Model.Filter == key ? "tab-active" : "")">@label</a>
+    }
+</div>
+
+@if (Model.Review is null)
+{
+    <div class="alert alert-error">Could not load the review queue.</div>
+}
+else if (Model.Review.Items.Count == 0)
+{
+    <div class="alert alert-info">Nothing here.</div>
+}
+else
+{
+    foreach (var item in Model.Review.Items)
+    {
+        <div class="card bg-base-100 shadow mb-4">
+            <div class="card-body p-4">
+                <div class="flex flex-wrap items-center gap-2 text-sm">
+                    <span class="badge">cosine @item.Cosine.ToString("0.000")</span>
+                    <span class="badge @(item.SizeKnown ? "badge-ghost" : "badge-warning")">@(item.SizeKnown ? "size known" : "size unknown")</span>
+                    <span class="badge @(item.BrandCheck == "Ok" ? "badge-ghost" : "badge-warning")">brand @item.BrandCheck.ToLowerInvariant()</span>
+                    @if (item.Suggestion is not null)
+                    {
+                        <span class="badge badge-info">suggested: accept (@item.Suggestion)</span>
+                    }
+                    @if (item.Verdict is not null)
+                    {
+                        <span class="badge @(item.Verdict == "Yes" ? "badge-success" : item.Verdict == "No" ? "badge-error" : "badge-warning")">judge: @item.Verdict.ToLowerInvariant()</span>
+                    }
+                    @if (item.Status == "Applied" && item.Method is not null)
+                    {
+                        <span class="badge badge-success">applied via @item.Method</span>
+                    }
+                </div>
+                @if (item.Warning is not null || item.Note is not null)
+                {
+                    <div class="alert alert-warning py-2 text-sm">@(item.Warning ?? item.Note)</div>
+                }
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                    @foreach (var side in new[] { item.A, item.B })
+                    {
+                        <div class="flex gap-3">
+                            @if (!string.IsNullOrEmpty(side.ImageUrl))
+                            {
+                                <img src="@side.ImageUrl" alt="" class="w-20 h-20 object-contain rounded bg-base-200" loading="lazy" />
+                            }
+                            else
+                            {
+                                <div class="w-20 h-20 rounded bg-base-200"></div>
+                            }
+                            <div class="min-w-0">
+                                <div class="text-xs uppercase text-base-content/60">@side.Chain</div>
+                                <div class="font-semibold break-words">
+                                    @if (!string.IsNullOrEmpty(side.SourceUrl))
+                                    {
+                                        <a href="@side.SourceUrl" target="_blank" rel="noopener" class="link">@side.Name</a>
+                                    }
+                                    else
+                                    {
+                                        @side.Name
+                                    }
+                                </div>
+                                <div class="text-sm text-base-content/70">
+                                    @(side.Brand ?? "no brand") ·
+                                    @(side.SizeValue is > 0 ? $"{side.SizeValue:0.###} {side.Unit}" : "size unknown") ·
+                                    @(side.Price is { } p ? $"{p:0.00} €" : "no price")
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+                <div class="flex flex-wrap items-center gap-2 mt-3">
+                    @if (item.Status == "Applied")
+                    {
+                        <form method="post" asp-page-handler="Undo">
+                            <input type="hidden" name="id" value="@item.Id" />
+                            <input type="hidden" name="Filter" value="@Model.Filter" />
+                            <input type="hidden" name="Page" value="@Model.Page" />
+                            <button class="btn btn-sm btn-warning" type="submit">Undo this match</button>
+                        </form>
+                    }
+                    else
+                    {
+                        <form method="post" asp-page-handler="Accept" class="flex items-center gap-2">
+                            <input type="hidden" name="id" value="@item.Id" />
+                            <input type="hidden" name="Filter" value="@Model.Filter" />
+                            <input type="hidden" name="Page" value="@Model.Page" />
+                            <button class="btn btn-sm btn-success" type="submit">Same product</button>
+                            @if (item.Warning is not null)
+                            {
+                                <label class="label cursor-pointer gap-1 py-0">
+                                    <input type="checkbox" name="force" value="true" class="checkbox checkbox-xs checkbox-warning" />
+                                    <span class="label-text text-xs">I confirm despite the warning</span>
+                                </label>
+                            }
+                        </form>
+                        <form method="post" asp-page-handler="Variant">
+                            <input type="hidden" name="id" value="@item.Id" />
+                            <input type="hidden" name="Filter" value="@Model.Filter" />
+                            <input type="hidden" name="Page" value="@Model.Page" />
+                            <button class="btn btn-sm" type="submit">Different variant</button>
+                        </form>
+                        <form method="post" asp-page-handler="Reject">
+                            <input type="hidden" name="id" value="@item.Id" />
+                            <input type="hidden" name="Filter" value="@Model.Filter" />
+                            <input type="hidden" name="Page" value="@Model.Page" />
+                            <button class="btn btn-sm btn-error btn-outline" type="submit">Not the same</button>
+                        </form>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    if (Model.Review.TotalPages > 1)
+    {
+        <div class="join">
+            @for (var p = 1; p <= Model.Review.TotalPages; p++)
+            {
+                <a class="join-item btn btn-sm @(p == Model.Review.Page ? "btn-active" : "")"
+                   asp-page="/Admin/Matching/Index" asp-route-filter="@Model.Filter" asp-route-page="@p">@p</a>
+            }
+        </div>
+    }
+}

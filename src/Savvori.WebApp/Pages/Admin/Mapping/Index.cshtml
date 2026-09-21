@@ -39,9 +39,36 @@
             var unmatchedCount = (unmatchedStat?.Count ?? 0) + (failedStat?.Count ?? 0);
         }
         <div class="stat">
+            <div class="stat-title">Products priced by 2+ chains</div>
+            <div class="stat-value text-2xl">@Model.Stats.MultiChainCanonicals.ToString("N0")</div>
+            <div class="stat-desc"><a class="link" asp-page="/Admin/Matching/Index">Match review</a></div>
+        </div>
+        <div class="stat">
             <div class="stat-title">Unmatched / Failed StoreProducts</div>
             <div class="stat-value text-2xl @(unmatchedCount == 0 ? "text-success" : "text-error")">
                 @unmatchedCount
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Match report by method ─────────────────────────────────────────── *@
+@if (Model.Stats is { ByMatchMethod.Count: > 0 } report)
+{
+    <div class="card bg-base-100 shadow mb-6">
+        <div class="card-body p-4">
+            <h2 class="font-semibold">Store products by match method</h2>
+            <div class="flex flex-wrap gap-2 mt-2">
+                @foreach (var m in report.ByMatchMethod)
+                {
+                    <span class="badge badge-lg @(m.Method.StartsWith("embedding") ? "badge-info" : m.Method.StartsWith("manual") ? "badge-accent" : "badge-ghost")">
+                        @m.Method: @m.Count.ToString("N0")
+                    </span>
+                }
+            </div>
+            <div class="text-xs text-base-content/60 mt-1">
+                Deterministic tiers: <code>ean</code>, <code>brand+name+size+unit</code>, <code>created-new</code>.
+                Model tiers: <code>embedding-cosine</code>, <code>embedding-judge</code>. Human: <code>manual*</code>.
             </div>
         </div>
     </div>
@@ -58,7 +85,7 @@
                 @if (!ms.Enabled)
                 {
                     <span class="badge badge-ghost">Disabled</span>
-                    <span class="text-sm text-base-content/60">Feature flag <code>Model:Enabled</code> is off; matching and categorisation run without the ms.</span>
+                    <span class="text-sm text-base-content/60">Feature flag <code>Model:Enabled</code> is off; matching and categorisation run without the model.</span>
                 }
                 else
                 {

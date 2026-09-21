@@ -412,6 +412,54 @@ public class SavvoriApiClient(HttpClient http, ILogger<SavvoriApiClient> logger)
         }
     }
 
+    // ===== Admin: Matching review queue =====
+
+    public async Task<MatchingSummaryDto?> GetMatchingSummaryAsync(CancellationToken ct = default)
+    {
+        try { return await http.GetFromJsonAsync<MatchingSummaryDto>("/api/admin/matching/summary", JsonOptions, ct); }
+        catch (Exception ex) { logger.LogError(ex, "Failed to get matching summary"); return null; }
+    }
+
+    public async Task<ReviewPageDto?> GetMatchingReviewAsync(string filter, int page, CancellationToken ct = default)
+    {
+        try
+        {
+            return await http.GetFromJsonAsync<ReviewPageDto>(
+                $"/api/admin/matching/review?filter={Uri.EscapeDataString(filter)}&page={page}&pageSize=10", JsonOptions, ct);
+        }
+        catch (Exception ex) { logger.LogError(ex, "Failed to get matching review queue"); return null; }
+    }
+
+    /// <summary>action: accept | reject | different-variant | undo</summary>
+    public async Task<(bool Success, string? Error)> MatchingActionAsync(
+        Guid id, string action, bool force = false, CancellationToken ct = default)
+    {
+        try
+        {
+            var resp = await http.PostAsync(
+                $"/api/admin/matching/candidates/{id}/{action}?force={force.ToString().ToLowerInvariant()}", null, ct);
+            if (resp.IsSuccessStatusCode) return (true, null);
+            var body = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(JsonOptions, ct);
+            return (false, body.TryGetProperty("message", out var m) ? m.GetString() : "The action failed.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Matching action {Action} failed", action);
+            return (false, "The action failed.");
+        }
+    }
+
+    public async Task<MatchingRunDto?> RunMatchingAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var resp = await http.PostAsync("/api/admin/matching/run", null, ct);
+            resp.EnsureSuccessStatusCode();
+            return await resp.Content.ReadFromJsonAsync<MatchingRunDto>(JsonOptions, ct);
+        }
+        catch (Exception ex) { logger.LogError(ex, "Failed to run matching"); return null; }
+    }
+
     public async Task<BackfillCategoriesResponse?> BackfillCategoriesAsync(CancellationToken ct = default)
     {
         try

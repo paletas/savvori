@@ -60,7 +60,11 @@ public class MappingAdminController : ControllerBase
                 .OrderBy(x => x.Status)
                 .Select(x => new { Status = x.Status.ToString(), x.Count }),
             ByMatchMethod = matchMethodCounts
-                .OrderByDescending(x => x.Count)
+                .OrderByDescending(x => x.Count),
+            MultiChainCanonicals = await MatchingAdminController.MultiChainCanonicalsAsync(_db, ct),
+            CandidatesByStatus = (await _db.MatchCandidates.GroupBy(c => c.Status)
+                    .Select(g => new { Status = g.Key, Count = g.Count() }).ToListAsync(ct))
+                .OrderBy(x => x.Status).Select(x => new { Status = x.Status.ToString(), x.Count })
         });
     }
 

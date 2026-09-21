@@ -80,6 +80,25 @@ public class AdminPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savvo
         Assert.Contains("/Admin/Scraping/Detail", response.Headers.Location?.ToString() ?? "");
     }
 
+    // ===== Admin Matching review =====
+
+    [Fact]
+    public async Task AdminMatchingPage_ShowsSideBySideListings_DryRunBanner_AndSafetyWarning()
+    {
+        var client = factory.CreateClient();
+        var response = await client.GetAsync("/Admin/Matching", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.Contains("Dry run", html);
+        Assert.Contains("Leite Meio Gordo Mimosa 1L", html);
+        Assert.Contains("Leite M. Gordo Mimosa 1L", html);
+        Assert.Contains("Same product", html);
+        Assert.Contains("Different variant", html);
+        Assert.Contains("Not the same", html);
+        Assert.Contains("probably different packs", html);
+        Assert.Contains("I confirm despite the warning", html);
+    }
+
     // ===== Admin Stores =====
 
     [Fact]

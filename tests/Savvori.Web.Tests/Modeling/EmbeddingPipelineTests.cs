@@ -9,19 +9,33 @@ using Savvori.WebApi.Modeling;
 
 namespace Savvori.Web.Tests.Modeling;
 
-/// <summary>Real scanner, queue, drain job, embed handler, index and candidate generator over fakes.</summary>
+/// <summary>Counts how many times the judge was actually asked.</summary>
+public sealed class CountingJudge(IPairJudge inner) : IPairJudge
+{
+    public int Calls { get; private set; }
+    public async Task<JudgeVerdict> JudgeAsync(JudgeItem a, JudgeItem b, CancellationToken ct = default)
+    {
+        Calls++;
+        return await inner.JudgeAsync(a, b, ct);
+    }
+}
+
+/// <summary>Real scanner, queue, drain job, handlers, index, candidate generator and matching over fakes.</summary>
 public sealed class PipelineHost : IDisposable
 {
     public ManualTimeProvider Time { get; } = new();
     public FaultPlan Faults { get; }
     public FakeEmbeddingClient Embedder { get; } = new() { Dimension = 16 };
+    public FakePairJudge Judge { get; } = new();
+    public CountingJudge JudgeCalls { get; }
     public ModelOptions Options { get; } = new()
     {
-        Enabled = true, EmbeddingModel = "fake-embed", BatchSize = 4, MaxConcurrency = 1,
+        Enabled = true, EmbeddingModel = "fake-embed", JudgeModel = "fake-judge", BatchSize = 4, MaxConcurrency = 1,
         Breaker = { FailureThreshold = 3, CooldownSeconds = 60 },
         Queue = { MaxAttempts = 3, BaseDelaySeconds = 10, MaxDelaySeconds = 100, LeaseSeconds = 120, MaxBatchesPerRun = 50 }
     };
     public ServiceProvider Services { get; }
+    public ModelCircuitBreaker Breaker => Services.GetRequiredService<ModelCircuitBreaker>();
     public Guid ChainA { get; } = Guid.NewGuid();
     public Guid ChainB { get; } = Guid.NewGuid();
     public Guid ChainC { get; } = Guid.NewGuid();
@@ -29,6 +43,7 @@ public sealed class PipelineHost : IDisposable
     public PipelineHost()
     {
         Faults = new FaultPlan(Time);
+        JudgeCalls = new CountingJudge(Judge);
         var dbName = $"Pipeline_{Guid.NewGuid()}";
         var s = new ServiceCollection();
         s.AddLogging();
@@ -38,6 +53,8 @@ public sealed class PipelineHost : IDisposable
         s.AddSingleton(Faults);
         s.AddSingleton<IEmbeddingClient>(sp => new BreakerEmbeddingClient(
             new FlakyEmbeddingClient(Embedder, sp.GetRequiredService<FaultPlan>()), sp.GetRequiredService<ModelCircuitBreaker>()));
+        s.AddSingleton<IPairJudge>(sp => new BreakerPairJudge(
+            new FlakyPairJudge(JudgeCalls, sp.GetRequiredService<FaultPlan>()), sp.GetRequiredService<ModelCircuitBreaker>()));
         s.AddDbContext<SavvoriDbContext>(o => o.UseInMemoryDatabase(dbName));
         s.AddScoped<ModelJobQueue>();
         s.AddSingleton<CurrentModelState>();
@@ -45,6 +62,9 @@ public sealed class PipelineHost : IDisposable
         s.AddScoped<EmbeddingScanner>();
         s.AddScoped<CandidateGenerator>();
         s.AddScoped<IModelJobHandler, EmbedJobHandler>();
+        s.AddScoped<IModelJobHandler, JudgeJobHandler>();
+        s.AddScoped<MatchApplier>();
+        s.AddScoped<MatchingService>();
         s.AddTransient<ModelQueueDrainJob>();
         Services = s.BuildServiceProvider();
 
@@ -98,6 +118,74 @@ public sealed class PipelineHost : IDisposable
                 InputTextHash = hash ?? EmbeddingFreshness.HashText(EmbeddingFreshness.BuildInputText(p.Brand, p.Name))
             });
         });
+    }
+
+    public Guid AddCanonical(string name, string? ean = null, Guid? categoryId = null)
+    {
+        var id = Guid.NewGuid();
+        With(db => db.Products.Add(new Product { Id = id, Name = name, EAN = ean, CategoryId = categoryId }));
+        return id;
+    }
+
+    /// <summary>A store product with its own canonical, as the scraper creates them.</summary>
+    public (Guid Sp, Guid Canonical) AddListed(Guid chain, string name, string? brand = "Marca", decimal? size = 1,
+        ProductUnit unit = ProductUnit.L, string? ean = null)
+    {
+        var canonical = AddCanonical(name, ean);
+        var sp = AddProduct(chain, name, brand, size, unit, canonical);
+        With(db =>
+        {
+            var p = db.StoreProducts.Single(x => x.Id == sp);
+            p.MatchStatus = MatchStatus.AutoMatched;
+            p.MatchMethod = "created-new";
+        });
+        return (sp, canonical);
+    }
+
+    public Guid AddCandidate(Guid a, Guid b, double cosine, bool sizeKnown = true,
+        CandidateBrandCheck brand = CandidateBrandCheck.Ok, string digest = "digest-1")
+    {
+        var id = Guid.NewGuid();
+        var (x, y) = a.CompareTo(b) < 0 ? (a, b) : (b, a);
+        With(db => db.MatchCandidates.Add(new MatchCandidate
+        {
+            Id = id, StoreProductAId = x, StoreProductBId = y, Cosine = cosine, SizeKnown = sizeKnown, BrandCheck = brand,
+            ModelName = "fake-embed", ModelDigest = digest, CreatedAt = Time.GetUtcNow().UtcDateTime
+        }));
+        return id;
+    }
+
+    public async Task<int> MultiChainAsync()
+    {
+        using var scope = Services.CreateScope();
+        return await WebApi.Controllers.MatchingAdminController.MultiChainCanonicalsAsync(
+            scope.ServiceProvider.GetRequiredService<SavvoriDbContext>(), default);
+    }
+
+    public MatchCandidate Candidate(Guid id) => Query(db => db.MatchCandidates.AsNoTracking().Single(c => c.Id == id));
+    public StoreProduct Sp(Guid id) => Query(db => db.StoreProducts.AsNoTracking().Single(c => c.Id == id));
+
+    public async Task<MatchingRunResult> RunMatchingAsync()
+    {
+        using var scope = Services.CreateScope();
+        return await scope.ServiceProvider.GetRequiredService<MatchingService>()
+            .RunAsync(TestContext.Current.CancellationToken);
+    }
+
+    public async Task<ApplyResult> HumanAcceptAsync(Guid candidateId, bool force = false)
+    {
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<SavvoriDbContext>();
+        var c = db.MatchCandidates.Single(x => x.Id == candidateId);
+        return await scope.ServiceProvider.GetRequiredService<MatchApplier>()
+            .ApplyAsync(c, MatchApplier.ManualMethod, manual: true, force, TestContext.Current.CancellationToken);
+    }
+
+    public async Task<ApplyResult> UndoAsync(Guid candidateId)
+    {
+        using var scope = Services.CreateScope();
+        return await scope.ServiceProvider.GetRequiredService<MatchApplier>()
+            .UndoAsync(candidateId, TestContext.Current.CancellationToken);
     }
 
     public async Task<ScanResult> ScanAsync(ModelInfo? current = null)
