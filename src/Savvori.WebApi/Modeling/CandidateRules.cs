@@ -39,14 +39,16 @@ public static class CandidateRules
     }
 
     /// <summary>
-    /// Dietary/quality variants must agree: if one listing is bio, sem lactose, sem glúten, vegan or sem açúcar and the
-    /// other is not, they are different products ("Chocolate Negro" vs "Chocolate Negro sem Açúcar"). Deterministic
-    /// tag rules on name and brand; a missed tag can only cause a missed match, never a wrong merge.
+    /// Dietary variants must agree: if one listing is sem lactose, sem glúten, vegan or sem açúcar and the other is not,
+    /// they are different products ("Chocolate Negro" vs "Chocolate Negro sem Açúcar"). Deterministic tag rules on name
+    /// and brand; a missed tag can only cause a missed match, never a wrong merge. "Bio" is deliberately NOT compared:
+    /// chains label organic inconsistently (Celeiro, an organic chain, mostly does not say so), so it would reject
+    /// genuine matches; it stays a tag only.
     /// </summary>
     public static bool TagsConflict(ListingFacts a, ListingFacts b)
     {
-        var ta = TagRules.Compute(a.Name, a.Brand, null).ToHashSet();
-        var tb = TagRules.Compute(b.Name, b.Brand, null).ToHashSet();
+        var ta = TagRules.Compute(a.Name, a.Brand, null).Where(t => t != TagRules.Bio).ToHashSet();
+        var tb = TagRules.Compute(b.Name, b.Brand, null).Where(t => t != TagRules.Bio).ToHashSet();
         return !ta.SetEquals(tb);
     }
 

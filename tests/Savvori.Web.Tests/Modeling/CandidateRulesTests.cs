@@ -63,7 +63,8 @@ public sealed class CandidateRulesTests
     [Theory]
     [InlineData("Tortitas Chocolate Negro", "Tortitas Chocolate Negro sem Açúcar", true)]
     [InlineData("Leite Meio Gordo", "Leite Sem Lactose Meio Gordo", true)]
-    [InlineData("Arroz", "Arroz Bio", true)]
+    [InlineData("Arroz", "Arroz Bio", false)]                              // bio is labelled inconsistently: not compared
+    [InlineData("Massa Bio", "Massa Bio Sem Glúten", true)]
     [InlineData("Massa Sem Glúten", "Massa sem Gluten Fusilli", false)]   // both gluten free
     [InlineData("Bolachas Maria", "Bolacha Maria Dourada", false)]         // no dietary tags either side
     public void TagsConflict_WhenOneSideIsADietaryVariantAndTheOtherIsNot(string a, string b, bool conflict) =>
