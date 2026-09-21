@@ -25,6 +25,7 @@ public sealed class VariantGuardTests
     // one side carries a variant marker the other lacks
     [InlineData("Queijo para Barrar Philadelphia", "Philadelphia", "Queijo para Barrar Light", "Philadelphia")]
     [InlineData("Leite Meio Gordo UHT Infantil +3A Mimosa", "Mimosa", "Leite Mimosa UHT Meio Gordo 1L", "Mimosa")]
+    [InlineData("Bebida Vegetal de Aveia Oatly", "Oatly", "BEBIDA AVEIA OATLY BARISTA BIO 1LT", "OATLY BARISTA")]   // the marker sits in the brand field
     [InlineData("Bolachas Crackers sem Sal na Superfície", "Gran Pavesi", "Bolachas Crackers com Sal na Superfície", "Gran Pavesi")]
     public void DifferentVariants_AreFlagged(string a, string? brandA, string b, string? brandB) =>
         Assert.True(VariantGuard.Compare(a, brandA, b, brandB).Conflict);
@@ -39,6 +40,7 @@ public sealed class VariantGuardTests
     [InlineData("Kéfir de Mirtilos", null, "Kefir Mirtilo Activia Danone", "Activia Danone")]
     [InlineData("Bebida Láctea com sabor a Bolacha 1-3A Mimosa", "Mimosa", "Bebida Láctea com sabor a Bolacha 1-3 Anos", "Mimosa")]
     [InlineData("Água sem Gás Voss", "Voss", "Água sem Gás", "Voss")]
+    [InlineData("Bebida Aveia Oatly Barista", "Oatly", "BEBIDA AVEIA OATLY BARISTA BIO 1LT", "OATLY BARISTA")]
     public void SameProduct_IsNotFlagged_AndIsIdentical(string a, string? brandA, string b, string? brandB)
     {
         var v = VariantGuard.Compare(a, brandA, b, brandB);

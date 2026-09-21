@@ -50,8 +50,9 @@ public static class VariantGuard
         var a = Tokens(nameA, brandStemsA);
         var b = Tokens(nameB, brandStemsB);
         // A brand word one listing carries in its name (the other has it as its Brand field) is not a difference.
-        var onlyA = a.Except(b).Where(t => !brandStemsB.Contains(t)).ToList();
-        var onlyB = b.Except(a).Where(t => !brandStemsA.Contains(t)).ToList();
+        // (A variant marker is never treated as brand: some chains put it in the brand field, e.g. "Oatly Barista".)
+        var onlyA = a.Except(b).Where(t => !brandStemsB.Contains(t) || Markers.Contains(t)).ToList();
+        var onlyB = b.Except(a).Where(t => !brandStemsA.Contains(t) || Markers.Contains(t)).ToList();
 
         if (onlyA.Count == 0 && onlyB.Count == 0) return VariantVerdict.Same;
         var marker = onlyA.Concat(onlyB).FirstOrDefault(Markers.Contains);
@@ -76,7 +77,7 @@ public static class VariantGuard
         {
             if (Stop.Contains(m.Value)) continue;
             var stem = Stem(m.Value);
-            if (!brandStems.Contains(stem)) result.Add(stem);
+            if (!brandStems.Contains(stem) || Markers.Contains(stem)) result.Add(stem);
         }
         return result;
     }
