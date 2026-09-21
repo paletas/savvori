@@ -127,6 +127,7 @@ public static class TaxonomyV2
             "racao para gatos", "racao para gato", "racao gato", "alimento para gatos", "snack para gatos", "whiskas", "sheba"),
         R("dog-food", "comida para caes", "comida para cao", "comida humida para cao", "comida humida cao", "comida humido cao",
             "racao para caes", "racao para cao", "racao cao", "alimento para caes", "snack para caes", "pedigree", "chappi"),
+        R("baby-gear-furniture", "muda fraldas", "muda fralda"), // changing tables and mats, before the nappy words below
         R("nappies-baby-care", "fralda", "fraldas", "fralda cueca", "toalhitas bebe", "pampers", "dodot", "huggies"),
         R("sun-care", "protetor solar", "protecao solar", "bronzeador", "after sun", "spf"),
         R("skincare-cosmetics", "creme facial", "creme de rosto", "serum", "maquilhagem", "batom", "rimel", "desmaquilhante", "creme de maos", "locao corporal"),

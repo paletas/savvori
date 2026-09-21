@@ -150,6 +150,8 @@ public sealed class TaxonomySeedRuleTests
     [InlineData("Fraldas Bebé Seco 9-14kg T4 Dodot", "nappies-baby-care")]
     [InlineData("Fralda Cueca Aqua 12-17Kg T5 Continente do Bebé", "nappies-baby-care")]
     [InlineData("Toalhitas Bebé Pure Aqua Dodot", "nappies-baby-care")]
+    [InlineData("Muda-fraldas Rígido Urso Twinko", "baby-gear-furniture")]
+    [InlineData("Cómoda com Muda Fraldas Cinza Nati Twinko", "baby-gear-furniture")]
     [InlineData("Chupetas 0-6M Confort Silicone Bebeconfort", "baby-gear-furniture")]
     [InlineData("Cama de Grades Madeira 125x66cm Nuvem Neli Twinkle", "baby-gear-furniture")]
     [InlineData("Cómoda 3 Gavetas 84x45x87cm Amélia", "baby-gear-furniture")]
