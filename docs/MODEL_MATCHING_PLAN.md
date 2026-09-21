@@ -189,6 +189,10 @@ Commit: `feat: model backend foundation (breaker, job queue, status) behind a fe
 
 **Before / after.** No categories changed yet, so the uncategorised share (shown on Admin > Mapping) is unchanged. Expected after a real run: most of the 24% uncategorised products get a prediction, about three quarters of them at the auto-assign level. That is the prototype's estimate, not a measured result.
 
+**Coverage note.** Two classifier tests (`MixedNeighbourhood_...`, `MixedStoreString_...`) set `MinNeighbourCosine` to 0 to exercise a mixed vote, so those two branches are covered only off-default. Real bge-m3 similarities between related grocery products should sit well above the default 0.5, so the default is probably right, but that is a judgement, not a measurement.
+
+**Boot check (done).** The real WebApi was started on a fresh database with the flag on and an unreachable model: all five migrations applied through the normal startup path, all scheduled jobs registered without errors, the status/matching/categorisation endpoints answered, real connection-refused errors opened the breaker after the configured failures with jobs left pending (none dead-lettered), and the WebApp rendered Admin > Mapping (showing "Degraded mode"), Match review and Category suggestions with HTTP 200 against the live API. Not done: viewing the pages visually, and any run against a real Ollama.
+
 **Threshold caveat.** 0.85 / 0.5 / k=7 were tuned on a small hand-labelled sample and must be re-checked on the review queue before turning the dry run off.
 
 **What to do next (your decisions).**

@@ -74,7 +74,7 @@
 
 <div role="tablist" class="tabs tabs-bordered mb-4">
     <a role="tab" asp-page="/Admin/Categorisation/Index" asp-route-filter="suggested" class="tab @(Model.Filter == "suggested" ? "tab-active" : "")">Needs review</a>
-    <a role="tab" asp-page="/Admin/Categorisation/Index" asp-route-filter="applied" class="tab @(Model.Filter == "applied" ? "tab-active" : "")">Assigned by the model (undo)</a>
+    <a role="tab" asp-page="/Admin/Categorisation/Index" asp-route-filter="applied" class="tab @(Model.Filter == "applied" ? "tab-active" : "")">Assigned (undo)</a>
 </div>
 
 @if (Model.Suggestions is null)

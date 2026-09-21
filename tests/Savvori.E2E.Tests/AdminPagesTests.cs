@@ -99,6 +99,27 @@ public class AdminPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savvo
         Assert.Contains("I confirm despite the warning", html);
     }
 
+    // ===== Admin Category suggestions =====
+
+    [Fact]
+    public async Task AdminCategorisationPage_ShowsDryRunBanner_Suggestions_AndTheWholeStringProposal()
+    {
+        var client = factory.CreateClient();
+        var response = await client.GetAsync("/Admin/Categorisation", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.Contains("Dry run", html);
+        Assert.Contains("Uncategorised products: 42", html);
+        Assert.Contains("Bolacha Maria Dourada 200g", html);
+        Assert.Contains("Bolachas e Biscoitos", html);
+        Assert.Contains("72", html); // confidence
+        Assert.Contains("Accept", html);
+        Assert.Contains("Reject", html);
+        Assert.Contains("bolachas biscoitos", html);
+        Assert.Contains("Apply to all", html);
+        Assert.DoesNotContain("Could not load suggestions", html);
+    }
+
     // ===== Admin Stores =====
 
     [Fact]

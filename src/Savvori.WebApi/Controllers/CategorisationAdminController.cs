@@ -39,7 +39,7 @@ public class CategorisationAdminController(
         if (page < 1) page = 1;
         if (pageSize is < 1 or > 100) pageSize = 20;
         var wanted = filter == "applied" ? CategorySuggestionStatus.Applied : CategorySuggestionStatus.Suggested;
-        var q = db.CategorySuggestions.Where(s => s.Status == wanted && (wanted != CategorySuggestionStatus.Applied || s.Method != MatchApplier.ManualMethod));
+        var q = db.CategorySuggestions.Where(s => s.Status == wanted);
         var total = await q.CountAsync(ct);
         var items = await q.OrderByDescending(s => s.Confidence).Skip((page - 1) * pageSize).Take(pageSize)
             .Select(s => new

@@ -72,6 +72,19 @@ public class CategorisationAdminTests : IClassFixture<SavvoriWebApiFactory>
     }
 
     [Fact]
+    public async Task AcceptedSuggestions_StayListedUnderApplied_SoTheyCanBeUndone()
+    {
+        var s = Seed();
+        await Post($"/api/admin/categorisation/suggestions/{s.Suggestion}/accept");
+
+        var pending = await _client.GetFromJsonAsync<JsonElement>("/api/admin/categorisation/review?filter=suggested&pageSize=100", TestContext.Current.CancellationToken);
+        var applied = await _client.GetFromJsonAsync<JsonElement>("/api/admin/categorisation/review?filter=applied&pageSize=100", TestContext.Current.CancellationToken);
+
+        Assert.DoesNotContain(pending.GetProperty("items").EnumerateArray(), i => i.GetProperty("id").GetGuid() == s.Suggestion);
+        Assert.Contains(applied.GetProperty("items").EnumerateArray(), i => i.GetProperty("id").GetGuid() == s.Suggestion);
+    }
+
+    [Fact]
     public async Task Reject_IsStored_AndAnAppliedSuggestionCannotBeRejectedWithoutUndo()
     {
         var pending = Seed();

@@ -27,6 +27,37 @@ public class MockApiHandler : HttpMessageHandler
         var method = request.Method.Method.ToUpperInvariant();
         var pathLower = path.ToLowerInvariant();
 
+        // ===== Admin: category suggestions =====
+        if (method == "GET" && pathLower == "/api/admin/categorisation/summary")
+            return Json(new
+            {
+                dryRun = true, uncategorised = 42,
+                byStatus = new[] { new { status = "Suggested", count = 2 } },
+                stringsByStatus = new[] { new { status = "Suggested", count = 1 } }
+            });
+
+        if (method == "GET" && pathLower == "/api/admin/categorisation/review")
+            return Json(new
+            {
+                page = 1, pageSize = 20, total = 1, totalPages = 1,
+                items = new[]
+                {
+                    new
+                    {
+                        id = Guid.NewGuid(), productId = Guid.NewGuid(), productName = "Bolacha Maria Dourada 200g",
+                        brand = "Dourada", imageUrl = (string?)null, rawCategory = "alimentacao",
+                        suggested = "Bolachas e Biscoitos", runnerUp = "Cereais e Granola", confidence = 0.72,
+                        neighbourCount = 7, status = "Suggested", method = "embedding-knn"
+                    }
+                }
+            });
+
+        if (method == "GET" && pathLower == "/api/admin/categorisation/strings")
+            return Json(new[] { new { id = Guid.NewGuid(), rawString = "bolachas biscoitos", support = 12, confidence = 0.93, category = "Bolachas e Biscoitos" } });
+
+        if (method == "POST" && pathLower.StartsWith("/api/admin/categorisation/"))
+            return Json(new { status = "ok" });
+
         // ===== Admin: matching review queue =====
         if (method == "GET" && pathLower == "/api/admin/matching/summary")
             return Json(new
