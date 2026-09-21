@@ -152,7 +152,14 @@ public sealed class CategoryBulkService(SavvoriDbContext db, TimeProvider time)
         foreach (var s in suggestions)
         {
             var product = await db.Products.FirstOrDefaultAsync(p => p.Id == s.ProductId, ct);
-            if (product is null || product.CategoryId is not null) { batch.Blocked++; continue; } // categorised meanwhile: never overwrite
+            if (product is null || product.CategoryId is not null)
+            {
+                // Categorised meanwhile: never overwrite. The suggestion is moot, so drop it; left in the queue it would be
+                // counted as eligible (and skipped again) by every later run.
+                db.CategorySuggestions.Remove(s);
+                batch.Blocked++;
+                continue;
+            }
 
             s.PreviousCategoryId = product.CategoryId;
             product.CategoryId = s.SuggestedCategoryId;

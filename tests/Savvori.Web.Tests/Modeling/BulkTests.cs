@@ -224,7 +224,13 @@ public sealed class BulkCategoryTests : IDisposable
         Assert.Equal(_cat, ProductOf(high).CategoryId);
         Assert.Null(ProductOf(low).CategoryId);
         Assert.Null(ProductOf(wholeString).CategoryId);
-        Assert.NotEqual(_cat, ProductOf(categorisedMeanwhile).CategoryId);
+        var meanwhileProduct = _h.Query(db => db.Products.AsNoTracking().Single(p => p.Name == "Leite" && p.CategoryId != null && p.CategoryId != _cat));
+        Assert.NotEqual(_cat, meanwhileProduct.CategoryId);
+        // the moot suggestion is dropped, so a second run finds nothing to skip again
+        Assert.False(_h.Query(db => db.CategorySuggestions.Any(s => s.Id == categorisedMeanwhile)));
+        var second = await ApplyAsync(0.90);
+        Assert.Equal(0, second.Total);
+        Assert.Equal(0, second.Blocked);
         var applied = _h.Query(db => db.CategorySuggestions.AsNoTracking().Single(s => s.Id == high));
         Assert.Equal(CategorySuggestionStatus.Applied, applied.Status);
         Assert.Equal("embedding-knn", applied.Method);          // still the model's decision, so it never trains the model
