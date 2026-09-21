@@ -121,32 +121,42 @@ public sealed class EmbeddingIndex(IServiceScopeFactory scopes, IOptions<ModelOp
             var dbCount = await live.CountAsync(ct);
             if (dbCount < _seen.Count) Reset();
 
-            var changed = await live
-                .Where(x => x.e.EmbeddedAt >= _watermark)
-                .Select(x => new Row(x.e.StoreProductId, x.StoreChainId, x.e.Vector, x.e.ModelName,
-                    x.e.ModelDigest, x.e.Dimension, x.e.EmbeddedAt))
-                .ToListAsync(ct);
+            // Rows changed since the last refresh. The newest one defines the identity; the rows themselves are read in
+            // small pages so a full rebuild never holds the raw bytes, the floats and the normalised copy of the whole
+            // catalogue at once (the API shares a 1 GB container with other services).
+            var since = _watermark;
+            var changed = live.Where(x => x.e.EmbeddedAt >= since);
+            var newest = await changed.OrderByDescending(x => x.e.EmbeddedAt)
+                .Select(x => new { x.e.EmbeddedAt, x.e.ModelName, x.e.ModelDigest, x.e.Dimension }).FirstOrDefaultAsync(ct);
 
-            if (changed.Count > 0)
+            if (newest is not null)
             {
-                var newest = changed.MaxBy(r => r.EmbeddedAt)!;
                 _watermark = newest.EmbeddedAt;
-                var identity = new ModelInfo(newest.Model, newest.Digest);
-                if (_identity != identity || _dimension != newest.Dim)
+                var identity = new ModelInfo(newest.ModelName, newest.ModelDigest);
+                if (_identity != identity || _dimension != newest.Dimension)
                 {
                     _identity = identity;
-                    _dimension = newest.Dim;
+                    _dimension = newest.Dimension;
                 }
 
-                foreach (var row in changed)
+                const int pageSize = 500;
+                for (var skip = 0; ; skip += pageSize)
                 {
-                    _seen.Add(row.Id);
-                    _entries.Remove(row.Id);
-                    var rowIdentity = new ModelInfo(row.Model, row.Digest);
-                    if (rowIdentity != _identity || row.Dim != _dimension || row.Vector.Length != row.Dim * sizeof(float))
-                        continue;
-                    if (VectorCodec.Normalize(VectorCodec.FromBytes(row.Vector)) is { } unit)
-                        _entries[row.Id] = (new IndexEntry(row.Id, row.ChainId, unit), rowIdentity, row.Dim);
+                    var page = await changed.OrderBy(x => x.e.StoreProductId).Skip(skip).Take(pageSize)
+                        .Select(x => new Row(x.e.StoreProductId, x.StoreChainId, x.e.Vector, x.e.ModelName,
+                            x.e.ModelDigest, x.e.Dimension, x.e.EmbeddedAt))
+                        .ToListAsync(ct);
+                    foreach (var row in page)
+                    {
+                        _seen.Add(row.Id);
+                        _entries.Remove(row.Id);
+                        var rowIdentity = new ModelInfo(row.Model, row.Digest);
+                        if (rowIdentity != _identity || row.Dim != _dimension || row.Vector.Length != row.Dim * sizeof(float))
+                            continue;
+                        if (VectorCodec.Normalize(VectorCodec.FromBytes(row.Vector)) is { } unit)
+                            _entries[row.Id] = (new IndexEntry(row.Id, row.ChainId, unit), rowIdentity, row.Dim);
+                    }
+                    if (page.Count < pageSize) break;
                 }
 
                 // A newer identity may have taken over: drop everything from any other model.
