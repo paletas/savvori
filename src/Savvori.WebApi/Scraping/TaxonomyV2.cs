@@ -188,7 +188,7 @@ public static class TaxonomyV2
 
     private static Regex[] GetRegexes(string legacySlug, SplitRule rule)
     {
-        var key = $"{legacySlug}>{rule.Target}";
+        var key = $"{legacySlug}>{rule.Target}>{string.Join(',', rule.Keywords)}"; // a target may have several rules
         lock (RuleRegex)
         {
             if (!RuleRegex.TryGetValue(key, out var r))
