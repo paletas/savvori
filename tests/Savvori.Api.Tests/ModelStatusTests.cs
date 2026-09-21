@@ -33,4 +33,14 @@ public class ModelStatusTests : IClassFixture<SavvoriWebApiFactory>
         var json = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.Equal(0, json.GetProperty("requeued").GetInt32());
     }
+
+    [Theory]
+    [InlineData("/api/admin/model/scan")]
+    [InlineData("/api/admin/model/generate-candidates")]
+    public async Task ScanAndGenerate_AreRefused_WhileTheFeatureFlagIsOff(string url)
+    {
+        var response = await _client.PostAsync(url, null, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    }
 }
