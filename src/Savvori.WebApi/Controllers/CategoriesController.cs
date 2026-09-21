@@ -12,10 +12,12 @@ namespace Savvori.WebApi.Controllers;
 public class CategoriesController : ControllerBase
 {
     private readonly SavvoriDbContext _db;
+    private readonly Scraping.ICategoryLocalizer _localizer;
 
-    public CategoriesController(SavvoriDbContext db)
+    public CategoriesController(SavvoriDbContext db, Scraping.ICategoryLocalizer localizer)
     {
         _db = db;
+        _localizer = localizer;
     }
 
     /// <summary>
@@ -25,16 +27,26 @@ public class CategoriesController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetCategories(CancellationToken ct = default)
     {
-        var all = await _db.ProductCategories
-            .OrderBy(c => c.Name)
-            .ToListAsync(ct);
+        var all = await ActiveCategoriesAsync(ct);
 
+        var names = await _localizer.GetNamesAsync(_localizer.ResolveLanguage(Request), ct);
         var roots = all
             .Where(c => c.ParentCategoryId == null)
-            .Select(c => MapCategory(c, all))
+            .Select(c => MapCategory(c, all, names))
             .ToList();
 
         return Ok(roots);
+    }
+
+    /// <summary>
+    /// The categories of the active taxonomy: the v2 tree once the v2 migration is applied, otherwise the v1 tree.
+    /// (The tree of the taxonomy that is not active stays in the database but is hidden.)
+    /// </summary>
+    private async Task<List<ProductCategory>> ActiveCategoriesAsync(CancellationToken ct)
+    {
+        var v2 = await new Scraping.TaxonomyMigrationService(_db, TimeProvider.System).IsV2ActiveAsync(ct);
+        var all = await _db.ProductCategories.OrderBy(c => c.Name).ToListAsync(ct);
+        return all.Where(c => v2 ? Scraping.TaxonomyV2.V2Slugs.Contains(c.Slug) : !Scraping.TaxonomyV2.V2Slugs.Contains(c.Slug) || Scraping.TaxonomyV2.V1Slugs.Contains(c.Slug)).ToList();
     }
 
     /// <summary>
@@ -55,7 +67,8 @@ public class CategoriesController : ControllerBase
         if (category is null) return NotFound();
 
         var all = await _db.ProductCategories.ToListAsync(ct);
-        return Ok(MapCategory(category, all));
+        var names = await _localizer.GetNamesAsync(_localizer.ResolveLanguage(Request), ct);
+        return Ok(MapCategory(category, all, names));
     }
 
     /// <summary>
@@ -120,7 +133,7 @@ public class CategoriesController : ControllerBase
         return Ok(new
         {
             CategoryId = category.Id,
-            CategoryName = category.Name,
+            CategoryName = (await _localizer.GetNamesAsync(_localizer.ResolveLanguage(Request), ct)).GetValueOrDefault(category.Id, category.Name),
             Page = page,
             PageSize = pageSize,
             Total = total,
@@ -129,17 +142,17 @@ public class CategoriesController : ControllerBase
         });
     }
 
-    private static object MapCategory(ProductCategory category, List<ProductCategory> all)
+    private static object MapCategory(ProductCategory category, List<ProductCategory> all, IReadOnlyDictionary<Guid, string> names)
     {
         var children = all
             .Where(c => c.ParentCategoryId == category.Id)
-            .Select(c => MapCategory(c, all))
+            .Select(c => MapCategory(c, all, names))
             .ToList();
 
         return new
         {
             category.Id,
-            category.Name,
+            Name = names.GetValueOrDefault(category.Id, category.Name),
             category.Slug,
             category.ParentCategoryId,
             Children = children

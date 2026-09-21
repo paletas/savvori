@@ -19,13 +19,152 @@ public class MockApiHandler : HttpMessageHandler
 
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
 
+    /// <summary>Every request seen by any handler instance ("METHOD /path?query"), for asserting what the WebApp sent.</summary>
+    public static readonly System.Collections.Concurrent.ConcurrentQueue<string> RequestLog = new();
+
     protected override async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request, CancellationToken ct)
     {
         var path = request.RequestUri?.AbsolutePath ?? "";
         var query = request.RequestUri?.Query ?? "";
         var method = request.Method.Method.ToUpperInvariant();
+        RequestLog.Enqueue($"{method} {path}{query}");
         var pathLower = path.ToLowerInvariant();
+
+        // ===== Admin: bulk review =====
+        if (method == "GET" && pathLower == "/api/admin/matching/bulk/preview")
+        {
+            object Side(string chain, string name) => new
+            {
+                id = Guid.NewGuid(), name, brand = "Kinder", sizeValue = 100m, unit = "G", imageUrl = (string?)null,
+                sourceUrl = (string?)null, chain, canonicalProductId = Guid.NewGuid(), price = 1.5m
+            };
+            return Json(new
+            {
+                minCosine = 0.9, eligible = 885, busy = false,
+                sample = new[]
+                {
+                    new
+                    {
+                        id = Guid.NewGuid(), cosine = 0.983, sizeKnown = true, brandCheck = "Ok", status = "NeedsReview",
+                        suggestion = "embedding-cosine", verdict = (string?)null, note = (string?)null, method = (string?)null,
+                        warning = (string?)null, a = Side("Continente", "Bombons de Chocolate Kinder Schoko-Bons"),
+                        b = Side("Auchan", "Bombons Schoko-Bons Kinder")
+                    }
+                }
+            });
+        }
+
+        if (method == "GET" && pathLower == "/api/admin/categorisation/bulk/preview")
+            return Json(new
+            {
+                minConfidence = 0.9, eligible = 1092, busy = false,
+                sample = new[]
+                {
+                    new
+                    {
+                        id = Guid.NewGuid(), productId = Guid.NewGuid(), productName = "Azeitonas Verdes", brand = (string?)null,
+                        imageUrl = (string?)null, rawCategory = "Azeitonas, Pickles e Tremoços", suggested = "Conservas Vegetais",
+                        confidence = 1.0, neighbourCount = 7
+                    }
+                }
+            });
+
+        if (method == "GET" && (pathLower == "/api/admin/matching/bulk/batches" || pathLower == "/api/admin/categorisation/bulk/batches"))
+            return Json(new[]
+            {
+                new
+                {
+                    id = Guid.NewGuid(), method = "embedding-cosine", threshold = 0.9, status = "Done", total = 885, applied = 850,
+                    blocked = 35, undone = 0, error = (string?)null, createdAt = DateTime.UtcNow, finishedAt = (DateTime?)DateTime.UtcNow,
+                    undoneAt = (DateTime?)null
+                }
+            });
+
+        // ===== Admin: taxonomy v2 migration =====
+        if (method == "GET" && pathLower == "/api/admin/taxonomy/plan")
+            return Json(new
+            {
+                v2Active = false, productsWithCategory = 1200, productsAlreadyMigrated = 0, unchanged = 0, movedToUncategorised = 90,
+                rows = new[]
+                {
+                    new { legacySlug = "carne", legacyName = "Carne", products = 100, oneToOne = 0, byRule = 70, leftForClassifier = 30,
+                          ruleTargets = new Dictionary<string, int> { ["beef"] = 40, ["aves"] = 30 } },
+                    new { legacySlug = "leite", legacyName = "Leite", products = 50, oneToOne = 48, byRule = 2, leftForClassifier = 0,
+                          ruleTargets = new Dictionary<string, int> { ["plant-drinks"] = 2 } }
+                },
+                tags = new Dictionary<string, int> { ["bio"] = 12, ["vegan"] = 3 }
+            });
+
+        if (method == "POST" && pathLower.StartsWith("/api/admin/taxonomy/"))
+            return Json(new { status = "ok" });
+
+        // ===== Admin: category suggestions =====
+        if (method == "GET" && pathLower == "/api/admin/categorisation/summary")
+            return Json(new
+            {
+                uncategorised = 42,
+                byStatus = new[] { new { status = "Suggested", count = 2 } },
+                stringsByStatus = new[] { new { status = "Suggested", count = 1 } }
+            });
+
+        if (method == "GET" && pathLower == "/api/admin/categorisation/review")
+            return Json(new
+            {
+                page = 1, pageSize = 20, total = 1, totalPages = 1,
+                items = new[]
+                {
+                    new
+                    {
+                        id = Guid.NewGuid(), productId = Guid.NewGuid(), productName = "Bolacha Maria Dourada 200g",
+                        brand = "Dourada", imageUrl = (string?)null, rawCategory = "alimentacao",
+                        suggested = "Bolachas e Biscoitos", runnerUp = "Cereais e Granola", confidence = 0.72,
+                        neighbourCount = 7, status = "Suggested", method = "embedding-knn"
+                    }
+                }
+            });
+
+        if (method == "GET" && pathLower == "/api/admin/categorisation/strings")
+            return Json(new[] { new { id = Guid.NewGuid(), rawString = "bolachas biscoitos", support = 12, confidence = 0.93, category = "Bolachas e Biscoitos" } });
+
+        if (method == "POST" && pathLower.StartsWith("/api/admin/categorisation/"))
+            return Json(new { status = "ok" });
+
+        // ===== Admin: matching review queue =====
+        if (method == "GET" && pathLower == "/api/admin/matching/summary")
+            return Json(new
+            {
+                byStatus = new[] { new { status = "NeedsReview", count = 1 } },
+                appliedByMethod = Array.Empty<object>(),
+                multiChainCanonicals = 3
+            });
+
+        if (method == "GET" && pathLower == "/api/admin/matching/review")
+        {
+            object Listing(string chain, string name, decimal price) => new
+            {
+                id = Guid.NewGuid(), name, brand = "Mimosa", sizeValue = 1m, unit = "L", imageUrl = (string?)null,
+                sourceUrl = (string?)null, chain, canonicalProductId = Guid.NewGuid(), price
+            };
+            return Json(new
+            {
+                page = 1, pageSize = 10, total = 1, totalPages = 1,
+                items = new[]
+                {
+                    new
+                    {
+                        id = Guid.NewGuid(), cosine = 0.93, sizeKnown = true, brandCheck = "Ok", status = "NeedsReview",
+                        suggestion = "embedding-cosine", verdict = (string?)null, note = (string?)null, method = (string?)null,
+                        warning = "Both already have prices from the same chain: probably different packs.",
+                        a = Listing("Continente", "Leite Meio Gordo Mimosa 1L", 0.89m),
+                        b = Listing("Auchan", "Leite M. Gordo Mimosa 1L", 0.85m)
+                    }
+                }
+            });
+        }
+
+        if (method == "POST" && pathLower.StartsWith("/api/admin/matching/"))
+            return Json(new { status = "ok" });
 
         // ===== Categories =====
         if (method == "GET" && pathLower == "/api/categories")

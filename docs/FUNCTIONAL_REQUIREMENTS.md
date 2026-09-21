@@ -22,7 +22,7 @@
 - As an admin/developer, I want the system to automatically discover and update product prices from supported stores.
 
 ### Acceptance Criteria
-- The product catalog includes products from Continente, Pingo Doce, Auchan, and Minipreço (via web scraping). Lidl, Intermarché, and Mercadona are planned (stubs in place; no online grocery catalog currently available for those chains).
+- The product catalog includes products from Continente, Pingo Doce, Auchan, Lidl (via its JSON search API), and Celeiro (organic/health-food chain) (via web scraping). Only chains with a working scraper are listed as stores.
 - Product prices are updated automatically up to twice daily.
 - The system prefers APIs for price discovery, but uses web scraping if APIs are unavailable.
 - The system is designed to easily add new stores in the future.
@@ -100,7 +100,7 @@ The `/api/shoppinglists/{id}/optimize` endpoint supports four modes via `?mode=`
 - `GET /api/admin/scraping/status` returns the last run time, next scheduled time, and success/failure status for each scraper.
 - `POST /api/admin/scraping/trigger/{chainSlug}` enqueues an immediate scrape for the specified chain.
 
-- Supported `chainSlug` values: `continente`, `pingo-doce`, `auchan`, `minipreco` (stubs: `lidl`, `intermarche`, `mercadona`).
+- Supported `chainSlug` values: `continente`, `pingodoce`, `auchan`, `lidl`, `celeiro`.
 
 ## 9. Category & Product Mapping Admin
 
@@ -115,9 +115,28 @@ The `/api/shoppinglists/{id}/optimize` endpoint supports four modes via `?mode=`
 - `GET /api/admin/mapping/store-products?status=&chainSlug=` supports filtering by match status and store chain.
 - `POST /api/admin/mapping/backfill-categories` assigns canonical categories to uncategorized products wherever a mapping now resolves, without erroring on unresolved ones.
 - `POST /api/admin/mapping/rematch?chainSlug=` re-attempts EAN and brand/name/size/unit matching for unmatched or failed store products, optionally scoped to one chain, and never creates duplicate canonical products.
+- `GET /api/admin/mapping/match-report` returns cross-store matching numbers: store-product and canonical totals, a store-products-per-canonical histogram, canonicals with prices from at least two chains, no-size and EAN counts, and counts by match method.
+- `POST /api/admin/mapping/recompute-sizes?chainSlug=&dryRun=` recomputes size/unit for existing store products from their stored names (raw tile text is not persisted), cross-checked against the latest stored unit price. During scraping, a parsed size that differs from the size implied by the store's unit price by more than 5% is replaced by the unit-price size and counted in the job log.
 - `PUT /api/admin/mapping/products/{id}/category` and `PUT /api/admin/mapping/store-products/{id}/canonical` allow manual, per-item correction.
 
 - The Web App admin area (`/Admin/Mapping`) provides a UI over this same API.
+
+### Model backend status (optional feature)
+- Admin/Mapping shows whether the optional model backend is enabled, its circuit-breaker state, queue depth, oldest pending job, dead-lettered jobs and stale embeddings. All model features are off by default and every existing feature works unchanged when the model is disabled or unreachable.
+
+### Match review (optional feature)
+- Bulk apply: a "Bulk apply" tab takes every confident suggestion above a chosen cosine in one undoable run, after you spot-check a random sample. The judge's answers are never bulk-applied. Category suggestions have the same bulk tab.
+- Admin > Match review lists cross-chain matches proposed by the model that need a decision: both listings side by side with image, size, price and chain, the similarity score, flags, the judge's answer and any safety warning. Actions: Same product, Different variant, Not the same, and Undo for applied matches. Rejected and different-variant pairs are never proposed again.
+- A match that would put two prices from the same chain (or two different EANs) on one product is never applied automatically; it needs an explicit confirmation.
+- The model never links products by itself: it only suggests. Every merge is a human action (one pair at a time, or a bulk apply of the confident suggestions) and can be undone. There is no dry-run setting.
+- Admin > Mapping shows store products by match method and how many products are priced by two or more chains.
+
+### Taxonomy v2
+- The category tree is taxonomy v2 (12 aisles, 87 categories, names in Portuguese and English). It is applied automatically the first time the API starts on a database that has never had it: each product is placed by a 1:1 mapping or a keyword rule, or left uncategorised for the classifier and the review queue, and keeps its old category so it can be reverted. Products also get tags (bio, sem lactose, sem glúten, vegan, sem açúcar). There is no admin page for it.
+
+### Category suggestions (optional feature)
+- Admin > Category suggestions lists categories predicted for products that have none, with the confidence and the runner-up category. Actions: Accept, Reject (never proposed again) and Undo for categories the model assigned. A store category that maps uniformly to one category (for example a store's "bolachas") is offered once as "Apply to all".
+- Existing categories are never changed. The model never assigns a category by itself (the keyword rules still do): predictions wait in the queue until you accept them one by one, in bulk, or as a whole store category. When the model is unavailable, categories keep coming from the built-in rules only.
 
 ## 10. Web Application (Frontend UI)
 

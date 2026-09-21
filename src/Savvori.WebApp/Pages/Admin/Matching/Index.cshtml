@@ -1,0 +1,284 @@
+@page
+@model MatchingIndexModel
+@using Savvori.WebApp.Pages.Admin.Matching
+@using Savvori.WebApp.Services.ApiModels
+@{
+    ViewData["Title"] = "Match review";
+    Layout = "../_AdminLayout";
+    var filters = new[] { ("all", "To review"), ("applied", "Applied (undo)"), ("bulk", "Bulk apply") };
+}
+
+<div class="mb-6">
+    <h1 class="text-2xl font-bold">Match review</h1>
+    <p class="text-base-content/60 text-sm mt-1">
+        One queue of cross-chain pairs that need your decision. Each pair shows why it is here (a suggestion, the judge's answer, or a safety rule that stopped it). Rejected pairs are never proposed again.
+    </p>
+</div>
+
+@if (Model.Summary is { } summary)
+{
+    <div class="card bg-base-100 shadow mb-6">
+        <div class="card-body p-4">
+            <div class="flex flex-wrap items-center gap-3">
+                <span class="text-sm">The model never links products by itself. It only suggests: you decide here, one pair at a time or in bulk, and every merge can be undone.</span>
+            </div>
+            <div class="flex flex-wrap gap-2 mt-2">
+                @{
+                    int Count(params string[] statuses) => summary.ByStatus.Where(x => statuses.Contains(x.Status)).Sum(x => x.Count);
+                }
+                <span class="badge badge-outline">To review: @Count("NeedsReview").ToString("N0")</span>
+                <span class="badge badge-outline" title="Close enough to be candidates but not looked at yet: they move to the queue at the next matching run or judge answer">Not evaluated yet: @Count("Proposed", "PendingJudge").ToString("N0")</span>
+                <span class="badge badge-outline">Merged: @Count("Applied").ToString("N0")</span>
+                <span class="badge badge-outline" title="Decided as not the same product or a different variant; never proposed again">Ruled out: @Count("Rejected", "DifferentVariant").ToString("N0")</span>
+                <span class="badge badge-info">Products priced by 2+ chains: @summary.MultiChainCanonicals.ToString("N0")</span>
+                @foreach (var m in summary.AppliedByMethod)
+                {
+                    <span class="badge badge-ghost">applied via @m.Method: @m.Count.ToString("N0")</span>
+                }
+            </div>
+            <form method="post" asp-page-handler="Run" class="mt-3">
+                <input type="hidden" name="Filter" value="@Model.Filter" />
+                <button type="submit" class="btn btn-sm btn-primary">Run matching now</button>
+                <span class="text-xs text-base-content/60 ml-2">Sorts stored scores into this queue and queues judge requests; never waits for the model.</span>
+            </form>
+        </div>
+    </div>
+}
+
+<div role="tablist" class="tabs tabs-bordered mb-4">
+    @foreach (var (key, label) in filters)
+    {
+        <a role="tab" asp-page="/Admin/Matching/Index" asp-route-filter="@key" class="tab @(Model.Filter == key ? "tab-active" : "")">@label</a>
+    }
+</div>
+
+@if (Model.Filter == "bulk")
+{
+    var running = Model.Batches.Any(b => b.Status is "Running" or "Undoing");
+    if (running) { <meta http-equiv="refresh" content="5" /> }
+    if (Model.BulkPreview is not { } bulk)
+    {
+        <div class="alert alert-error">Could not load the bulk preview.</div>
+    }
+    else
+    {
+        <div class="card bg-base-100 shadow mb-6">
+            <div class="card-body p-4">
+                <h2 class="font-semibold">Apply every confident suggestion in one go</h2>
+                <p class="text-sm text-base-content/70">
+                    Takes the suggestions from the confident similarity tier only (never the judge's answers), from the cosine below upwards,
+                    where the brand is confirmed and no safety rule objects. It runs in the background as one run that you can undo in a single step.
+                </p>
+                <form method="get" class="flex items-end gap-2 mt-2">
+                    <input type="hidden" name="filter" value="bulk" />
+                    <label class="form-control w-40"><span class="label-text text-xs">Minimum cosine</span>
+                        <input name="min" type="number" step="0.01" min="0.5" max="1" value="@Model.Min.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)" class="input input-sm input-bordered" /></label>
+                    <label class="form-control w-64"><span class="label-text text-xs">Also identical names down to cosine (optional)</span>
+                        <input name="exact" type="number" step="0.01" min="0.5" max="1" placeholder="e.g. 0.80" value="@(Model.Exact?.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture))" class="input input-sm input-bordered" /></label>
+                    <button class="btn btn-sm">Update preview</button>
+                </form>
+                <p class="text-xs text-base-content/60 mt-2">
+                    Pairs whose names describe different variants (another flavour, "light", another cocoa percentage, ...) are left out of the run and stay in the queue.
+                    "Identical names" also takes lower-cosine pairs when nothing but brand, size and filler words differs between the two names.
+                </p>
+                <div class="mt-3"><span class="badge badge-info badge-lg">@bulk.Eligible.ToString("N0") suggestions would be applied</span>
+                    @if (bulk.EligibleExact > 0) { <span class="badge badge-outline ml-2">@bulk.EligibleExact.ToString("N0") of them by identical names</span> }</div>
+            </div>
+        </div>
+
+        if (bulk.Sample.Count > 0)
+        {
+            <div class="card bg-base-100 shadow mb-6">
+                <div class="card-body p-4">
+                    <h2 class="font-semibold">Spot-check a random sample first</h2>
+                    <p class="text-sm text-base-content/70">Tick the pairs that are <b>not</b> the same product. The tally is only for you: it is not saved.</p>
+                    <div id="sample-tally" class="badge badge-outline my-2" data-total="@bulk.Sample.Count">@bulk.Sample.Count of @bulk.Sample.Count look right (100%)</div>
+                    <table class="table table-sm">
+                        <thead><tr><th>Wrong?</th><th>Cosine</th><th>Listing A</th><th>Listing B</th></tr></thead>
+                        <tbody>
+                        @foreach (var s in bulk.Sample)
+                        {
+                            <tr>
+                                <td><input type="checkbox" class="checkbox checkbox-sm checkbox-error sample-wrong" /></td>
+                                <td>@s.Cosine.ToString("0.000")</td>
+                                <td><span class="text-xs uppercase text-base-content/60">@s.A.Chain</span><br />@s.A.Name <span class="text-base-content/60">· @(s.A.Brand ?? "no brand") · @(s.A.SizeValue is > 0 ? $"{s.A.SizeValue:0.###} {s.A.Unit}" : "size ?")</span></td>
+                                <td><span class="text-xs uppercase text-base-content/60">@s.B.Chain</span><br />@s.B.Name <span class="text-base-content/60">· @(s.B.Brand ?? "no brand") · @(s.B.SizeValue is > 0 ? $"{s.B.SizeValue:0.###} {s.B.Unit}" : "size ?")</span></td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                    <form method="post" asp-page-handler="BulkApply" class="flex items-center gap-3 mt-3">
+                        <input type="hidden" name="min" value="@Model.Min.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)" />
+                        <input type="hidden" name="exact" value="@(Model.Exact?.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture))" />
+                        <label class="label cursor-pointer gap-2"><input type="checkbox" required class="checkbox checkbox-sm" /><span class="label-text text-sm">I checked the sample and I am happy with it</span></label>
+                        <button class="btn btn-sm btn-primary" type="submit" disabled="@(bulk.Busy || running)">Apply @bulk.Eligible.ToString("N0") suggestions</button>
+                    </form>
+                </div>
+            </div>
+            <script>
+                (function () {
+                    var boxes = document.querySelectorAll('.sample-wrong');
+                    var tally = document.getElementById('sample-tally');
+                    function update() {
+                        var total = boxes.length, wrong = document.querySelectorAll('.sample-wrong:checked').length, right = total - wrong;
+                        tally.textContent = right + ' of ' + total + ' look right (' + Math.round(100 * right / total) + '%)';
+                        tally.className = 'badge my-2 ' + (right / total >= 0.9 ? 'badge-success' : right / total >= 0.75 ? 'badge-warning' : 'badge-error');
+                    }
+                    boxes.forEach(function (b) { b.addEventListener('change', update); });
+                })();
+            </script>
+        }
+
+        <h2 class="font-semibold mb-2">Bulk runs</h2>
+        if (Model.Batches.Count == 0)
+        {
+            <div class="alert alert-info">No bulk runs yet.</div>
+        }
+        else
+        {
+            <table class="table table-sm bg-base-100">
+                <thead><tr><th>When</th><th>Cosine ≥</th><th>Status</th><th>Applied</th><th>Left in queue</th><th></th></tr></thead>
+                <tbody>
+                @foreach (var b in Model.Batches)
+                {
+                    <tr>
+                        <td>@b.CreatedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                        <td>@b.Threshold.ToString("0.00")</td>
+                        <td><span class="badge @(b.Status == "Done" ? "badge-success" : b.Status == "Failed" ? "badge-error" : b.Status == "Undone" ? "badge-ghost" : "badge-warning")">@b.Status</span> @b.Error</td>
+                        <td>@b.Applied.ToString("N0") of @b.Total.ToString("N0")@(b.Undone > 0 ? $" ({b.Undone:N0} undone)" : "")</td>
+                        <td>@b.Blocked.ToString("N0")</td>
+                        <td>
+                            @if (b.Status == "Done" && b.Applied > 0)
+                            {
+                                <form method="post" asp-page-handler="BulkUndo"><input type="hidden" name="id" value="@b.Id" /><input type="hidden" name="min" value="@Model.Min.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)" /><button class="btn btn-xs btn-warning" type="submit">Undo this run</button></form>
+                            }
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        }
+    }
+}
+else if (Model.Review is null)
+{
+    <div class="alert alert-error">Could not load the review queue.</div>
+}
+else if (Model.Review.Items.Count == 0)
+{
+    <div class="alert alert-info">Nothing here.</div>
+}
+else
+{
+    foreach (var item in Model.Review.Items)
+    {
+        <div class="card bg-base-100 shadow mb-4">
+            <div class="card-body p-4">
+                <div class="flex flex-wrap items-center gap-2 text-sm">
+                    <span class="badge">cosine @item.Cosine.ToString("0.000")</span>
+                    <span class="badge @(item.SizeKnown ? "badge-ghost" : "badge-warning")">@(item.SizeKnown ? "size known" : "size unknown")</span>
+                    <span class="badge @(item.BrandCheck == "Ok" ? "badge-ghost" : "badge-warning")">brand @item.BrandCheck.ToLowerInvariant()</span>
+                    @if (item.Suggestion is not null)
+                    {
+                        <span class="badge badge-info">suggested: same product (@(item.Suggestion == "embedding-judge" ? "judge said yes" : "very similar text"))</span>
+                    }
+                    @if (item.Verdict is not null)
+                    {
+                        <span class="badge @(item.Verdict == "Yes" ? "badge-success" : item.Verdict == "No" ? "badge-error" : "badge-warning")">judge: @item.Verdict.ToLowerInvariant()</span>
+                    }
+                    @if (item.Status == "Applied" && item.Method is not null)
+                    {
+                        <span class="badge badge-success">applied via @item.Method</span>
+                    }
+                </div>
+                @if (item.Warning is not null || item.Note is not null)
+                {
+                    <div class="alert alert-warning py-2 text-sm">@(item.Warning ?? item.Note)</div>
+                }
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                    @foreach (var side in new[] { item.A, item.B })
+                    {
+                        <div class="flex gap-3">
+                            @if (!string.IsNullOrEmpty(side.ImageUrl))
+                            {
+                                <img src="@side.ImageUrl" alt="" class="w-20 h-20 object-contain rounded bg-base-200" loading="lazy" />
+                            }
+                            else
+                            {
+                                <div class="w-20 h-20 rounded bg-base-200"></div>
+                            }
+                            <div class="min-w-0">
+                                <div class="text-xs uppercase text-base-content/60">@side.Chain</div>
+                                <div class="font-semibold break-words">
+                                    @if (!string.IsNullOrEmpty(side.SourceUrl))
+                                    {
+                                        <a href="@side.SourceUrl" target="_blank" rel="noopener" class="link">@side.Name</a>
+                                    }
+                                    else
+                                    {
+                                        @side.Name
+                                    }
+                                </div>
+                                <div class="text-sm text-base-content/70">
+                                    @(side.Brand ?? "no brand") ·
+                                    @(side.SizeValue is > 0 ? $"{side.SizeValue:0.###} {side.Unit}" : "size unknown") ·
+                                    @(side.Price is { } p ? $"{p:0.00} €" : "no price")
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+                <div class="flex flex-wrap items-center gap-2 mt-3">
+                    @if (item.Status == "Applied")
+                    {
+                        <form method="post" asp-page-handler="Undo">
+                            <input type="hidden" name="id" value="@item.Id" />
+                            <input type="hidden" name="Filter" value="@Model.Filter" />
+                            <input type="hidden" name="p" value="@Model.PageNumber" />
+                            <button class="btn btn-sm btn-warning" type="submit">Undo this match</button>
+                        </form>
+                    }
+                    else
+                    {
+                        <form method="post" asp-page-handler="Accept" class="flex items-center gap-2">
+                            <input type="hidden" name="id" value="@item.Id" />
+                            <input type="hidden" name="Filter" value="@Model.Filter" />
+                            <input type="hidden" name="p" value="@Model.PageNumber" />
+                            <button class="btn btn-sm btn-success" type="submit">Same product</button>
+                            @if (item.Warning is not null)
+                            {
+                                <label class="label cursor-pointer gap-1 py-0">
+                                    <input type="checkbox" name="force" value="true" class="checkbox checkbox-xs checkbox-warning" />
+                                    <span class="label-text text-xs">I confirm despite the warning</span>
+                                </label>
+                            }
+                        </form>
+                        <form method="post" asp-page-handler="Variant">
+                            <input type="hidden" name="id" value="@item.Id" />
+                            <input type="hidden" name="Filter" value="@Model.Filter" />
+                            <input type="hidden" name="p" value="@Model.PageNumber" />
+                            <button class="btn btn-sm" type="submit">Different variant</button>
+                        </form>
+                        <form method="post" asp-page-handler="Reject">
+                            <input type="hidden" name="id" value="@item.Id" />
+                            <input type="hidden" name="Filter" value="@Model.Filter" />
+                            <input type="hidden" name="p" value="@Model.PageNumber" />
+                            <button class="btn btn-sm btn-error btn-outline" type="submit">Not the same</button>
+                        </form>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    if (Model.Review.TotalPages > 1)
+    {
+        <div class="join">
+            @for (var p = 1; p <= Model.Review.TotalPages; p++)
+            {
+                <a class="join-item btn btn-sm @(p == Model.Review.Page ? "btn-active" : "")"
+                   asp-page="/Admin/Matching/Index" asp-route-filter="@Model.Filter" asp-route-p="@p">@p</a>
+            }
+        </div>
+    }
+}

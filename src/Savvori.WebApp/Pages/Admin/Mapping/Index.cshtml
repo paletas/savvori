@@ -47,6 +47,107 @@
     </div>
 }
 
+@* ── Model backend status ───────────────────────────────────────────── *@
+@if (Model.ModelStatus is { } ms)
+{
+    var breakerClass = ms.BreakerState == "Closed" ? "badge-success" : "badge-error";
+    <div class="card bg-base-100 shadow mb-6">
+        <div class="card-body p-4">
+            <div class="flex flex-wrap items-center gap-3">
+                <h2 class="font-semibold">Model backend</h2>
+                @if (!ms.Enabled)
+                {
+                    <span class="badge badge-ghost">Disabled</span>
+                    <span class="text-sm text-base-content/60">Feature flag <code>Model:Enabled</code> is off; matching and categorisation run without the model.</span>
+                }
+                else
+                {
+                    <span class="badge @breakerClass">Breaker: @ms.BreakerState</span>
+                    @if (ms.BreakerState != "Closed")
+                    {
+                        <span class="text-sm text-warning">Degraded mode: model features paused@(ms.BreakerRetryAt is { } retry ? $", next probe after {retry:HH:mm:ss} UTC" : "").</span>
+                    }
+                }
+            </div>
+            @if (ms.Enabled)
+            {
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3 text-sm">
+                    <div><div class="text-base-content/60">Queue depth</div><div class="font-semibold">@ms.QueueDepth.ToString("N0")</div></div>
+                    <div><div class="text-base-content/60">Oldest pending</div><div class="font-semibold">@(ms.OldestPendingAt?.ToString("yyyy-MM-dd HH:mm") ?? "–")</div></div>
+                    <div><div class="text-base-content/60">Dead-lettered</div><div class="font-semibold">@ms.DeadLetterCount.ToString("N0")</div></div>
+                    <div><div class="text-base-content/60">Stale embeddings</div><div class="font-semibold">@ms.StaleEmbeddings.ToString("N0")</div></div>
+                    <div><div class="text-base-content/60">Embedded products</div><div class="font-semibold">@ms.EmbeddedProducts.ToString("N0") / @ms.ActiveProducts.ToString("N0")</div></div>
+                    <div><div class="text-base-content/60">Match candidates</div><div class="font-semibold">@ms.Candidates.ToString("N0")</div></div>
+                    <div><div class="text-base-content/60">Last success</div><div class="font-semibold">@(ms.LastSuccessAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? "never")</div></div>
+                    <div class="col-span-2"><div class="text-base-content/60">Last error</div><div class="font-semibold break-words">@(ms.LastError ?? "–")</div></div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@* ── Match report ───────────────────────────────────────────────────── *@
+@if (Model.MatchReport is { } report)
+{
+    <div class="card bg-base-100 shadow mb-6">
+        <div class="card-body p-4">
+            <h2 class="card-title text-base">Cross-store match report</h2>
+            <div class="stats stats-horizontal w-full overflow-x-auto">
+                <div class="stat">
+                    <div class="stat-title">Store products</div>
+                    <div class="stat-value text-2xl">@report.TotalStoreProducts.ToString("N0")</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-title">Canonical products</div>
+                    <div class="stat-value text-2xl">@report.TotalCanonicals.ToString("N0")</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-title">Canonicals in ≥2 chains</div>
+                    <div class="stat-value text-2xl @(report.CanonicalsWithMultipleChains == 0 ? "text-error" : "text-success")">
+                        @report.CanonicalsWithMultipleChains.ToString("N0")
+                    </div>
+                </div>
+                <div class="stat">
+                    <div class="stat-title">No size (canonical / store)</div>
+                    <div class="stat-value text-2xl">@report.CanonicalsWithNoSize.ToString("N0")</div>
+                    <div class="stat-desc">@report.StoreProductsWithNoSize.ToString("N0") store products</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-title">With EAN (canonical / store)</div>
+                    <div class="stat-value text-2xl">@report.CanonicalsWithEan.ToString("N0")</div>
+                    <div class="stat-desc">@report.StoreProductsWithEan.ToString("N0") store products</div>
+                </div>
+            </div>
+            <div class="grid gap-4 md:grid-cols-2 mt-2">
+                <div>
+                    <h3 class="font-semibold text-sm mb-1">Store products per canonical</h3>
+                    <table class="table table-xs">
+                        <thead><tr><th>Store products</th><th class="text-right">Canonicals</th></tr></thead>
+                        <tbody>
+                        @foreach (var bucket in report.StoreProductsPerCanonical)
+                        {
+                            <tr><td>@bucket.StoreProducts</td><td class="text-right">@bucket.Canonicals.ToString("N0")</td></tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+                <div>
+                    <h3 class="font-semibold text-sm mb-1">By match method</h3>
+                    <table class="table table-xs">
+                        <thead><tr><th>Method</th><th class="text-right">Store products</th></tr></thead>
+                        <tbody>
+                        @foreach (var m in report.ByMatchMethod)
+                        {
+                            <tr><td>@m.Method</td><td class="text-right">@m.Count.ToString("N0")</td></tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @* ── Action buttons ─────────────────────────────────────────────────── *@
 <div class="flex flex-wrap gap-2 mb-6">
     <form method="post" asp-page-handler="Backfill">
@@ -64,6 +165,9 @@
             </svg>
             Re-match Unmatched
         </button>
+    </form>
+    <form method="post" asp-page-handler="RecomputeSizes" asp-route-tab="@Model.Tab">
+        <button type="submit" class="btn btn-sm btn-primary">Recompute Sizes</button>
     </form>
 </div>
 
@@ -149,7 +253,7 @@
                             <td>
                                 <form method="post" asp-page-handler="AssignCategory" class="flex gap-2 items-center">
                                     <input type="hidden" name="productId" value="@p.Id" />
-                                    <input type="hidden" name="page" value="@Model.Page" />
+                                    <input type="hidden" name="p" value="@Model.PageNumber" />
                                     <select name="categoryId" class="select select-bordered select-xs">
                                         <option value="">— pick category —</option>
                                         @foreach (var parent in Model.AllCategories)
@@ -183,7 +287,7 @@
                 {
                     <a asp-page="/Admin/Mapping/Index"
                        asp-route-tab="uncategorized"
-                       asp-route-page="@(Model.UncategorizedProducts.Page - 1)"
+                       asp-route-p="@(Model.UncategorizedProducts.Page - 1)"
                        class="btn btn-sm">← Prev</a>
                 }
                 <span class="btn btn-sm btn-ghost no-animation">
@@ -193,7 +297,7 @@
                 {
                     <a asp-page="/Admin/Mapping/Index"
                        asp-route-tab="uncategorized"
-                       asp-route-page="@(Model.UncategorizedProducts.Page + 1)"
+                       asp-route-p="@(Model.UncategorizedProducts.Page + 1)"
                        class="btn btn-sm">Next →</a>
                 }
             </div>
@@ -349,7 +453,7 @@
                                             <input type="hidden" name="storeProductId" value="@sp.Id" />
                                             <input type="hidden" name="statusFilter" value="@Model.StatusFilter" />
                                             <input type="hidden" name="chainFilter" value="@Model.ChainFilter" />
-                                            <input type="hidden" name="page" value="@Model.Page" />
+                                            <input type="hidden" name="p" value="@Model.PageNumber" />
                                             <label class="text-xs font-semibold">Canonical Product ID (GUID)</label>
                                             <input type="text" name="canonicalProductId" required
                                                    placeholder="00000000-0000-0000-0000-000000000000"
@@ -373,7 +477,7 @@
                 {
                     <a asp-page="/Admin/Mapping/Index"
                        asp-route-tab="store-products"
-                       asp-route-page="@(Model.StoreProducts.Page - 1)"
+                       asp-route-p="@(Model.StoreProducts.Page - 1)"
                        asp-route-statusFilter="@Model.StatusFilter"
                        asp-route-chainFilter="@Model.ChainFilter"
                        class="btn btn-sm">← Prev</a>
@@ -385,7 +489,7 @@
                 {
                     <a asp-page="/Admin/Mapping/Index"
                        asp-route-tab="store-products"
-                       asp-route-page="@(Model.StoreProducts.Page + 1)"
+                       asp-route-p="@(Model.StoreProducts.Page + 1)"
                        asp-route-statusFilter="@Model.StatusFilter"
                        asp-route-chainFilter="@Model.ChainFilter"
                        class="btn btn-sm">Next →</a>

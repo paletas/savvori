@@ -107,7 +107,27 @@ public record MappingStatsDto(
     double CategorizedPercent,
     int UnmappedCategoryStrings,
     List<MatchStatusCountDto> ByMatchStatus,
-    List<MatchMethodCountDto> ByMatchMethod);
+    List<MatchMethodCountDto> ByMatchMethod,
+    int MultiChainCanonicals = 0,
+    List<MatchStatusCountDto>? CandidatesByStatus = null);
+
+public record ModelStatusDto(
+    bool Enabled,
+    string BreakerState,
+    int ConsecutiveFailures,
+    DateTime? BreakerRetryAt,
+    DateTime? LastSuccessAt,
+    DateTime? LastErrorAt,
+    string? LastError,
+    int QueueDepth,
+    DateTime? OldestPendingAt,
+    int DeadLetterCount,
+    int StaleEmbeddings,
+    int ActiveProducts,
+    int EmbeddedProducts,
+    int Candidates,
+    string EmbeddingModel,
+    string JudgeModel);
 
 public record MatchStatusCountDto(string Status, int Count);
 public record MatchMethodCountDto(string Method, int Count);
@@ -146,3 +166,65 @@ public record AdminStoreProductsResponse(
 
 public record BackfillCategoriesResponse(int Updated, int Skipped);
 public record RematchResponse(int Matched, int Remaining);
+
+// ===== Admin Matching (review queue) =====
+public record MatchingSummaryDto(
+    List<MatchStatusCountDto> ByStatus,
+    List<MatchMethodCountDto> AppliedByMethod,
+    int MultiChainCanonicals);
+
+public record ReviewListingDto(
+    Guid Id, string Name, string? Brand, decimal? SizeValue, string Unit, string? ImageUrl, string? SourceUrl,
+    string Chain, Guid? CanonicalProductId, decimal? Price);
+
+public record ReviewItemDto(
+    Guid Id, double Cosine, bool SizeKnown, string BrandCheck, string Status, string? Suggestion, string? Verdict,
+    string? Note, string? Method, string? Warning, ReviewListingDto A, ReviewListingDto B);
+
+public record ReviewPageDto(int Page, int PageSize, int Total, int TotalPages, List<ReviewItemDto> Items);
+
+public record MatchingRunDto(
+    string? SkippedReason, int Evaluated, int Suggested, int JudgeQueued, int SentToReview, int Left);
+
+// ===== Admin Categorisation (model-suggested categories) =====
+public record CategorisationSummaryDto(
+    int Uncategorised, List<MatchStatusCountDto> ByStatus, List<MatchStatusCountDto> StringsByStatus);
+
+public record CategorySuggestionDto(
+    Guid Id, Guid ProductId, string ProductName, string? Brand, string? ImageUrl, string? RawCategory,
+    string Suggested, string? RunnerUp, double Confidence, int NeighbourCount, string Status, string Method);
+
+public record CategorySuggestionPageDto(int Page, int PageSize, int Total, int TotalPages, List<CategorySuggestionDto> Items);
+
+public record CategoryStringProposalDto(Guid Id, string RawString, int Support, double Confidence, string Category);
+
+public record ClassifierRunDto(
+    string? SkippedReason, int Targets, int AssignedByStoreCategory, int Confident, int ToReview,
+    int NoSuggestion, int StringsProposed, int StringsMixed);
+
+public record MatchReportDto(
+    int TotalStoreProducts,
+    int TotalCanonicals,
+    List<MatchHistogramBucketDto> StoreProductsPerCanonical,
+    int CanonicalsWithMultipleChains,
+    int CanonicalsWithNoSize,
+    int StoreProductsWithNoSize,
+    int CanonicalsWithEan,
+    int StoreProductsWithEan,
+    List<MatchMethodCountDto> ByMatchMethod);
+
+public record MatchHistogramBucketDto(int StoreProducts, int Canonicals);
+public record RecomputeSizesResponse(bool DryRun, int Total, int Changed, int UnitPriceDisagreements, int CanonicalsUpdated);
+
+// ===== Bulk review =====
+public record MatchBulkPreviewDto(double MinCosine, int Eligible, List<ReviewItemDto> Sample, bool Busy, double? ExactFloor = null, int EligibleExact = 0);
+
+public record CategoryBulkSampleDto(
+    Guid Id, Guid ProductId, string ProductName, string? Brand, string? ImageUrl, string? RawCategory,
+    string Suggested, double Confidence, int NeighbourCount);
+
+public record CategoryBulkPreviewDto(double MinConfidence, int Eligible, List<CategoryBulkSampleDto> Sample, bool Busy);
+
+public record BulkBatchDto(
+    Guid Id, string Method, double Threshold, string Status, int Total, int Applied, int Blocked, int Undone,
+    string? Error, DateTime CreatedAt, DateTime? FinishedAt, DateTime? UndoneAt);

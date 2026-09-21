@@ -80,6 +80,80 @@ public class AdminPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savvo
         Assert.Contains("/Admin/Scraping/Detail", response.Headers.Location?.ToString() ?? "");
     }
 
+    // ===== Admin Matching review =====
+
+    [Fact]
+    public async Task AdminMatchingPage_ShowsSideBySideListings_TheNeverAutoLinksNote_AndSafetyWarning()
+    {
+        var client = factory.CreateClient();
+        var response = await client.GetAsync("/Admin/Matching", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.Contains("never links products by itself", html);
+        Assert.DoesNotContain("Dry run", html);
+        Assert.Contains("Leite Meio Gordo Mimosa 1L", html);
+        Assert.Contains("Leite M. Gordo Mimosa 1L", html);
+        Assert.Contains("Same product", html);
+        Assert.Contains("Different variant", html);
+        Assert.Contains("Not the same", html);
+        Assert.Contains("probably different packs", html);
+        Assert.Contains("I confirm despite the warning", html);
+    }
+
+    // ===== Admin Category suggestions =====
+
+    [Fact]
+    public async Task AdminCategorisationPage_ShowsTheSuggestOnlyNote_Suggestions_AndTheWholeStringProposal()
+    {
+        var client = factory.CreateClient();
+        var response = await client.GetAsync("/Admin/Categorisation", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.Contains("never assigns a category by itself", html);
+        Assert.DoesNotContain("Dry run", html);
+        Assert.Contains("Uncategorised products: 42", html);
+        Assert.Contains("Bolacha Maria Dourada 200g", html);
+        Assert.Contains("Bolachas e Biscoitos", html);
+        Assert.Contains("72", html); // confidence
+        Assert.Contains("Accept", html);
+        Assert.Contains("Reject", html);
+        Assert.Contains("bolachas biscoitos", html);
+        Assert.Contains("Apply to all", html);
+        Assert.DoesNotContain("Could not load suggestions", html);
+    }
+
+    // ===== Admin bulk review =====
+
+    [Fact]
+    public async Task AdminMatchingBulkTab_ShowsTheEligibleCount_ASampleToCheck_AndAnUndoableRun()
+    {
+        var client = factory.CreateClient();
+        var response = await client.GetAsync("/Admin/Matching?filter=bulk", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.Contains("885 suggestions would be applied", html);
+        Assert.Contains("Spot-check a random sample first", html);
+        Assert.Contains("Bombons Schoko-Bons Kinder", html);
+        Assert.Contains("I checked the sample", html);
+        Assert.Contains("Apply 885 suggestions", html);
+        Assert.Contains("Undo this run", html);
+        Assert.DoesNotContain("Could not load", html);
+    }
+
+    [Fact]
+    public async Task AdminCategorisationBulkTab_ShowsTheEligibleCount_ASampleToCheck_AndAnUndoableRun()
+    {
+        var client = factory.CreateClient();
+        var response = await client.GetAsync("/Admin/Categorisation?filter=bulk", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.Matches(@"1.{0,8}092 predictions would be assigned", html);   // group separator depends on culture
+        Assert.Contains("Azeitonas Verdes", html);
+        Assert.Matches(@"Assign 1.{0,8}092 categories", html);
+        Assert.Contains("Undo this run", html);
+        Assert.DoesNotContain("Could not load", html);
+    }
+
     // ===== Admin Stores =====
 
     [Fact]

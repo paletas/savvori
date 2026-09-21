@@ -85,14 +85,34 @@ public sealed class LiveScraperTests
         });
     }
 
-    // ── Minipreço ─────────────────────────────────────────────────────────────
+    // ── Lidl ──────────────────────────────────────────────────────────────────
 
     [Fact]
     [Trait("Category", "Live")]
-    public async Task Minipreco_ScrapesAtLeastOneProduct()
+    public async Task Lidl_ScrapesAtLeastOneProduct()
     {
-        var factory = BuildFactory("minipreco", "https://www.minipreco.pt");
-        var scraper = new MiniprecoScraper(factory, NullLogger<MiniprecoScraper>.Instance);
+        var factory = BuildFactory("lidl", "https://www.lidl.pt");
+        var scraper = new LidlScraper(factory, NullLogger<LidlScraper>.Instance);
+
+        var products = await scraper.ScrapeProductsAsync("leite", CancellationToken.None);
+
+        Assert.NotEmpty(products);
+        Assert.All(products, p =>
+        {
+            Assert.False(string.IsNullOrWhiteSpace(p.Name));
+            Assert.False(string.IsNullOrWhiteSpace(p.ExternalId));
+            Assert.True(p.Price > 0m);
+        });
+    }
+
+    // ── Celeiro ───────────────────────────────────────────────────────────────
+
+    [Fact]
+    [Trait("Category", "Live")]
+    public async Task Celeiro_ScrapesAtLeastOneProduct()
+    {
+        var factory = BuildFactory("celeiro", "https://www.celeiro.pt");
+        var scraper = new CeleiroScraper(factory, NullLogger<CeleiroScraper>.Instance);
 
         var products = await scraper.ScrapeProductsAsync("leite", CancellationToken.None);
 

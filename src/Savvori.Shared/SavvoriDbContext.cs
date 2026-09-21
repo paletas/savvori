@@ -31,6 +31,10 @@ public class Product
     public ProductUnit Unit { get; set; } = ProductUnit.Unit;
     public decimal? SizeValue { get; set; }
     public string? ImageUrl { get; set; }
+    /// <summary>The taxonomy v1 category before the v2 migration (kept so it can be reverted).</summary>
+    public Guid? LegacyCategoryId { get; set; }
+    /// <summary>How the current category was set by the taxonomy migration (taxonomy-1to1, taxonomy-rule, taxonomy-left); null otherwise.</summary>
+    public string? CategorySource { get; set; }
     public List<StoreProduct> StoreProducts { get; set; } = new();
 }
 

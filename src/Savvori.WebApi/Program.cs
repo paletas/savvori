@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Quartz;
 using Savvori.Shared;
 using Savvori.WebApi;
+using Savvori.WebApi.Modeling;
 using Savvori.WebApi.Scraping;
 using Savvori.WebApi.Scraping.Scrapers;
 using Savvori.WebApi.Services;
@@ -57,36 +58,34 @@ builder.Services.AddHttpClient("auchan", c =>
     c.Timeout = TimeSpan.FromSeconds(60);
 });
 
-builder.Services.AddHttpClient("minipreco", c =>
+builder.Services.AddHttpClient("celeiro", c =>
 {
-    c.BaseAddress = new Uri("https://www.minipreco.pt");
+    c.BaseAddress = new Uri("https://www.celeiro.pt");
     c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent",
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
     c.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "pt-PT,pt;q=0.9");
     c.Timeout = TimeSpan.FromSeconds(60);
 });
 
-// Default HttpClient for stub scrapers (Lidl, Intermarché, Mercadona)
-foreach (var stubSlug in new[] { "lidl", "intermarche", "mercadona" })
+builder.Services.AddHttpClient("lidl", c =>
 {
-    builder.Services.AddHttpClient(stubSlug, c =>
-    {
-        c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
-        c.Timeout = TimeSpan.FromSeconds(30);
-    });
-}
+    c.BaseAddress = new Uri("https://www.lidl.pt");
+    c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
+    c.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "pt-PT,pt;q=0.9");
+    c.Timeout = TimeSpan.FromSeconds(60);
+});
 
 builder.Services.AddScoped<ScraperResultProcessor>();
+builder.Services.AddScoped<TaxonomyMigrationService>();
+builder.Services.AddScoped<ICategoryLocalizer, CategoryLocalizer>();
 
 // Register all IStoreScraper implementations
 builder.Services.AddScoped<IStoreScraper, ContinenteScraper>();
 builder.Services.AddScoped<IStoreScraper, PingoDoceScraper>();
 builder.Services.AddScoped<IStoreScraper, AuchanScraper>();
-builder.Services.AddScoped<IStoreScraper, MiniprecoScraper>();
+builder.Services.AddScoped<IStoreScraper, CeleiroScraper>();
 builder.Services.AddScoped<IStoreScraper, LidlScraper>();
-builder.Services.AddScoped<IStoreScraper, InterarcheScraper>();
-builder.Services.AddScoped<IStoreScraper, MercadonaScraper>();
 
 // Location and optimization services
 builder.Services.AddHttpClient("geoapi", c =>
@@ -98,11 +97,38 @@ builder.Services.AddHttpClient("geoapi", c =>
 builder.Services.AddScoped<ILocationService, GeoApiLocationService>();
 builder.Services.AddScoped<IShoppingOptimizer, ShoppingOptimizer>();
 
+// --- Remote model backend (feature-flagged, off by default; never called from request or scrape paths) ---
+builder.Services.AddModelServices(builder.Configuration);
+
 // --- Quartz scheduler ---
 builder.Services.AddQuartz(q =>
 {
+    // Drains the model job queue; a no-op unless Model:Enabled and the circuit breaker is closed.
+    var modelPollSeconds = Math.Max(10, builder.Configuration.GetValue("Model:Queue:PollSeconds", 60));
+    q.AddJob<ModelQueueDrainJob>(opts => opts.WithIdentity("model-queue-drain"));
+    q.AddTrigger(opts => opts
+        .ForJob("model-queue-drain")
+        .WithIdentity("model-queue-drain-trigger")
+        .WithSimpleSchedule(s => s.WithIntervalInSeconds(modelPollSeconds).RepeatForever()));
+
     // Jobs are registered per StoreChain slug.
     // Each active store chain gets two daily trigger: 06:00 and 18:00 UTC.
+    // Embedding scan (queues embed jobs) and nightly candidate generation; both no-ops unless Model:Enabled.
+    q.AddJob<EmbeddingScanJob>(opts => opts.WithIdentity("model-embedding-scan"));
+    q.AddTrigger(opts => opts.ForJob("model-embedding-scan").WithIdentity("model-embedding-scan-trigger")
+        .WithCronSchedule(builder.Configuration.GetValue("Model:Scan:Cron", "0 15 * * * ?")!));
+    q.AddJob<CandidateGenerationJob>(opts => opts.WithIdentity("model-candidate-generation"));
+    q.AddTrigger(opts => opts.ForJob("model-candidate-generation").WithIdentity("model-candidate-generation-trigger")
+        .WithCronSchedule(builder.Configuration.GetValue("Model:Candidates:Cron", "0 30 3 * * ?")!));
+
+    q.AddJob<MatchingJob>(opts => opts.WithIdentity("model-matching"));
+    q.AddTrigger(opts => opts.ForJob("model-matching").WithIdentity("model-matching-trigger")
+        .WithCronSchedule(builder.Configuration.GetValue("Model:Matching:Cron", "0 45 3 * * ?")!));
+
+    q.AddJob<CategoryClassifierJob>(opts => opts.WithIdentity("model-category-classifier"));
+    q.AddTrigger(opts => opts.ForJob("model-category-classifier").WithIdentity("model-category-classifier-trigger")
+        .WithCronSchedule(builder.Configuration.GetValue("Model:Categories:Cron", "0 0 4 * * ?")!));
+
     var chains = builder.Configuration
         .GetSection("Scraping:Chains")
         .Get<List<ScrapingChainConfig>>() ?? [];
@@ -141,7 +167,30 @@ using (var scope = app.Services.CreateScope())
         DatabaseBackup.BackupIfMigrationsPending(db, app.Logger);
         await db.Database.MigrateAsync();
         await CategorySeeder.SeedAsync(db, app.Logger);
+
+        // Taxonomy v2 is the category tree. A database that has never had it is migrated once, here (products keep their
+        // old category in LegacyCategoryId; POST /api/admin/taxonomy/revert undoes it and is not re-applied on restart).
+        // The seed rules are applied again on every start to products that still have no category.
+        var taxonomy = scope.ServiceProvider.GetRequiredService<TaxonomyMigrationService>();
+        if (!await db.TaxonomyMigrations.AnyAsync())
+        {
+            var applied = await taxonomy.ApplyAsync();
+            app.Logger.LogInformation("Taxonomy v2 applied on startup: {Applied}.", applied.Applied);
+        }
+        var reseeded = await taxonomy.ReseedAsync();
+        if (reseeded > 0) app.Logger.LogInformation("Seed rules categorised {Count} more product(s).", reseeded);
+
+        await CategoryTranslations.SeedAsync(db);
         await StoreChainSeeder.SeedAsync(db, app.Configuration, app.Logger);
+
+        // A bulk run cut short by a restart cannot resume: show it as failed (its finished part can still be undone).
+        foreach (var interrupted in await db.BulkBatches.Where(b => b.Status == Savvori.Shared.BulkBatchStatus.Running || b.Status == Savvori.Shared.BulkBatchStatus.Undoing).ToListAsync())
+        {
+            interrupted.Status = Savvori.Shared.BulkBatchStatus.Failed;
+            interrupted.Error = "Interrupted by application restart.";
+            interrupted.FinishedAt = DateTime.UtcNow;
+        }
+        await db.SaveChangesAsync();
 
         // Mark any jobs left in Running state as Failed — they were interrupted by a restart.
         var staleJobs = await db.ScrapingJobs

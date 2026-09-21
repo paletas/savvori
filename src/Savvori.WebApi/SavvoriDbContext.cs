@@ -19,6 +19,16 @@ public class SavvoriDbContext : DbContext
     public DbSet<StoreCategoryMapping> StoreCategoryMappings { get; set; } = default!;
     public DbSet<StoreProduct> StoreProducts { get; set; } = default!;
     public DbSet<StoreProductPrice> StoreProductPrices { get; set; } = default!;
+    public DbSet<ModelJob> ModelJobs { get; set; } = default!;
+    public DbSet<StoreProductEmbedding> StoreProductEmbeddings { get; set; } = default!;
+    public DbSet<MatchCandidate> MatchCandidates { get; set; } = default!;
+    public DbSet<MatchMerge> MatchMerges { get; set; } = default!;
+    public DbSet<CategorySuggestion> CategorySuggestions { get; set; } = default!;
+    public DbSet<ProductTag> ProductTags { get; set; } = default!;
+    public DbSet<BulkBatch> BulkBatches { get; set; } = default!;
+    public DbSet<ProductCategoryTranslation> ProductCategoryTranslations { get; set; } = default!;
+    public DbSet<TaxonomyMigration> TaxonomyMigrations { get; set; } = default!;
+    public DbSet<CategoryStringDecision> CategoryStringDecisions { get; set; } = default!;
 
     // SQLite has no native decimal type: EF stores it as TEXT, which breaks ORDER BY / MIN / SUM
     // (prices would sort lexically, or the query fails to translate). Store prices as REAL instead.
@@ -154,6 +164,59 @@ public class SavvoriDbContext : DbContext
             .HasIndex(spp => new { spp.StoreProductId, spp.ScrapedAt });
         modelBuilder.Entity<StoreProductPrice>()
             .HasIndex(spp => new { spp.StoreProductId, spp.IsLatest });
+        // ModelJob: one active (Pending=0/Running=1) job per subject+input makes enqueueing idempotent
+        modelBuilder.Entity<ModelJob>()
+            .HasIndex(j => new { j.Type, j.SubjectId, j.PayloadHash })
+            .HasDatabaseName("ix_model_jobs_active_unique")
+            .IsUnique()
+            .HasFilter("\"Status\" IN (0, 1)");
+        modelBuilder.Entity<ModelJob>().HasIndex(j => new { j.Status, j.NextAttemptAt });
+        // StoreProductEmbedding: one per StoreProduct, removed with it
+        modelBuilder.Entity<StoreProductEmbedding>().HasKey(e => e.StoreProductId);
+        modelBuilder.Entity<StoreProductEmbedding>()
+            .HasOne(e => e.StoreProduct)
+            .WithOne()
+            .HasForeignKey<StoreProductEmbedding>(e => e.StoreProductId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<StoreProductEmbedding>().HasIndex(e => e.EmbeddedAt);
+
+        // MatchCandidate: one row per unordered pair (stored with A < B), removed with either product
+        modelBuilder.Entity<MatchCandidate>()
+            .HasOne(c => c.StoreProductA).WithMany().HasForeignKey(c => c.StoreProductAId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<MatchCandidate>()
+            .HasOne(c => c.StoreProductB).WithMany().HasForeignKey(c => c.StoreProductBId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<MatchCandidate>().HasIndex(c => new { c.StoreProductAId, c.StoreProductBId }).IsUnique();
+        modelBuilder.Entity<MatchCandidate>().HasIndex(c => c.StoreProductBId);
+        modelBuilder.Entity<MatchCandidate>().HasIndex(c => c.Cosine);
+        modelBuilder.Entity<MatchCandidate>().HasIndex(c => c.Status);
+        modelBuilder.Entity<MatchMerge>().HasIndex(m => m.CandidateId);
+
+        // Category display names per language (default language lives in ProductCategory.Name)
+        modelBuilder.Entity<ProductCategoryTranslation>().HasKey(t => new { t.ProductCategoryId, t.Language });
+        modelBuilder.Entity<ProductCategoryTranslation>()
+            .HasOne(t => t.ProductCategory).WithMany().HasForeignKey(t => t.ProductCategoryId).OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<BulkBatch>().HasIndex(b => new { b.Kind, b.CreatedAt });
+        modelBuilder.Entity<MatchMerge>().HasIndex(m => m.BatchId);
+        modelBuilder.Entity<CategorySuggestion>().HasIndex(s => s.BatchId);
+
+        // Tags (bio, sem-lactose, ...) per canonical product; one row per (product, tag)
+        modelBuilder.Entity<ProductTag>().HasKey(t => new { t.ProductId, t.Tag });
+        modelBuilder.Entity<ProductTag>()
+            .HasOne(t => t.Product).WithMany().HasForeignKey(t => t.ProductId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<ProductTag>().HasIndex(t => t.Tag);
+
+        // Category suggestions: one live decision per product; cached decision per raw store-category string
+        modelBuilder.Entity<CategorySuggestion>()
+            .HasOne(s => s.Product).WithMany().HasForeignKey(s => s.ProductId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<CategorySuggestion>()
+            .HasOne(s => s.SuggestedCategory).WithMany().HasForeignKey(s => s.SuggestedCategoryId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<CategorySuggestion>().HasIndex(s => s.ProductId).IsUnique();
+        modelBuilder.Entity<CategorySuggestion>().HasIndex(s => s.Status);
+        modelBuilder.Entity<CategoryStringDecision>()
+            .HasOne(d => d.Category).WithMany().HasForeignKey(d => d.CategoryId).OnDelete(DeleteBehavior.SetNull);
+        modelBuilder.Entity<CategoryStringDecision>().HasIndex(d => d.RawString).IsUnique();
+
         // Only one IsLatest row per StoreProduct (partial unique index)
         modelBuilder.Entity<StoreProductPrice>()
             .HasIndex(spp => spp.StoreProductId)

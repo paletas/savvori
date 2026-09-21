@@ -17,6 +17,339 @@ namespace Savvori.WebApi.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.11");
 
+            modelBuilder.Entity("Savvori.Shared.BulkBatch", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Applied")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Blocked")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("FinishedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double>("Threshold")
+                        .HasColumnType("REAL");
+
+                    b.Property<int>("Total")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Undone")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("UndoneAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Kind", "CreatedAt");
+
+                    b.ToTable("BulkBatches");
+                });
+
+            modelBuilder.Entity("Savvori.Shared.CategoryStringDecision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("CategoryId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double>("Confidence")
+                        .HasColumnType("REAL");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("DecidedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ModelDigest")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ModelName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RawString")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Support")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CategoryId");
+
+                    b.HasIndex("RawString")
+                        .IsUnique();
+
+                    b.ToTable("CategoryStringDecisions");
+                });
+
+            modelBuilder.Entity("Savvori.Shared.CategorySuggestion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("BatchId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double>("Confidence")
+                        .HasColumnType("REAL");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("DecidedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ModelDigest")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ModelName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("NeighbourCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("PreviousCategoryId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("RunnerUpCategoryId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("SuggestedCategoryId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BatchId");
+
+                    b.HasIndex("ProductId")
+                        .IsUnique();
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("SuggestedCategoryId");
+
+                    b.ToTable("CategorySuggestions");
+                });
+
+            modelBuilder.Entity("Savvori.Shared.MatchCandidate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("BrandCheck")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double>("Cosine")
+                        .HasColumnType("REAL");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("DecidedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("JudgeModel")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("JudgeVerdict")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Method")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ModelDigest")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ModelName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("SizeKnown")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("StoreProductAId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("StoreProductBId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Suggestion")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Cosine");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("StoreProductBId");
+
+                    b.HasIndex("StoreProductAId", "StoreProductBId")
+                        .IsUnique();
+
+                    b.ToTable("MatchCandidates");
+                });
+
+            modelBuilder.Entity("Savvori.Shared.MatchMerge", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("AppliedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("BatchId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CandidateId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MovedListItemsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MovedStoreProductsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("RetiredProductId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RetiredProductJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("SurvivorPreviousCategoryId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("SurvivorProductId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("UndoneAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BatchId");
+
+                    b.HasIndex("CandidateId");
+
+                    b.ToTable("MatchMerges");
+                });
+
+            modelBuilder.Entity("Savvori.Shared.ModelJob", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastError")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LeaseExpiresAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("NextAttemptAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PayloadHash")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("SubjectId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status", "NextAttemptAt");
+
+                    b.HasIndex("Type", "SubjectId", "PayloadHash")
+                        .IsUnique()
+                        .HasDatabaseName("ix_model_jobs_active_unique")
+                        .HasFilter("\"Status\" IN (0, 1)");
+
+                    b.ToTable("ModelJobs");
+                });
+
             modelBuilder.Entity("Savvori.Shared.Product", b =>
                 {
                     b.Property<Guid>("Id")
@@ -32,10 +365,16 @@ namespace Savvori.WebApi.Migrations
                     b.Property<Guid?>("CategoryId")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("CategorySource")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("EAN")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("ImageUrl")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("LegacyCategoryId")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
@@ -87,6 +426,38 @@ namespace Savvori.WebApi.Migrations
                         .IsUnique();
 
                     b.ToTable("ProductCategories");
+                });
+
+            modelBuilder.Entity("Savvori.Shared.ProductCategoryTranslation", b =>
+                {
+                    b.Property<Guid>("ProductCategoryId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Language")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("ProductCategoryId", "Language");
+
+                    b.ToTable("ProductCategoryTranslations");
+                });
+
+            modelBuilder.Entity("Savvori.Shared.ProductTag", b =>
+                {
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Tag")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("ProductId", "Tag");
+
+                    b.HasIndex("Tag");
+
+                    b.ToTable("ProductTags");
                 });
 
             modelBuilder.Entity("Savvori.Shared.ScrapingJob", b =>
@@ -400,6 +771,40 @@ namespace Savvori.WebApi.Migrations
                     b.ToTable("StoreProducts");
                 });
 
+            modelBuilder.Entity("Savvori.Shared.StoreProductEmbedding", b =>
+                {
+                    b.Property<Guid>("StoreProductId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Dimension")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("EmbeddedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("InputTextHash")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ModelDigest")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ModelName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<byte[]>("Vector")
+                        .IsRequired()
+                        .HasColumnType("BLOB");
+
+                    b.HasKey("StoreProductId");
+
+                    b.HasIndex("EmbeddedAt");
+
+                    b.ToTable("StoreProductEmbeddings");
+                });
+
             modelBuilder.Entity("Savvori.Shared.StoreProductPrice", b =>
                 {
                     b.Property<Guid>("Id")
@@ -447,6 +852,77 @@ namespace Savvori.WebApi.Migrations
                     b.ToTable("StoreProductPrices");
                 });
 
+            modelBuilder.Entity("Savvori.Shared.TaxonomyMigration", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("AppliedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("RevertedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Summary")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("TaxonomyMigrations");
+                });
+
+            modelBuilder.Entity("Savvori.Shared.CategoryStringDecision", b =>
+                {
+                    b.HasOne("Savvori.Shared.ProductCategory", "Category")
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Category");
+                });
+
+            modelBuilder.Entity("Savvori.Shared.CategorySuggestion", b =>
+                {
+                    b.HasOne("Savvori.Shared.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Savvori.Shared.ProductCategory", "SuggestedCategory")
+                        .WithMany()
+                        .HasForeignKey("SuggestedCategoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+
+                    b.Navigation("SuggestedCategory");
+                });
+
+            modelBuilder.Entity("Savvori.Shared.MatchCandidate", b =>
+                {
+                    b.HasOne("Savvori.Shared.StoreProduct", "StoreProductA")
+                        .WithMany()
+                        .HasForeignKey("StoreProductAId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Savvori.Shared.StoreProduct", "StoreProductB")
+                        .WithMany()
+                        .HasForeignKey("StoreProductBId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("StoreProductA");
+
+                    b.Navigation("StoreProductB");
+                });
+
             modelBuilder.Entity("Savvori.Shared.Product", b =>
                 {
                     b.HasOne("Savvori.Shared.ProductCategory", "ProductCategory")
@@ -465,6 +941,28 @@ namespace Savvori.WebApi.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Parent");
+                });
+
+            modelBuilder.Entity("Savvori.Shared.ProductCategoryTranslation", b =>
+                {
+                    b.HasOne("Savvori.Shared.ProductCategory", "ProductCategory")
+                        .WithMany()
+                        .HasForeignKey("ProductCategoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ProductCategory");
+                });
+
+            modelBuilder.Entity("Savvori.Shared.ProductTag", b =>
+                {
+                    b.HasOne("Savvori.Shared.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Product");
                 });
 
             modelBuilder.Entity("Savvori.Shared.ScrapingJob", b =>
@@ -576,6 +1074,17 @@ namespace Savvori.WebApi.Migrations
                     b.Navigation("StoreCategory");
 
                     b.Navigation("StoreChain");
+                });
+
+            modelBuilder.Entity("Savvori.Shared.StoreProductEmbedding", b =>
+                {
+                    b.HasOne("Savvori.Shared.StoreProduct", "StoreProduct")
+                        .WithOne()
+                        .HasForeignKey("Savvori.Shared.StoreProductEmbedding", "StoreProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("StoreProduct");
                 });
 
             modelBuilder.Entity("Savvori.Shared.StoreProductPrice", b =>

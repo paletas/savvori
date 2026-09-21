@@ -341,7 +341,7 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
 
         // Size and unit: try name first, then full tile text (e.g., "emb. 1 lt")
         var sizeUnit = ProductNormalizer.ExtractSizeAndUnit(name)
-            ?? ProductNormalizer.ExtractSizeAndUnit(tile.TextContent ?? string.Empty);
+            ?? ProductNormalizer.ExtractSizeAndUnit(tile.TextContent ?? string.Empty, allowPackCount: false);
 
         return new ScrapedProduct(
             Name: name,

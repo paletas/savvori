@@ -62,10 +62,10 @@ Savvori is an ASP.NET Core minimal API (.NET 10) that helps users find the cheap
 | Continente | SFCC JSON endpoint | Internal JSON API |
 | Pingo Doce | SFCC JSON endpoint | |
 | Auchan | SFCC + `data-gtm` JSON attribute | Page-based pagination |
-| Minipreço | SAP Hybris | `.product-list__item` selectors; regex unit-price parsing |
-| Lidl | Stub | No online grocery catalog |
-| Intermarché | Stub | No online grocery catalog |
-| Mercadona | Stub | No online grocery catalog |
+| Lidl | JSON search API (`/q/api/search`) | Empty query + grocery terms, `offset`/`fetchsize` paging; keeps `category == "Food"` items with a price; base price parsed from `1 kg = 2,95` text. Strict `Accept: application/json` returns 406 |
+| Celeiro | Magento | `.product-item-info` microdata; category paging via `?p=N` (stops when a page adds nothing new); unit price parsed from `.apresentacao` |
+
+Chains dropped from `Scraping:Chains` are pruned at startup by `StoreChainSeeder`: deleted if they have no data, otherwise deactivated. Minipreço (domain gone), Intermarché (DataDome bot protection) and Mercadona (no Portuguese online shop) were removed on this basis.
 
 ### 6. Product Normalization
 - `ProductNormalizer` class responsible for:
@@ -79,6 +79,25 @@ Savvori is an ASP.NET Core minimal API (.NET 10) that helps users find the cheap
 - `ProductMatcher` links a scraped `StoreProduct` to a canonical `Product` in tiers: Tier 1 by EAN, Tier 2 by brand + normalized name + size/unit; unmatched products are flagged (`MatchStatus.Unmatched`/`Failed`) rather than auto-created.
 - `MappingAdminController` (`/api/admin/mapping/*`) exposes mapping statistics, uncategorized products, unmapped category strings, and store-product match status, plus repair actions: `backfill-categories` (re-runs `CategoryMapper` over uncategorized products), `rematch` (re-runs Tier 1/2 matching over unmatched/failed store products), and manual per-item category/canonical-product assignment.
 - Web App: `Pages/Admin/Mapping/Index.cshtml` provides an admin UI over this same API for reviewing and repairing mappings.
+
+### 6b. Remote Model Backend (feature-flagged, off by default)
+
+Optional model-assisted matching/categorisation runs against a remote, unreliable server (Ollama today). Design rules: the model is only ever called from background jobs; scraping, pages, optimisation and admin actions never depend on it; deterministic matching stays first.
+
+- `Modeling/` in `Savvori.WebApi`: `IEmbeddingClient` / `IPairJudge` (Ollama implementations use `/api/embed` and `/api/chat`), configured under `Model:*` (base URL, model names, timeouts, breaker and queue settings). `Model:Enabled` defaults to `false`.
+- `ModelCircuitBreaker`: opens after N consecutive transport failures, refuses calls during a cool-down, then lets one probe through. All clients are wrapped by it (`BreakerEmbeddingClient`, `BreakerPairJudge`). Malformed responses do not count as outages.
+- `ModelJobs` table + `ModelQueueDrainJob` (Quartz, every `Model:Queue:PollSeconds`): idempotent durable queue, exponential backoff with jitter, dead-letter after `MaxAttempts`. While the breaker is open, jobs are deferred without consuming attempts, so an outage never dead-letters healthy work. The drain job only probes while the breaker is open.
+- The model HTTP client opts out of the ServiceDefaults standard resilience handler (retries belong to the queue; timeouts to `Model:ConnectTimeoutSeconds` / `RequestTimeoutSeconds`).
+- Stored embeddings (Phase 2) must record model name, digest, dimension and input-text hash; `EmbeddingFreshness.IsStale` decides when to recompute.
+- Embeddings (Phase 2): `StoreProductEmbeddings` holds one float32 vector per StoreProduct with model name, digest, dimension, input-text hash and `EmbeddedAt`. `EmbeddingScanJob` (hourly) queues idempotent `Embed` jobs for missing/stale products; `EmbedJobHandler` embeds them in batches. Stale = model name/digest or exact input text changed; a dead-lettered job is not re-queued by the scan.
+- `EmbeddingIndex`: in-memory brute-force index over active products, refreshed incrementally; only vectors of one model identity (the newest embedded) are served, so vectors from different models are never compared.
+- `MatchCandidates` (Phase 2): unapplied proposals for cross-chain pairs. `CandidateGenerationJob` (nightly, needs no model call) takes each product's top-K neighbours from other chains above `Model:Candidates:MinCosine`, then applies hard filters (size within tolerance and same unit class when both known; brand conflict rejected; unknown size/brand kept and flagged) and skips pairs already on one canonical. Nothing is linked or merged.
+- Tiered matching (Phase 3): Tier A (EAN, exact brand+name+size+unit) is unchanged and needs no model. `MatchingService` (nightly `MatchingJob`, or "Run matching now") evaluates stored candidates: Tier B marks pairs as confident suggestions by cosine (0.90 sizes known / 0.95 size unknown, brand check must be Ok); Tier C queues `Judge` jobs for the band below (0.80 / 0.85), and a judge "yes" is only a suggestion; a failed or timed-out judge call is "no decision" and is retried; Tier D (uncertain, judge "no"/"unclear") goes to the review queue. Nothing runs while the flag is off or the breaker is not closed. The run never links anything: every merge is a human action through `MatchApplier` (accept, or bulk apply, which passes `guardVariants` so `VariantGuard` can refuse different variants).
+- `MatchApplier` links products safely and reversibly: it never merges canonicals that both have active prices from the same chain or carry different EANs unless a human forces it, never moves manually matched products for a job, redirects shopping list items to the surviving canonical, deletes the retired canonical only after snapshotting it in `MatchMerges`, and can undo (recreates the canonical, restores products, list items and statuses, and rejects the pair). Rejected and "different variant" pairs are stored and never proposed again; candidate regeneration never deletes decided pairs. Method labels on store products: `embedding-cosine`, `embedding-judge`, `manual-review`.
+- Category classifier (Phase 4): `CategoryClassifier` (nightly `CategoryClassifierJob`, or "Run classifier now") predicts categories for products that have NONE by k-NN (k=7, similarity-weighted vote) over stored embeddings of categorised products; existing labels are never touched and the classifier never learns from its own decisions. Confidence >= 0.85 is a confident suggestion, 0.5 to 0.85 goes to the review queue, lower stays uncategorised; nothing is assigned by the run itself. Raw store-category strings (for example Celeiro's `alimentacao`) are proposed as a whole when at least `MinStringSupport` uncategorised products carry them and agreement reaches the confident level; once you accept the proposal ("Apply to all") the decision is cached in `CategoryStringDecisions` and reused for new products, and heterogeneous strings are marked Mixed so products are decided one by one. Every decision is a `CategorySuggestions` row (method, confidence, model, digest, timestamp, previous category) and is undoable. It decides nothing while the flag is off or the breaker is not closed, so the rule-based `CategoryMapper` stays the degraded-mode path. The taxonomy v2 migration itself is NOT done: see `docs/TAXONOMY_V2.md`.
+- Taxonomy v2 (`Scraping/TaxonomyV2*.cs`, `TaxonomyMigrationService`): explicit, reversible admin action. `GET /api/admin/taxonomy/plan` is a dry run; `POST /apply` seeds the 12 aisles / 87 categories as new rows with English slugs (v1 rows untouched), relabels products through the approved v1->v2 mapping (deterministic keyword rules; anything unmatched is left uncategorised for the classifier), keeps `Product.LegacyCategoryId`, and backfills tags (`ProductTags`: bio, sem-lactose, sem-gluten, vegan, sem-acucar; rules only, never the model); `POST /revert` restores v1 labels but keeps labels you set by hand. Category names are localised: `ProductCategory.Name` is pt-PT and `ProductCategoryTranslations` holds English; the API resolves `?lang=` or `Accept-Language` (pt/en, fallback pt), and the web app forwards the browser language. Once active, `/api/categories` shows the v2 tree and the scraper translates the rule-based mapper's v1 slug to a v2 category using the product name. Tags for new products are added after each scrape.
+- Bulk review (`BulkOperations.cs`): you never have to click through the queues. Admin > Match review / Category suggestions have a "Bulk apply" tab: pick a threshold, spot-check a random sample (client-side tally, not saved), then apply every eligible item as ONE background run (`BulkBatches`; one bulk run at a time; a restart marks an unfinished run failed) and undo the whole run in one step. Matches: only the confident cosine tier (`embedding-cosine`, brand confirmed, no safety note) is eligible; judge answers never are. Categories: per-product predictions at or above the threshold, never overwriting an existing category. An undone run puts items back in the queue (nothing is rejected). `Model:Matching:AutoApplyJudgeYes` (default false) keeps a judge "yes" in the review queue even when dry run is off.
+- Observability: `GET /api/admin/model/status` and a panel on Admin/Mapping. Plan and later phases: `docs/MODEL_MATCHING_PLAN.md`.
 
 ### 7. Location Services
 - `ILocationService` / `GeoApiLocationService`
@@ -128,6 +147,24 @@ Savvori is an ASP.NET Core minimal API (.NET 10) that helps users find the cheap
 - `GET /api/admin/scraping/status` – Current status of all scraping jobs
 - `POST /api/admin/scraping/trigger/{chainSlug}` – Manually trigger a scrape for a store chain
 
+### Admin — Match Review
+- `GET /api/admin/matching/bulk/preview?minCosine=&sample=` | `POST .../bulk/apply?minCosine=` (202, background) | `GET .../bulk/batches` | `POST .../bulk/batches/{id}/undo`; the same four under `/api/admin/categorisation/bulk/...` with `minConfidence`.
+- `GET /api/admin/matching/summary` — candidates by status, applied by method, products priced by 2+ chains.
+- `GET /api/admin/matching/review?filter=all|suggested|blocked|judge|applied&page=` — side-by-side listings (image, size, price) with cosine, flags, judge verdict, safety warning.
+- `POST /api/admin/matching/candidates/{id}/accept?force=` | `reject` | `different-variant` | `undo` — human decisions (always win).
+- `POST /api/admin/matching/run` — evaluate stored candidates now; makes no model call.
+
+### Admin — Category Suggestions
+- `GET /api/admin/categorisation/summary` | `review?filter=suggested|applied` | `strings` — counts, review queue, whole-string proposals.
+- `POST /api/admin/categorisation/suggestions/{id}/accept|reject|undo`, `POST .../strings/{id}/accept|reject`, `POST .../run`.
+
+### Admin — Taxonomy v2
+- Taxonomy v2 is applied at startup on a database that has never had it (`Program.cs`; a revert is not re-applied on restart) and the seed rules are re-run on products with no category at every start. API: `GET /api/admin/taxonomy/plan` (dry run) | `POST /api/admin/taxonomy/revert` | `POST /api/admin/taxonomy/reseed` | `POST /api/admin/taxonomy/backfill-tags` | `POST /api/admin/taxonomy/apply` (only after a revert). No admin page.
+
+### Admin — Model Backend
+- `GET /api/admin/model/status` — breaker state, last success/error, queue depth, oldest pending job, dead-lettered and stale-embedding counts (never calls the model).
+- `POST /api/admin/model/requeue-dead-letters` — gives dead-lettered jobs a fresh attempt budget.
+
 ### Admin — Category & Product Mapping
 - `GET /api/admin/mapping/stats` – Aggregate category/match statistics
 - `GET /api/admin/mapping/uncategorized-products?page=&pageSize=` – Canonical products with no category
@@ -135,6 +172,8 @@ Savvori is an ASP.NET Core minimal API (.NET 10) that helps users find the cheap
 - `GET /api/admin/mapping/store-products?status=&chainSlug=&page=&pageSize=` – Store products filtered by match status/chain
 - `POST /api/admin/mapping/backfill-categories` – Re-run `CategoryMapper` over uncategorized products
 - `POST /api/admin/mapping/rematch?chainSlug=` – Re-run Tier 1/2 matching over unmatched/failed store products
+- `GET /api/admin/mapping/match-report` – Cross-store matching baseline (totals, histogram, multi-chain canonicals, no-size/EAN counts, by match method)
+- `POST /api/admin/mapping/recompute-sizes?chainSlug=&dryRun=` – Re-derive size/unit for existing store products from stored names + latest unit price
 - `PUT /api/admin/mapping/products/{id}/category` – Manually assign a category to a product
 - `PUT /api/admin/mapping/store-products/{id}/canonical` – Manually link a store product to a canonical product
 

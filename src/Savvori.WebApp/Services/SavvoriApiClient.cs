@@ -351,6 +351,47 @@ public class SavvoriApiClient(HttpClient http, ILogger<SavvoriApiClient> logger)
         }
     }
 
+    public async Task<ModelStatusDto?> GetModelStatusAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            return await http.GetFromJsonAsync<ModelStatusDto>("/api/admin/model/status", JsonOptions, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to get model status");
+            return null;
+        }
+    }
+
+    public async Task<MatchReportDto?> GetMatchReportAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            return await http.GetFromJsonAsync<MatchReportDto>("/api/admin/mapping/match-report", JsonOptions, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to get match report");
+            return null;
+        }
+    }
+
+    public async Task<RecomputeSizesResponse?> RecomputeSizesAsync(bool dryRun = false, CancellationToken ct = default)
+    {
+        try
+        {
+            var resp = await http.PostAsync($"/api/admin/mapping/recompute-sizes?dryRun={dryRun.ToString().ToLowerInvariant()}", null, ct);
+            resp.EnsureSuccessStatusCode();
+            return await resp.Content.ReadFromJsonAsync<RecomputeSizesResponse>(JsonOptions, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to recompute sizes");
+            return null;
+        }
+    }
+
     public async Task<UncategorizedProductsResponse?> GetUncategorizedProductsAsync(
         int page = 1, int pageSize = 20, CancellationToken ct = default)
     {
@@ -397,6 +438,155 @@ public class SavvoriApiClient(HttpClient http, ILogger<SavvoriApiClient> logger)
             logger.LogError(ex, "Failed to get admin store products");
             return null;
         }
+    }
+
+    // ===== Admin: Matching review queue =====
+
+    public async Task<MatchingSummaryDto?> GetMatchingSummaryAsync(CancellationToken ct = default)
+    {
+        try { return await http.GetFromJsonAsync<MatchingSummaryDto>("/api/admin/matching/summary", JsonOptions, ct); }
+        catch (Exception ex) { logger.LogError(ex, "Failed to get matching summary"); return null; }
+    }
+
+    public async Task<ReviewPageDto?> GetMatchingReviewAsync(string filter, int page, CancellationToken ct = default)
+    {
+        try
+        {
+            return await http.GetFromJsonAsync<ReviewPageDto>(
+                $"/api/admin/matching/review?filter={Uri.EscapeDataString(filter)}&page={page}&pageSize=10", JsonOptions, ct);
+        }
+        catch (Exception ex) { logger.LogError(ex, "Failed to get matching review queue"); return null; }
+    }
+
+    /// <summary>action: accept | reject | different-variant | undo</summary>
+    public async Task<(bool Success, string? Error)> MatchingActionAsync(
+        Guid id, string action, bool force = false, CancellationToken ct = default)
+    {
+        try
+        {
+            var resp = await http.PostAsync(
+                $"/api/admin/matching/candidates/{id}/{action}?force={force.ToString().ToLowerInvariant()}", null, ct);
+            if (resp.IsSuccessStatusCode) return (true, null);
+            var body = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(JsonOptions, ct);
+            return (false, body.TryGetProperty("message", out var m) ? m.GetString() : "The action failed.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Matching action {Action} failed", action);
+            return (false, "The action failed.");
+        }
+    }
+
+    public async Task<MatchingRunDto?> RunMatchingAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var resp = await http.PostAsync("/api/admin/matching/run", null, ct);
+            resp.EnsureSuccessStatusCode();
+            return await resp.Content.ReadFromJsonAsync<MatchingRunDto>(JsonOptions, ct);
+        }
+        catch (Exception ex) { logger.LogError(ex, "Failed to run matching"); return null; }
+    }
+
+    // ===== Admin: model-suggested categories =====
+
+    public async Task<CategorisationSummaryDto?> GetCategorisationSummaryAsync(CancellationToken ct = default)
+    {
+        try { return await http.GetFromJsonAsync<CategorisationSummaryDto>("/api/admin/categorisation/summary", JsonOptions, ct); }
+        catch (Exception ex) { logger.LogError(ex, "Failed to get categorisation summary"); return null; }
+    }
+
+    public async Task<CategorySuggestionPageDto?> GetCategorySuggestionsAsync(string filter, int page, CancellationToken ct = default)
+    {
+        try
+        {
+            return await http.GetFromJsonAsync<CategorySuggestionPageDto>(
+                $"/api/admin/categorisation/review?filter={Uri.EscapeDataString(filter)}&page={page}", JsonOptions, ct);
+        }
+        catch (Exception ex) { logger.LogError(ex, "Failed to get category suggestions"); return null; }
+    }
+
+    public async Task<List<CategoryStringProposalDto>> GetCategoryStringProposalsAsync(CancellationToken ct = default)
+    {
+        try { return await http.GetFromJsonAsync<List<CategoryStringProposalDto>>("/api/admin/categorisation/strings", JsonOptions, ct) ?? []; }
+        catch (Exception ex) { logger.LogError(ex, "Failed to get category string proposals"); return []; }
+    }
+
+    /// <summary>kind: suggestions | strings; action: accept | reject | undo</summary>
+    public async Task<(bool Success, string? Error)> CategorisationActionAsync(
+        string kind, Guid id, string action, CancellationToken ct = default)
+    {
+        try
+        {
+            var resp = await http.PostAsync($"/api/admin/categorisation/{kind}/{id}/{action}", null, ct);
+            if (resp.IsSuccessStatusCode) return (true, null);
+            var body = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(JsonOptions, ct);
+            return (false, body.TryGetProperty("message", out var m) ? m.GetString() : "The action failed.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Categorisation action {Kind}/{Action} failed", kind, action);
+            return (false, "The action failed.");
+        }
+    }
+
+    public async Task<ClassifierRunDto?> RunClassifierAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var resp = await http.PostAsync("/api/admin/categorisation/run", null, ct);
+            resp.EnsureSuccessStatusCode();
+            return await resp.Content.ReadFromJsonAsync<ClassifierRunDto>(JsonOptions, ct);
+        }
+        catch (Exception ex) { logger.LogError(ex, "Failed to run classifier"); return null; }
+    }
+
+    // ===== Admin: bulk review =====
+
+    private static string Inv(double value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    public async Task<MatchBulkPreviewDto?> GetMatchBulkPreviewAsync(double minCosine, double? exactFloor = null, CancellationToken ct = default)
+    {
+        try { return await http.GetFromJsonAsync<MatchBulkPreviewDto>($"/api/admin/matching/bulk/preview?minCosine={Inv(minCosine)}&sample=30{(exactFloor is { } f ? $"&exactFloor={Inv(f)}" : "")}", JsonOptions, ct); }
+        catch (Exception ex) { logger.LogError(ex, "Failed to get match bulk preview"); return null; }
+    }
+
+    public async Task<CategoryBulkPreviewDto?> GetCategoryBulkPreviewAsync(double minConfidence, CancellationToken ct = default)
+    {
+        try { return await http.GetFromJsonAsync<CategoryBulkPreviewDto>($"/api/admin/categorisation/bulk/preview?minConfidence={Inv(minConfidence)}&sample=30", JsonOptions, ct); }
+        catch (Exception ex) { logger.LogError(ex, "Failed to get category bulk preview"); return null; }
+    }
+
+    /// <summary>area: matching | categorisation. Starts a background run.</summary>
+    public async Task<(bool Success, string? Error)> StartBulkApplyAsync(string area, double threshold, CancellationToken ct = default, double? exactFloor = null)
+    {
+        try
+        {
+            var name = area == "matching" ? "minCosine" : "minConfidence";
+            var resp = await http.PostAsync($"/api/admin/{area}/bulk/apply?{name}={Inv(threshold)}{(exactFloor is { } f ? $"&exactFloor={Inv(f)}" : "")}", null, ct);
+            if (resp.IsSuccessStatusCode) return (true, null);
+            var body = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(JsonOptions, ct);
+            return (false, body.TryGetProperty("message", out var m) ? m.GetString() : "The bulk run could not start.");
+        }
+        catch (Exception ex) { logger.LogError(ex, "Bulk apply failed to start"); return (false, "The bulk run could not start."); }
+    }
+
+    public async Task<List<BulkBatchDto>> GetBulkBatchesAsync(string area, CancellationToken ct = default)
+    {
+        try { return await http.GetFromJsonAsync<List<BulkBatchDto>>($"/api/admin/{area}/bulk/batches", JsonOptions, ct) ?? []; }
+        catch (Exception ex) { logger.LogError(ex, "Failed to get bulk batches"); return []; }
+    }
+
+    public async Task<(bool Success, string? Error)> UndoBulkBatchAsync(string area, Guid id, CancellationToken ct = default)
+    {
+        try
+        {
+            var resp = await http.PostAsync($"/api/admin/{area}/bulk/batches/{id}/undo", null, ct);
+            if (resp.IsSuccessStatusCode) return (true, null);
+            var body = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(JsonOptions, ct);
+            return (false, body.TryGetProperty("message", out var m) ? m.GetString() : "The undo could not start.");
+        }
+        catch (Exception ex) { logger.LogError(ex, "Bulk undo failed to start"); return (false, "The undo could not start."); }
     }
 
     public async Task<BackfillCategoriesResponse?> BackfillCategoriesAsync(CancellationToken ct = default)

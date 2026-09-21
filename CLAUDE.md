@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Savvori is a grocery price-comparison API + web app for Portugal. It scrapes product prices from major Portuguese supermarket chains (Continente, Pingo Doce, Auchan, Minipreço implemented; Lidl, Intermarché, Mercadona are stubs with no online catalog), and helps users build shopping lists and optimize them for cheapest cost across stores.
+Savvori is a grocery price-comparison API + web app for Portugal. It scrapes product prices from major Portuguese supermarket chains (Continente, Pingo Doce, Auchan, Lidl, Celeiro; chains without a working scraper are not kept as stubs), and helps users build shopping lists and optimize them for cheapest cost across stores.
 
 ASP.NET Core / .NET 10, orchestrated locally with .NET Aspire, SQLite via EF Core. There is no authentication (single-user homelab deployment).
 
@@ -55,6 +55,10 @@ tests/
 - `ProductMatcher` / `CategoryMapper` / `CategoryTaxonomy` / `CategorySeeder` — category taxonomy assignment and product-to-category mapping (added in the "Phase 4" work).
 - `StoreScrapeJob` — Quartz.NET job running all registered scrapers, scheduled twice daily.
 - New store chain = implement `IStoreScraper` + register with DI; scrapers differ by underlying platform (SFCC JSON, SAP Hybris HTML, etc.) — check an existing scraper for the closest-matching platform before writing a new one from scratch.
+
+### Model-assisted matching and categories (`src/Savvori.WebApi/Modeling`)
+
+- Optional, feature-flagged (`Model:Enabled`, default off) and never on a request or scrape path: a remote Ollama model embeds product text, proposes cross-chain matches and category predictions in background Quartz jobs. Everything degrades to the deterministic behaviour when the model is down (circuit breaker + durable `ModelJobs` queue). The model only ever suggests: every merge or category it proposes is applied by a person (one at a time or in bulk, undoable); there is no dry-run switch. Design, rules and per-phase reports: `docs/MODEL_MATCHING_PLAN.md`; the category tree is taxonomy v2, applied automatically at startup: `docs/TAXONOMY_V2.md`.
 
 ### Optimization (`src/Savvori.WebApi/Services`)
 
