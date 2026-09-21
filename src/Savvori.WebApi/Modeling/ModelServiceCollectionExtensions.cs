@@ -59,6 +59,9 @@ public static class ModelServiceCollectionExtensions
         services.AddScoped<MatchApplier>();
         services.AddScoped<MatchingService>();
         services.AddScoped<CategoryClassifier>();
+        services.AddSingleton<BulkRunner>();
+        services.AddScoped<MatchBulkService>();
+        services.AddScoped<CategoryBulkService>();
         services.AddScoped<IStaleEmbeddingSource, DbStaleEmbeddingSource>();
         services.AddScoped<IModelStatusService, ModelStatusService>();
         return services;

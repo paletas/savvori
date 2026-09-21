@@ -96,6 +96,8 @@ public class MatchMerge
     /// <summary>JSON list of shopping list item ids that were redirected from the retired canonical.</summary>
     public string MovedListItemsJson { get; set; } = "[]";
     public string Method { get; set; } = string.Empty;
+    /// <summary>The bulk run that made this merge, if any (undoing the run undoes it).</summary>
+    public Guid? BatchId { get; set; }
     public DateTime AppliedAt { get; set; }
     public DateTime? UndoneAt { get; set; }
 }

@@ -13,7 +13,8 @@ namespace Savvori.WebApi.Controllers;
 [ApiController]
 [Route("api/admin/categorisation")]
 public class CategorisationAdminController(
-    SavvoriDbContext db, CategoryClassifier classifier, IOptions<ModelOptions> options) : ControllerBase
+    SavvoriDbContext db, CategoryClassifier classifier, IOptions<ModelOptions> options,
+    CategoryBulkService bulk, BulkRunner runner) : ControllerBase
 {
     /// <summary>GET /api/admin/categorisation/summary</summary>
     [HttpGet("summary")]
@@ -58,6 +59,66 @@ public class CategorisationAdminController(
         Ok(await db.CategoryStringDecisions.Where(d => d.Status == CategorySuggestionStatus.Suggested)
             .OrderByDescending(d => d.Support)
             .Select(d => new { d.Id, d.RawString, d.Support, d.Confidence, Category = d.Category!.Name }).ToListAsync(ct));
+
+    // ---- bulk apply of the confident predictions ---------------------------------------------------------
+
+    /// <summary>
+    /// GET /api/admin/categorisation/bulk/preview?minConfidence=0.90&amp;sample=30 - how many predictions a bulk apply would
+    /// take and a random sample to spot-check first. Changes nothing.
+    /// </summary>
+    [HttpGet("bulk/preview")]
+    public async Task<IActionResult> BulkPreview(double minConfidence = 0.90, int sample = 30, CancellationToken ct = default)
+    {
+        sample = Math.Clamp(sample, 1, 100);
+        var eligible = bulk.Eligible(minConfidence);
+        var items = await eligible.OrderBy(_ => EF.Functions.Random()).Take(sample)
+            .Select(s => new
+            {
+                s.Id, s.ProductId, ProductName = s.Product.Name, s.Product.Brand, s.Product.ImageUrl, RawCategory = s.Product.Category,
+                Suggested = s.SuggestedCategory.Name, s.Confidence, s.NeighbourCount
+            }).ToListAsync(ct);
+        return Ok(new { MinConfidence = minConfidence, Eligible = await eligible.CountAsync(ct), Sample = items, Busy = runner.IsBusy });
+    }
+
+    /// <summary>POST /api/admin/categorisation/bulk/apply?minConfidence=0.90 - assigns every eligible prediction as one undoable run (background).</summary>
+    [HttpPost("bulk/apply")]
+    public async Task<IActionResult> BulkApply(double minConfidence = 0.90, CancellationToken ct = default)
+    {
+        if (runner.IsBusy) return Conflict(new { Message = "Another bulk run is in progress." });
+        var batch = await bulk.CreateAsync(minConfidence, ct);
+        if (!runner.TryStart(batch.Id, sp => sp.GetRequiredService<CategoryBulkService>().RunApplyAsync(batch.Id)))
+        {
+            db.BulkBatches.Remove(batch);
+            await db.SaveChangesAsync(ct);
+            return Conflict(new { Message = "Another bulk run is in progress." });
+        }
+        return Accepted(new { BatchId = batch.Id, batch.Total });
+    }
+
+    [HttpGet("bulk/batches")]
+    public async Task<IActionResult> BulkBatches(CancellationToken ct = default) =>
+        Ok(await db.BulkBatches.Where(b => b.Kind == "categories").OrderByDescending(b => b.CreatedAt).Take(20)
+            .Select(b => new { b.Id, b.Method, b.Threshold, Status = b.Status.ToString(), b.Total, b.Applied, b.Blocked, b.Undone, b.Error, b.CreatedAt, b.FinishedAt, b.UndoneAt })
+            .ToListAsync(ct));
+
+    /// <summary>POST /api/admin/categorisation/bulk/batches/{id}/undo - removes the categories a run assigned; predictions return to the queue.</summary>
+    [HttpPost("bulk/batches/{id:guid}/undo")]
+    public async Task<IActionResult> BulkUndo(Guid id, CancellationToken ct = default)
+    {
+        var batch = await db.BulkBatches.FirstOrDefaultAsync(b => b.Id == id && b.Kind == "categories", ct);
+        if (batch is null) return NotFound();
+        if (batch.Status != BulkBatchStatus.Done) return Conflict(new { Message = "Only a finished run can be undone." });
+        if (runner.IsBusy) return Conflict(new { Message = "Another bulk run is in progress." });
+        batch.Status = BulkBatchStatus.Undoing;
+        await db.SaveChangesAsync(ct);
+        if (!runner.TryStart(batch.Id, sp => sp.GetRequiredService<CategoryBulkService>().RunUndoAsync(batch.Id)))
+        {
+            batch.Status = BulkBatchStatus.Done;
+            await db.SaveChangesAsync(ct);
+            return Conflict(new { Message = "Another bulk run is in progress." });
+        }
+        return Accepted(new { BatchId = batch.Id });
+    }
 
     [HttpPost("suggestions/{id:guid}/accept")]
     public async Task<IActionResult> Accept(Guid id, CancellationToken ct = default) => Result(await classifier.AcceptAsync(id, ct));

@@ -170,6 +170,15 @@ using (var scope = app.Services.CreateScope())
         await CategoryTranslations.SeedAsync(db);
         await StoreChainSeeder.SeedAsync(db, app.Configuration, app.Logger);
 
+        // A bulk run cut short by a restart cannot resume: show it as failed (its finished part can still be undone).
+        foreach (var interrupted in await db.BulkBatches.Where(b => b.Status == Savvori.Shared.BulkBatchStatus.Running || b.Status == Savvori.Shared.BulkBatchStatus.Undoing).ToListAsync())
+        {
+            interrupted.Status = Savvori.Shared.BulkBatchStatus.Failed;
+            interrupted.Error = "Interrupted by application restart.";
+            interrupted.FinishedAt = DateTime.UtcNow;
+        }
+        await db.SaveChangesAsync();
+
         // Mark any jobs left in Running state as Failed — they were interrupted by a restart.
         var staleJobs = await db.ScrapingJobs
             .Where(j => j.Status == ScrapingJobStatus.Running)

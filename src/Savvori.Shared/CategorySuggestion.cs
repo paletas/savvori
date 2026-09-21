@@ -36,6 +36,8 @@ public class CategorySuggestion
     public DateTime? DecidedAt { get; set; }
     /// <summary>The product's category before this decision was applied (null: it had none), used to undo.</summary>
     public Guid? PreviousCategoryId { get; set; }
+    /// <summary>The bulk run that applied this suggestion, if any.</summary>
+    public Guid? BatchId { get; set; }
     public string? Note { get; set; }
 }
 

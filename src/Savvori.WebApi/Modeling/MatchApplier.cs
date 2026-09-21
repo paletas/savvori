@@ -53,7 +53,7 @@ public sealed class MatchApplier(SavvoriDbContext db, TimeProvider time)
     /// <param name="method">Recorded on the moved products and the candidate ("embedding-cosine", "embedding-judge", <see cref="ManualMethod"/>).</param>
     /// <param name="manual">A human decision: may move manually matched products and marks the result ManualMatched.</param>
     /// <param name="force">A human confirmed a merge the safety rules would otherwise block.</param>
-    public async Task<ApplyResult> ApplyAsync(MatchCandidate c, string method, bool manual, bool force, CancellationToken ct = default)
+    public async Task<ApplyResult> ApplyAsync(MatchCandidate c, string method, bool manual, bool force, CancellationToken ct = default, Guid? batchId = null)
     {
         var a = await db.StoreProducts.FirstOrDefaultAsync(sp => sp.Id == c.StoreProductAId, ct);
         var b = await db.StoreProducts.FirstOrDefaultAsync(sp => sp.Id == c.StoreProductBId, ct);
@@ -140,7 +140,7 @@ public sealed class MatchApplier(SavvoriDbContext db, TimeProvider time)
             SurvivorPreviousCategoryId = survivorPrevCategory,
             MovedStoreProductsJson = JsonSerializer.Serialize(moved),
             MovedListItemsJson = JsonSerializer.Serialize(movedItems),
-            Method = method, AppliedAt = Now
+            Method = method, BatchId = batchId, AppliedAt = Now
         };
         db.MatchMerges.Add(merge);
         // Everything moved off the retired canonical first, so deleting it cannot cascade into anything.
@@ -196,7 +196,12 @@ public sealed class MatchApplier(SavvoriDbContext db, TimeProvider time)
     }
 
     /// <summary>Reverts an applied merge (restores the retired canonical, store products and list items) and rejects the pair.</summary>
-    public async Task<ApplyResult> UndoAsync(Guid candidateId, CancellationToken ct = default)
+    public Task<ApplyResult> UndoAsync(Guid candidateId, CancellationToken ct = default) => UndoCoreAsync(candidateId, rejectPair: true, ct);
+
+    /// <summary>Undoes a merge made by a bulk run: the pair goes back to the review queue (not rejected).</summary>
+    public Task<ApplyResult> UndoBulkItemAsync(Guid candidateId, CancellationToken ct = default) => UndoCoreAsync(candidateId, rejectPair: false, ct);
+
+    private async Task<ApplyResult> UndoCoreAsync(Guid candidateId, bool rejectPair, CancellationToken ct)
     {
         var candidate = await db.MatchCandidates.FirstOrDefaultAsync(c => c.Id == candidateId, ct);
         var merge = await db.MatchMerges.Where(m => m.CandidateId == candidateId && m.UndoneAt == null)
@@ -241,11 +246,23 @@ public sealed class MatchApplier(SavvoriDbContext db, TimeProvider time)
             survivor.CategoryId = merge.SurvivorPreviousCategoryId;
 
         merge.UndoneAt = Now;
-        candidate.Status = CandidateStatus.Rejected;
-        candidate.Method = ManualMethod;
-        candidate.Suggestion = null;
-        candidate.DecidedAt = Now;
-        candidate.Note = "Merge undone.";
+        if (rejectPair)
+        {
+            candidate.Status = CandidateStatus.Rejected;
+            candidate.Method = ManualMethod;
+            candidate.Suggestion = null;
+            candidate.DecidedAt = Now;
+            candidate.Note = "Merge undone.";
+        }
+        else
+        {
+            // A bulk run was undone: the suggestion is back in the queue, nothing is rejected.
+            candidate.Status = CandidateStatus.NeedsReview;
+            candidate.Suggestion = merge.Method;
+            candidate.Method = null;
+            candidate.DecidedAt = null;
+            candidate.Note = "Bulk run undone.";
+        }
         await db.SaveChangesAsync(ct);
         return new(ApplyOutcome.Applied);
     }

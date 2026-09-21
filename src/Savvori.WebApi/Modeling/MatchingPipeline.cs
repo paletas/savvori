@@ -45,7 +45,8 @@ public sealed class MatchingService(
         var eligible = await db.MatchCandidates
             .Where(c => c.ModelName == opts.EmbeddingModel && (info == null || c.ModelDigest == info.ModelDigest) &&
                         (c.Status == CandidateStatus.Proposed || c.Status == CandidateStatus.PendingJudge ||
-                         (!o.DryRun && c.Status == CandidateStatus.NeedsReview && c.Suggestion != null)))
+                         (!o.DryRun && c.Status == CandidateStatus.NeedsReview &&
+                          (c.Suggestion == "embedding-cosine" || (o.AutoApplyJudgeYes && c.Suggestion == "embedding-judge")))))
             .OrderByDescending(c => c.Cosine)
             .ToListAsync(ct);
 
@@ -56,7 +57,7 @@ public sealed class MatchingService(
         {
             ct.ThrowIfCancellationRequested();
             // A dry-run judge "yes" that is now allowed to apply: no need to ask the judge again.
-            if (!o.DryRun && c.Suggestion == "embedding-judge" && c.JudgeVerdict == JudgeVerdict.Yes)
+            if (!o.DryRun && o.AutoApplyJudgeYes && c.Suggestion == "embedding-judge" && c.JudgeVerdict == JudgeVerdict.Yes)
             {
                 var r = await applier.ApplyAsync(c, "embedding-judge", manual: false, force: false, ct);
                 if (r.Succeeded) autoAccepted++; else { Block(c, r); blocked++; }
@@ -145,7 +146,7 @@ public sealed class JudgeJobHandler(
         c.JudgeVerdict = verdict;
         c.JudgeModel = opts.JudgeModel;
 
-        if (verdict == JudgeVerdict.Yes && opts.Matching.DryRun)
+        if (verdict == JudgeVerdict.Yes && (opts.Matching.DryRun || !opts.Matching.AutoApplyJudgeYes))
         {
             c.Status = CandidateStatus.NeedsReview;
             c.Suggestion = "embedding-judge";

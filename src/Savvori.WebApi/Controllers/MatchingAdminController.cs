@@ -13,7 +13,8 @@ namespace Savvori.WebApi.Controllers;
 [Route("api/admin/matching")]
 public class MatchingAdminController(
     SavvoriDbContext db, MatchApplier applier, MatchingService matching, TimeProvider time,
-    Microsoft.Extensions.Options.IOptions<ModelOptions> options) : ControllerBase
+    Microsoft.Extensions.Options.IOptions<ModelOptions> options,
+    MatchBulkService bulk, BulkRunner runner) : ControllerBase
 {
     /// <summary>GET /api/admin/matching/summary — counts by candidate status and the cross-chain match effect.</summary>
     [HttpGet("summary")]
@@ -92,6 +93,74 @@ public class MatchingAdminController(
             Chain = sp.StoreChain.Name, sp.CanonicalProductId,
             Price = sp.Prices.Where(p => p.IsLatest).Select(p => (decimal?)p.Price).FirstOrDefault()
         }).FirstOrDefaultAsync(ct);
+
+    // ---- bulk apply of the confident cosine suggestions -------------------------------------------------
+
+    /// <summary>
+    /// GET /api/admin/matching/bulk/preview?minCosine=0.90&amp;sample=30 - how many confident suggestions a bulk apply would
+    /// take, and a random sample of them to spot-check first. Changes nothing.
+    /// </summary>
+    [HttpGet("bulk/preview")]
+    public async Task<IActionResult> BulkPreview(double minCosine = 0.90, int sample = 30, CancellationToken ct = default)
+    {
+        sample = Math.Clamp(sample, 1, 100);
+        var eligible = bulk.Eligible(minCosine);
+        var ids = await eligible.OrderBy(_ => EF.Functions.Random()).Take(sample).Select(c => c.Id).ToListAsync(ct);
+        var items = new List<object>();
+        foreach (var id in ids)
+        {
+            var c = await db.MatchCandidates.AsNoTracking().FirstAsync(x => x.Id == id, ct);
+            items.Add(new
+            {
+                c.Id, c.Cosine, c.SizeKnown, BrandCheck = c.BrandCheck.ToString(), Status = c.Status.ToString(), c.Suggestion,
+                Verdict = (string?)null, Note = (string?)null, Method = (string?)null,
+                Warning = await applier.PreviewConflictAsync(c.StoreProductAId, c.StoreProductBId, ct),
+                A = await ListingAsync(c.StoreProductAId, ct), B = await ListingAsync(c.StoreProductBId, ct)
+            });
+        }
+        return Ok(new { MinCosine = minCosine, Eligible = await eligible.CountAsync(ct), Sample = items, Busy = runner.IsBusy });
+    }
+
+    /// <summary>POST /api/admin/matching/bulk/apply?minCosine=0.90 - applies every eligible suggestion as one undoable run (background).</summary>
+    [HttpPost("bulk/apply")]
+    public async Task<IActionResult> BulkApply(double minCosine = 0.90, CancellationToken ct = default)
+    {
+        if (runner.IsBusy) return Conflict(new { Message = "Another bulk run is in progress." });
+        var batch = await bulk.CreateAsync(minCosine, ct);
+        if (!runner.TryStart(batch.Id, sp => sp.GetRequiredService<MatchBulkService>().RunApplyAsync(batch.Id)))
+        {
+            db.BulkBatches.Remove(batch);
+            await db.SaveChangesAsync(ct);
+            return Conflict(new { Message = "Another bulk run is in progress." });
+        }
+        return Accepted(new { BatchId = batch.Id, batch.Total });
+    }
+
+    /// <summary>GET /api/admin/matching/bulk/batches - recent bulk runs with progress.</summary>
+    [HttpGet("bulk/batches")]
+    public async Task<IActionResult> BulkBatches(CancellationToken ct = default) =>
+        Ok(await db.BulkBatches.Where(b => b.Kind == "matches").OrderByDescending(b => b.CreatedAt).Take(20)
+            .Select(b => new { b.Id, b.Method, b.Threshold, Status = b.Status.ToString(), b.Total, b.Applied, b.Blocked, b.Undone, b.Error, b.CreatedAt, b.FinishedAt, b.UndoneAt })
+            .ToListAsync(ct));
+
+    /// <summary>POST /api/admin/matching/bulk/batches/{id}/undo - undoes every merge of a run (background); pairs return to the queue.</summary>
+    [HttpPost("bulk/batches/{id:guid}/undo")]
+    public async Task<IActionResult> BulkUndo(Guid id, CancellationToken ct = default)
+    {
+        var batch = await db.BulkBatches.FirstOrDefaultAsync(b => b.Id == id && b.Kind == "matches", ct);
+        if (batch is null) return NotFound();
+        if (batch.Status != BulkBatchStatus.Done) return Conflict(new { Message = "Only a finished run can be undone." });
+        if (runner.IsBusy) return Conflict(new { Message = "Another bulk run is in progress." });
+        batch.Status = BulkBatchStatus.Undoing;
+        await db.SaveChangesAsync(ct);
+        if (!runner.TryStart(batch.Id, sp => sp.GetRequiredService<MatchBulkService>().RunUndoAsync(batch.Id)))
+        {
+            batch.Status = BulkBatchStatus.Done;
+            await db.SaveChangesAsync(ct);
+            return Conflict(new { Message = "Another bulk run is in progress." });
+        }
+        return Accepted(new { BatchId = batch.Id });
+    }
 
     /// <summary>POST /api/admin/matching/candidates/{id}/accept?force=false — a human decision, always wins.</summary>
     [HttpPost("candidates/{id:guid}/accept")]

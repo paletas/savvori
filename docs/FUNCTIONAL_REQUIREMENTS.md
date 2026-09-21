@@ -125,6 +125,7 @@ The `/api/shoppinglists/{id}/optimize` endpoint supports four modes via `?mode=`
 - Admin/Mapping shows whether the optional model backend is enabled, its circuit-breaker state, queue depth, oldest pending job, dead-lettered jobs and stale embeddings. All model features are off by default and every existing feature works unchanged when the model is disabled or unreachable.
 
 ### Match review (optional feature)
+- Bulk apply: a "Bulk apply" tab takes every confident suggestion above a chosen cosine in one undoable run, after you spot-check a random sample. The judge's answers are never bulk-applied. Category suggestions have the same bulk tab.
 - Admin > Match review lists cross-chain matches proposed by the model that need a decision: both listings side by side with image, size, price and chain, the similarity score, flags, the judge's answer and any safety warning. Actions: Same product, Different variant, Not the same, and Undo for applied matches. Rejected and different-variant pairs are never proposed again.
 - A match that would put two prices from the same chain (or two different EANs) on one product is never applied automatically; it needs an explicit confirmation.
 - The first matching run is a dry run: proposals appear in the review queue and nothing is linked until the dry-run setting is turned off.

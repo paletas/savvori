@@ -38,7 +38,11 @@ public sealed class MatchPolicyTests
 public sealed class MatchingTests : IDisposable
 {
     private readonly PipelineHost _h = new();
-    public MatchingTests() => _h.Options.Matching.DryRun = false; // most tests exercise applying
+    public MatchingTests()
+    {
+        _h.Options.Matching.DryRun = false;             // most tests exercise applying
+        _h.Options.Matching.AutoApplyJudgeYes = true;   // opt in: the default keeps judge answers in the review queue
+    }
     public void Dispose() => _h.Dispose();
 
     private Task DrainAsync() => _h.DrainAsync();

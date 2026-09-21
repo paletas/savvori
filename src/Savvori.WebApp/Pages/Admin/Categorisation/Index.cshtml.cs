@@ -14,6 +14,13 @@ public class CategorisationIndexModel(SavvoriApiClient api) : PageModel
     [BindProperty(Name = "p", SupportsGet = true)]
     public int PageNumber { get; set; } = 1;
 
+    /// <summary>Bulk tab: the minimum confidence a bulk apply takes (query parameter "min").</summary>
+    [BindProperty(Name = "min", SupportsGet = true)]
+    public double Min { get; set; } = 0.90;
+
+    public CategoryBulkPreviewDto? BulkPreview { get; set; }
+    public List<BulkBatchDto> Batches { get; set; } = [];
+
     public CategorisationSummaryDto? Summary { get; set; }
     public CategorySuggestionPageDto? Suggestions { get; set; }
     public List<CategoryStringProposalDto> Strings { get; set; } = [];
@@ -21,6 +28,18 @@ public class CategorisationIndexModel(SavvoriApiClient api) : PageModel
     public async Task OnGetAsync(CancellationToken ct)
     {
         if (PageNumber < 1) PageNumber = 1;
+        if (Filter == "bulk")
+        {
+            var preview = api.GetCategoryBulkPreviewAsync(Min, ct);
+            var batches = api.GetBulkBatchesAsync("categorisation", ct);
+            var sum = api.GetCategorisationSummaryAsync(ct);
+            await Task.WhenAll(preview, batches, sum);
+            BulkPreview = await preview;
+            Batches = await batches;
+            Summary = await sum;
+            return;
+        }
+
         var summary = api.GetCategorisationSummaryAsync(ct);
         var suggestions = api.GetCategorySuggestionsAsync(Filter, PageNumber, ct);
         var strings = api.GetCategoryStringProposalsAsync(ct);
@@ -44,6 +63,22 @@ public class CategorisationIndexModel(SavvoriApiClient api) : PageModel
 
     public Task<IActionResult> OnPostRejectStringAsync(Guid id, CancellationToken ct) =>
         ActAsync("strings", id, "reject", "Rejected: products with that store category are decided one by one.", ct);
+
+    public async Task<IActionResult> OnPostBulkApplyAsync(double min, CancellationToken ct)
+    {
+        var (success, error) = await api.StartBulkApplyAsync("categorisation", min, ct);
+        if (success) TempData["Success"] = "Bulk apply started. It runs in the background; refresh to see progress.";
+        else TempData["Error"] = error ?? "The bulk run could not start.";
+        return RedirectToPage(new { filter = "bulk", min });
+    }
+
+    public async Task<IActionResult> OnPostBulkUndoAsync(Guid id, double min, CancellationToken ct)
+    {
+        var (success, error) = await api.UndoBulkBatchAsync("categorisation", id, ct);
+        if (success) TempData["Success"] = "Undo started. The predictions go back to the review queue.";
+        else TempData["Error"] = error ?? "The undo could not start.";
+        return RedirectToPage(new { filter = "bulk", min });
+    }
 
     public async Task<IActionResult> OnPostRunAsync(CancellationToken ct)
     {

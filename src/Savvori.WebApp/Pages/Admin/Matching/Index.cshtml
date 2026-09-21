@@ -5,7 +5,7 @@
 @{
     ViewData["Title"] = "Match review";
     Layout = "../_AdminLayout";
-    var filters = new[] { ("all", "Needs review"), ("suggested", "Dry-run suggestions"), ("blocked", "Blocked by safety rule"), ("judge", "Judge answered"), ("applied", "Applied (undo)") };
+    var filters = new[] { ("all", "Needs review"), ("suggested", "Dry-run suggestions"), ("blocked", "Blocked by safety rule"), ("judge", "Judge answered"), ("applied", "Applied (undo)"), ("bulk", "Bulk apply") };
 }
 
 <div class="mb-6">
@@ -58,7 +58,107 @@
     }
 </div>
 
-@if (Model.Review is null)
+@if (Model.Filter == "bulk")
+{
+    var running = Model.Batches.Any(b => b.Status is "Running" or "Undoing");
+    if (running) { <meta http-equiv="refresh" content="5" /> }
+    if (Model.BulkPreview is not { } bulk)
+    {
+        <div class="alert alert-error">Could not load the bulk preview.</div>
+    }
+    else
+    {
+        <div class="card bg-base-100 shadow mb-6">
+            <div class="card-body p-4">
+                <h2 class="font-semibold">Apply every confident suggestion in one go</h2>
+                <p class="text-sm text-base-content/70">
+                    Takes the suggestions from the confident similarity tier only (never the judge's answers), from the cosine below upwards,
+                    where the brand is confirmed and no safety rule objects. It runs in the background as one run that you can undo in a single step.
+                </p>
+                <form method="get" class="flex items-end gap-2 mt-2">
+                    <input type="hidden" name="filter" value="bulk" />
+                    <label class="form-control w-40"><span class="label-text text-xs">Minimum cosine</span>
+                        <input name="min" type="number" step="0.01" min="0.5" max="1" value="@Model.Min.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)" class="input input-sm input-bordered" /></label>
+                    <button class="btn btn-sm">Update preview</button>
+                </form>
+                <div class="mt-3"><span class="badge badge-info badge-lg">@bulk.Eligible.ToString("N0") suggestions would be applied</span></div>
+            </div>
+        </div>
+
+        if (bulk.Sample.Count > 0)
+        {
+            <div class="card bg-base-100 shadow mb-6">
+                <div class="card-body p-4">
+                    <h2 class="font-semibold">Spot-check a random sample first</h2>
+                    <p class="text-sm text-base-content/70">Tick the pairs that are <b>not</b> the same product. The tally is only for you: it is not saved.</p>
+                    <div id="sample-tally" class="badge badge-outline my-2" data-total="@bulk.Sample.Count">@bulk.Sample.Count of @bulk.Sample.Count look right (100%)</div>
+                    <table class="table table-sm">
+                        <thead><tr><th>Wrong?</th><th>Cosine</th><th>Listing A</th><th>Listing B</th></tr></thead>
+                        <tbody>
+                        @foreach (var s in bulk.Sample)
+                        {
+                            <tr>
+                                <td><input type="checkbox" class="checkbox checkbox-sm checkbox-error sample-wrong" /></td>
+                                <td>@s.Cosine.ToString("0.000")</td>
+                                <td><span class="text-xs uppercase text-base-content/60">@s.A.Chain</span><br />@s.A.Name <span class="text-base-content/60">· @(s.A.Brand ?? "no brand") · @(s.A.SizeValue is > 0 ? $"{s.A.SizeValue:0.###} {s.A.Unit}" : "size ?")</span></td>
+                                <td><span class="text-xs uppercase text-base-content/60">@s.B.Chain</span><br />@s.B.Name <span class="text-base-content/60">· @(s.B.Brand ?? "no brand") · @(s.B.SizeValue is > 0 ? $"{s.B.SizeValue:0.###} {s.B.Unit}" : "size ?")</span></td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                    <form method="post" asp-page-handler="BulkApply" class="flex items-center gap-3 mt-3">
+                        <input type="hidden" name="min" value="@Model.Min.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)" />
+                        <label class="label cursor-pointer gap-2"><input type="checkbox" required class="checkbox checkbox-sm" /><span class="label-text text-sm">I checked the sample and I am happy with it</span></label>
+                        <button class="btn btn-sm btn-primary" type="submit" disabled="@(bulk.Busy || running)">Apply @bulk.Eligible.ToString("N0") suggestions</button>
+                    </form>
+                </div>
+            </div>
+            <script>
+                (function () {
+                    var boxes = document.querySelectorAll('.sample-wrong');
+                    var tally = document.getElementById('sample-tally');
+                    function update() {
+                        var total = boxes.length, wrong = document.querySelectorAll('.sample-wrong:checked').length, right = total - wrong;
+                        tally.textContent = right + ' of ' + total + ' look right (' + Math.round(100 * right / total) + '%)';
+                        tally.className = 'badge my-2 ' + (right / total >= 0.9 ? 'badge-success' : right / total >= 0.75 ? 'badge-warning' : 'badge-error');
+                    }
+                    boxes.forEach(function (b) { b.addEventListener('change', update); });
+                })();
+            </script>
+        }
+
+        <h2 class="font-semibold mb-2">Bulk runs</h2>
+        if (Model.Batches.Count == 0)
+        {
+            <div class="alert alert-info">No bulk runs yet.</div>
+        }
+        else
+        {
+            <table class="table table-sm bg-base-100">
+                <thead><tr><th>When</th><th>Cosine ≥</th><th>Status</th><th>Applied</th><th>Left in queue</th><th></th></tr></thead>
+                <tbody>
+                @foreach (var b in Model.Batches)
+                {
+                    <tr>
+                        <td>@b.CreatedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                        <td>@b.Threshold.ToString("0.00")</td>
+                        <td><span class="badge @(b.Status == "Done" ? "badge-success" : b.Status == "Failed" ? "badge-error" : b.Status == "Undone" ? "badge-ghost" : "badge-warning")">@b.Status</span> @b.Error</td>
+                        <td>@b.Applied.ToString("N0") of @b.Total.ToString("N0")@(b.Undone > 0 ? $" ({b.Undone:N0} undone)" : "")</td>
+                        <td>@b.Blocked.ToString("N0")</td>
+                        <td>
+                            @if (b.Status == "Done" && b.Applied > 0)
+                            {
+                                <form method="post" asp-page-handler="BulkUndo"><input type="hidden" name="id" value="@b.Id" /><input type="hidden" name="min" value="@Model.Min.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)" /><button class="btn btn-xs btn-warning" type="submit">Undo this run</button></form>
+                            }
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        }
+    }
+}
+else if (Model.Review is null)
 {
     <div class="alert alert-error">Could not load the review queue.</div>
 }

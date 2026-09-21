@@ -566,6 +566,54 @@ public class SavvoriApiClient(HttpClient http, ILogger<SavvoriApiClient> logger)
         }
     }
 
+    // ===== Admin: bulk review =====
+
+    private static string Inv(double value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    public async Task<MatchBulkPreviewDto?> GetMatchBulkPreviewAsync(double minCosine, CancellationToken ct = default)
+    {
+        try { return await http.GetFromJsonAsync<MatchBulkPreviewDto>($"/api/admin/matching/bulk/preview?minCosine={Inv(minCosine)}&sample=30", JsonOptions, ct); }
+        catch (Exception ex) { logger.LogError(ex, "Failed to get match bulk preview"); return null; }
+    }
+
+    public async Task<CategoryBulkPreviewDto?> GetCategoryBulkPreviewAsync(double minConfidence, CancellationToken ct = default)
+    {
+        try { return await http.GetFromJsonAsync<CategoryBulkPreviewDto>($"/api/admin/categorisation/bulk/preview?minConfidence={Inv(minConfidence)}&sample=30", JsonOptions, ct); }
+        catch (Exception ex) { logger.LogError(ex, "Failed to get category bulk preview"); return null; }
+    }
+
+    /// <summary>area: matching | categorisation. Starts a background run.</summary>
+    public async Task<(bool Success, string? Error)> StartBulkApplyAsync(string area, double threshold, CancellationToken ct = default)
+    {
+        try
+        {
+            var name = area == "matching" ? "minCosine" : "minConfidence";
+            var resp = await http.PostAsync($"/api/admin/{area}/bulk/apply?{name}={Inv(threshold)}", null, ct);
+            if (resp.IsSuccessStatusCode) return (true, null);
+            var body = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(JsonOptions, ct);
+            return (false, body.TryGetProperty("message", out var m) ? m.GetString() : "The bulk run could not start.");
+        }
+        catch (Exception ex) { logger.LogError(ex, "Bulk apply failed to start"); return (false, "The bulk run could not start."); }
+    }
+
+    public async Task<List<BulkBatchDto>> GetBulkBatchesAsync(string area, CancellationToken ct = default)
+    {
+        try { return await http.GetFromJsonAsync<List<BulkBatchDto>>($"/api/admin/{area}/bulk/batches", JsonOptions, ct) ?? []; }
+        catch (Exception ex) { logger.LogError(ex, "Failed to get bulk batches"); return []; }
+    }
+
+    public async Task<(bool Success, string? Error)> UndoBulkBatchAsync(string area, Guid id, CancellationToken ct = default)
+    {
+        try
+        {
+            var resp = await http.PostAsync($"/api/admin/{area}/bulk/batches/{id}/undo", null, ct);
+            if (resp.IsSuccessStatusCode) return (true, null);
+            var body = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(JsonOptions, ct);
+            return (false, body.TryGetProperty("message", out var m) ? m.GetString() : "The undo could not start.");
+        }
+        catch (Exception ex) { logger.LogError(ex, "Bulk undo failed to start"); return (false, "The undo could not start."); }
+    }
+
     public async Task<BackfillCategoriesResponse?> BackfillCategoriesAsync(CancellationToken ct = default)
     {
         try

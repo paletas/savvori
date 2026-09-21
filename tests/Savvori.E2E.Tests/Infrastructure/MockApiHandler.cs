@@ -31,6 +31,56 @@ public class MockApiHandler : HttpMessageHandler
         RequestLog.Enqueue($"{method} {path}{query}");
         var pathLower = path.ToLowerInvariant();
 
+        // ===== Admin: bulk review =====
+        if (method == "GET" && pathLower == "/api/admin/matching/bulk/preview")
+        {
+            object Side(string chain, string name) => new
+            {
+                id = Guid.NewGuid(), name, brand = "Kinder", sizeValue = 100m, unit = "G", imageUrl = (string?)null,
+                sourceUrl = (string?)null, chain, canonicalProductId = Guid.NewGuid(), price = 1.5m
+            };
+            return Json(new
+            {
+                minCosine = 0.9, eligible = 885, busy = false,
+                sample = new[]
+                {
+                    new
+                    {
+                        id = Guid.NewGuid(), cosine = 0.983, sizeKnown = true, brandCheck = "Ok", status = "NeedsReview",
+                        suggestion = "embedding-cosine", verdict = (string?)null, note = (string?)null, method = (string?)null,
+                        warning = (string?)null, a = Side("Continente", "Bombons de Chocolate Kinder Schoko-Bons"),
+                        b = Side("Auchan", "Bombons Schoko-Bons Kinder")
+                    }
+                }
+            });
+        }
+
+        if (method == "GET" && pathLower == "/api/admin/categorisation/bulk/preview")
+            return Json(new
+            {
+                minConfidence = 0.9, eligible = 1092, busy = false,
+                sample = new[]
+                {
+                    new
+                    {
+                        id = Guid.NewGuid(), productId = Guid.NewGuid(), productName = "Azeitonas Verdes", brand = (string?)null,
+                        imageUrl = (string?)null, rawCategory = "Azeitonas, Pickles e Tremoços", suggested = "Conservas Vegetais",
+                        confidence = 1.0, neighbourCount = 7
+                    }
+                }
+            });
+
+        if (method == "GET" && (pathLower == "/api/admin/matching/bulk/batches" || pathLower == "/api/admin/categorisation/bulk/batches"))
+            return Json(new[]
+            {
+                new
+                {
+                    id = Guid.NewGuid(), method = "embedding-cosine", threshold = 0.9, status = "Done", total = 885, applied = 850,
+                    blocked = 35, undone = 0, error = (string?)null, createdAt = DateTime.UtcNow, finishedAt = (DateTime?)DateTime.UtcNow,
+                    undoneAt = (DateTime?)null
+                }
+            });
+
         // ===== Admin: taxonomy v2 migration =====
         if (method == "GET" && pathLower == "/api/admin/taxonomy/plan")
             return Json(new

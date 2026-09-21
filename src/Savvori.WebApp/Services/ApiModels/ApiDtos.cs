@@ -225,3 +225,16 @@ public record MatchReportDto(
 
 public record MatchHistogramBucketDto(int StoreProducts, int Canonicals);
 public record RecomputeSizesResponse(bool DryRun, int Total, int Changed, int UnitPriceDisagreements, int CanonicalsUpdated);
+
+// ===== Bulk review =====
+public record MatchBulkPreviewDto(double MinCosine, int Eligible, List<ReviewItemDto> Sample, bool Busy);
+
+public record CategoryBulkSampleDto(
+    Guid Id, Guid ProductId, string ProductName, string? Brand, string? ImageUrl, string? RawCategory,
+    string Suggested, double Confidence, int NeighbourCount);
+
+public record CategoryBulkPreviewDto(double MinConfidence, int Eligible, List<CategoryBulkSampleDto> Sample, bool Busy);
+
+public record BulkBatchDto(
+    Guid Id, string Method, double Threshold, string Status, int Total, int Applied, int Blocked, int Undone,
+    string? Error, DateTime CreatedAt, DateTime? FinishedAt, DateTime? UndoneAt);

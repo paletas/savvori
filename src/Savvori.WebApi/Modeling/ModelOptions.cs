@@ -81,6 +81,12 @@ public sealed class ModelOptions
         public double ReviewMinCosine { get; set; } = 0.70;
         /// <summary>Tier B needs the brand check to have positively passed (Ok), not merely "unknown".</summary>
         public bool AutoAcceptRequiresBrandOk { get; set; } = true;
+        /// <summary>
+        /// When false (default) a judge "yes" never applies a match by itself, not even with dry run off: it stays in the
+        /// review queue with the judge's answer. Only confident cosine pairs are applied automatically. On real data the
+        /// judge said yes to some own-brand vs branded pairs.
+        /// </summary>
+        public bool AutoApplyJudgeYes { get; set; }
         /// <summary>Cap on judge requests queued per matching run, so the first run cannot flood the model.</summary>
         public int MaxJudgeJobsPerRun { get; set; } = 1000;
     }

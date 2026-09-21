@@ -120,6 +120,38 @@ public class AdminPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savvo
         Assert.DoesNotContain("Could not load suggestions", html);
     }
 
+    // ===== Admin bulk review =====
+
+    [Fact]
+    public async Task AdminMatchingBulkTab_ShowsTheEligibleCount_ASampleToCheck_AndAnUndoableRun()
+    {
+        var client = factory.CreateClient();
+        var response = await client.GetAsync("/Admin/Matching?filter=bulk", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.Contains("885 suggestions would be applied", html);
+        Assert.Contains("Spot-check a random sample first", html);
+        Assert.Contains("Bombons Schoko-Bons Kinder", html);
+        Assert.Contains("I checked the sample", html);
+        Assert.Contains("Apply 885 suggestions", html);
+        Assert.Contains("Undo this run", html);
+        Assert.DoesNotContain("Could not load", html);
+    }
+
+    [Fact]
+    public async Task AdminCategorisationBulkTab_ShowsTheEligibleCount_ASampleToCheck_AndAnUndoableRun()
+    {
+        var client = factory.CreateClient();
+        var response = await client.GetAsync("/Admin/Categorisation?filter=bulk", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.Matches(@"1.{0,8}092 predictions would be assigned", html);   // group separator depends on culture
+        Assert.Contains("Azeitonas Verdes", html);
+        Assert.Matches(@"Assign 1.{0,8}092 categories", html);
+        Assert.Contains("Undo this run", html);
+        Assert.DoesNotContain("Could not load", html);
+    }
+
     // ===== Admin Taxonomy v2 =====
 
     [Fact]
