@@ -103,7 +103,7 @@ public class MockApiHandler : HttpMessageHandler
         if (method == "GET" && pathLower == "/api/admin/categorisation/summary")
             return Json(new
             {
-                dryRun = true, uncategorised = 42,
+                uncategorised = 42,
                 byStatus = new[] { new { status = "Suggested", count = 2 } },
                 stringsByStatus = new[] { new { status = "Suggested", count = 1 } }
             });
@@ -134,7 +134,6 @@ public class MockApiHandler : HttpMessageHandler
         if (method == "GET" && pathLower == "/api/admin/matching/summary")
             return Json(new
             {
-                dryRun = true,
                 byStatus = new[] { new { status = "NeedsReview", count = 1 } },
                 appliedByMethod = Array.Empty<object>(),
                 multiChainCanonicals = 3

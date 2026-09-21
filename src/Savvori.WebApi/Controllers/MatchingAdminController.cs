@@ -26,7 +26,6 @@ public class MatchingAdminController(
             .GroupBy(c => c.Method!).Select(g => new { Method = g.Key, Count = g.Count() }).ToListAsync(ct);
         return Ok(new
         {
-            DryRun = options.Value.Matching.DryRun,
             ByStatus = byStatus.OrderBy(x => x.Status).Select(x => new { Status = x.Status.ToString(), x.Count }),
             AppliedByMethod = byMethod,
             MultiChainCanonicals = await MultiChainCanonicalsAsync(db, ct)
@@ -218,7 +217,7 @@ public class MatchingAdminController(
     }
 
     /// <summary>
-    /// POST /api/admin/matching/run — evaluates stored candidates now (respects Model:Matching:DryRun). Makes no model call.
+    /// POST /api/admin/matching/run — sorts stored candidates into the review queue now. Links nothing and makes no model call.
     /// </summary>
     [HttpPost("run")]
     public async Task<IActionResult> Run(CancellationToken ct = default) => Ok(await matching.RunAsync(ct));

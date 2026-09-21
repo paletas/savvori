@@ -83,13 +83,14 @@ public class AdminPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savvo
     // ===== Admin Matching review =====
 
     [Fact]
-    public async Task AdminMatchingPage_ShowsSideBySideListings_DryRunBanner_AndSafetyWarning()
+    public async Task AdminMatchingPage_ShowsSideBySideListings_TheNeverAutoLinksNote_AndSafetyWarning()
     {
         var client = factory.CreateClient();
         var response = await client.GetAsync("/Admin/Matching", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-        Assert.Contains("Dry run", html);
+        Assert.Contains("never links products by itself", html);
+        Assert.DoesNotContain("Dry run", html);
         Assert.Contains("Leite Meio Gordo Mimosa 1L", html);
         Assert.Contains("Leite M. Gordo Mimosa 1L", html);
         Assert.Contains("Same product", html);
@@ -102,13 +103,14 @@ public class AdminPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savvo
     // ===== Admin Category suggestions =====
 
     [Fact]
-    public async Task AdminCategorisationPage_ShowsDryRunBanner_Suggestions_AndTheWholeStringProposal()
+    public async Task AdminCategorisationPage_ShowsTheSuggestOnlyNote_Suggestions_AndTheWholeStringProposal()
     {
         var client = factory.CreateClient();
         var response = await client.GetAsync("/Admin/Categorisation", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-        Assert.Contains("Dry run", html);
+        Assert.Contains("never assigns a category by itself", html);
+        Assert.DoesNotContain("Dry run", html);
         Assert.Contains("Uncategorised products: 42", html);
         Assert.Contains("Bolacha Maria Dourada 200g", html);
         Assert.Contains("Bolachas e Biscoitos", html);

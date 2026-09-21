@@ -22,58 +22,44 @@ public static class JudgeInputs
 }
 
 public sealed record MatchingRunResult(
-    string? SkippedReason, bool DryRun, int Evaluated, int AutoAccepted, int WouldAccept,
-    int JudgeQueued, int SentToReview, int Blocked, int Left);
+    string? SkippedReason, int Evaluated, int Suggested, int JudgeQueued, int SentToReview, int Left);
 
 /// <summary>
-/// Runs the matching tiers over stored candidates. It makes no model call itself: Tier B uses the stored cosine, Tier C
-/// queues judge jobs. In degraded mode (feature off or breaker not closed) it decides nothing at all.
+/// Sorts stored candidates into the review queue. It never links anything: Tier B pairs are queued as confident
+/// suggestions (one click, or bulk apply), Tier C queues judge jobs, Tier D goes to the queue as is. It makes no model
+/// call itself. In degraded mode (feature off or breaker not closed) it decides nothing at all.
 /// </summary>
 public sealed class MatchingService(
-    SavvoriDbContext db, MatchApplier applier, ModelJobQueue queue, ModelCircuitBreaker breaker,
+    SavvoriDbContext db, ModelJobQueue queue, ModelCircuitBreaker breaker,
     CurrentModelState state, IOptions<ModelOptions> options)
 {
     public async Task<MatchingRunResult> RunAsync(CancellationToken ct = default)
     {
         var opts = options.Value;
         var o = opts.Matching;
-        MatchingRunResult Skipped(string why) => new(why, o.DryRun, 0, 0, 0, 0, 0, 0, 0);
+        MatchingRunResult Skipped(string why) => new(why, 0, 0, 0, 0, 0);
         if (!opts.Enabled) return Skipped("Model features are disabled.");
         if (!breaker.IsClosed) return Skipped("Model unavailable (degraded mode): nothing model-dependent is decided.");
 
         var info = state.Info;
         var eligible = await db.MatchCandidates
             .Where(c => c.ModelName == opts.EmbeddingModel && (info == null || c.ModelDigest == info.ModelDigest) &&
-                        (c.Status == CandidateStatus.Proposed || c.Status == CandidateStatus.PendingJudge ||
-                         (!o.DryRun && c.Status == CandidateStatus.NeedsReview &&
-                          (c.Suggestion == "embedding-cosine" || (o.AutoApplyJudgeYes && c.Suggestion == "embedding-judge")))))
+                        (c.Status == CandidateStatus.Proposed || c.Status == CandidateStatus.PendingJudge))
             .OrderByDescending(c => c.Cosine)
             .ToListAsync(ct);
 
-        int autoAccepted = 0, wouldAccept = 0, review = 0, blocked = 0, left = 0;
+        int suggested = 0, review = 0, left = 0;
         var toJudge = new List<MatchCandidate>();
 
         foreach (var c in eligible)
         {
             ct.ThrowIfCancellationRequested();
-            // A dry-run judge "yes" that is now allowed to apply: no need to ask the judge again.
-            if (!o.DryRun && o.AutoApplyJudgeYes && c.Suggestion == "embedding-judge" && c.JudgeVerdict == JudgeVerdict.Yes)
-            {
-                var r = await applier.ApplyAsync(c, "embedding-judge", manual: false, force: false, ct, guardVariants: true);
-                if (r.Succeeded) autoAccepted++; else { Block(c, r); blocked++; }
-                continue;
-            }
-
             switch (MatchPolicy.Decide(c.Cosine, c.SizeKnown, c.BrandCheck, o))
             {
-                case MatchTier.AutoAccept when o.DryRun:
+                case MatchTier.Confident:
                     c.Status = CandidateStatus.NeedsReview;
                     c.Suggestion = "embedding-cosine";
-                    wouldAccept++;
-                    break;
-                case MatchTier.AutoAccept:
-                    var applied = await applier.ApplyAsync(c, "embedding-cosine", manual: false, force: false, ct, guardVariants: true);
-                    if (applied.Succeeded) autoAccepted++; else { Block(c, applied); blocked++; }
+                    suggested++;
                     break;
                 case MatchTier.Judge:
                     if (toJudge.Count < o.MaxJudgeJobsPerRun) toJudge.Add(c); else left++;
@@ -90,13 +76,7 @@ public sealed class MatchingService(
         await db.SaveChangesAsync(ct);
 
         var queued = await QueueJudgeJobsAsync(toJudge, opts.JudgeModel, ct);
-        return new(null, o.DryRun, eligible.Count, autoAccepted, wouldAccept, queued, review, blocked, left);
-    }
-
-    private static void Block(MatchCandidate c, ApplyResult r)
-    {
-        c.Status = CandidateStatus.NeedsReview;
-        c.Note = r.Reason;
+        return new(null, eligible.Count, suggested, queued, review, left);
     }
 
     private async Task<int> QueueJudgeJobsAsync(List<MatchCandidate> candidates, string judgeModel, CancellationToken ct)
@@ -126,7 +106,7 @@ public sealed class MatchingService(
 /// candidate PendingJudge and the job retried by the queue. It is never treated as a "no".
 /// </summary>
 public sealed class JudgeJobHandler(
-    SavvoriDbContext db, IPairJudge judge, MatchApplier applier, IOptions<ModelOptions> options) : IModelJobHandler
+    SavvoriDbContext db, IPairJudge judge, IOptions<ModelOptions> options) : IModelJobHandler
 {
     public ModelJobType Type => ModelJobType.Judge;
 
@@ -146,20 +126,9 @@ public sealed class JudgeJobHandler(
         c.JudgeVerdict = verdict;
         c.JudgeModel = opts.JudgeModel;
 
-        if (verdict == JudgeVerdict.Yes && (opts.Matching.DryRun || !opts.Matching.AutoApplyJudgeYes))
-        {
-            c.Status = CandidateStatus.NeedsReview;
-            c.Suggestion = "embedding-judge";
-        }
-        else if (verdict == JudgeVerdict.Yes)
-        {
-            var r = await applier.ApplyAsync(c, "embedding-judge", manual: false, force: false, ct, guardVariants: true);
-            if (!r.Succeeded) { c.Status = CandidateStatus.NeedsReview; c.Note = r.Reason; }
-        }
-        else
-        {
-            c.Status = CandidateStatus.NeedsReview; // "no" and "unclear" both go to a human, verdict shown as a hint
-        }
+        // Whatever the answer, a human decides: a "yes" is shown as a suggestion, "no" and "unclear" as a hint.
+        c.Status = CandidateStatus.NeedsReview;
+        if (verdict == JudgeVerdict.Yes) c.Suggestion = "embedding-judge";
         await db.SaveChangesAsync(ct);
     }
 }
@@ -175,8 +144,8 @@ public sealed class MatchingJob(
         using var scope = scopes.CreateScope();
         var r = await scope.ServiceProvider.GetRequiredService<MatchingService>().RunAsync(context.CancellationToken);
         logger.LogInformation(
-            "Matching run (dryRun={DryRun}): skipped={Skipped}, {Evaluated} evaluated, {Auto} auto-accepted, " +
-            "{Would} would accept, {Judge} judge jobs, {Review} to review, {Blocked} blocked, {Left} left.",
-            r.DryRun, r.SkippedReason, r.Evaluated, r.AutoAccepted, r.WouldAccept, r.JudgeQueued, r.SentToReview, r.Blocked, r.Left);
+            "Matching run: skipped={Skipped}, {Evaluated} evaluated, {Suggested} confident suggestions, " +
+            "{Judge} judge jobs, {Review} to review, {Left} left.",
+            r.SkippedReason, r.Evaluated, r.Suggested, r.JudgeQueued, r.SentToReview, r.Left);
     }
 }

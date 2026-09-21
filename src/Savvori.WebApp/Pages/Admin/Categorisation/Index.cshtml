@@ -19,16 +19,7 @@
     <div class="card bg-base-100 shadow mb-6">
         <div class="card-body p-4">
             <div class="flex flex-wrap items-center gap-3">
-                @if (summary.DryRun)
-                {
-                    <span class="badge badge-warning">Dry run</span>
-                    <span class="text-sm">Nothing is assigned automatically; predictions wait here (<code>Model:Categories:DryRun</code> is on).</span>
-                }
-                else
-                {
-                    <span class="badge badge-success">Applying</span>
-                    <span class="text-sm">Confident predictions are assigned automatically and can be undone under "Applied".</span>
-                }
+                <span class="text-sm">The model never assigns a category by itself (keyword rules still do). It only suggests: you decide here, one product at a time or in bulk, and every assignment can be undone.</span>
                 <span class="badge badge-outline">Uncategorised products: @summary.Uncategorised.ToString("N0")</span>
                 @{
                     int Count(params string[] statuses) => summary.ByStatus.Where(x => statuses.Contains(x.Status)).Sum(x => x.Count);

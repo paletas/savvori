@@ -26,7 +26,6 @@ public class CategorisationAdminController(
             .Select(g => new { Status = g.Key, Count = g.Count() }).ToListAsync(ct);
         return Ok(new
         {
-            DryRun = options.Value.Categories.DryRun,
             Uncategorised = await db.Products.CountAsync(p => p.CategoryId == null, ct),
             ByStatus = byStatus.OrderBy(x => x.Status).Select(x => new { Status = x.Status.ToString(), x.Count }),
             StringsByStatus = strings.OrderBy(x => x.Status).Select(x => new { Status = x.Status.ToString(), x.Count })
@@ -140,7 +139,7 @@ public class CategorisationAdminController(
     public async Task<IActionResult> RejectString(Guid id, CancellationToken ct = default) =>
         await classifier.RejectStringAsync(id, ct) ? Ok() : NotFound();
 
-    /// <summary>POST /api/admin/categorisation/run — evaluate stored embeddings now (respects Model:Categories:DryRun).</summary>
+    /// <summary>POST /api/admin/categorisation/run — evaluate stored embeddings now. Only writes suggestions; nothing is assigned by the model.</summary>
     [HttpPost("run")]
     public async Task<IActionResult> Run(CancellationToken ct = default) => Ok(await classifier.RunAsync(ct));
 

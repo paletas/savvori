@@ -135,7 +135,7 @@ public class CategorisationAdminTests : IClassFixture<SavvoriWebApiFactory>
     }
 
     [Fact]
-    public async Task Run_WithTheFeatureFlagOff_ExplainsWhy_AndSummaryReportsDryRun()
+    public async Task Run_WithTheFeatureFlagOff_ExplainsWhy_AndTheSummaryHasNoDryRunFlag()
     {
         var run = await Post("/api/admin/categorisation/run");
         Assert.Equal(HttpStatusCode.OK, run.StatusCode);
@@ -143,7 +143,7 @@ public class CategorisationAdminTests : IClassFixture<SavvoriWebApiFactory>
             .GetProperty("skippedReason").GetString()));
 
         var summary = await _client.GetFromJsonAsync<JsonElement>("/api/admin/categorisation/summary", TestContext.Current.CancellationToken);
-        Assert.True(summary.GetProperty("dryRun").GetBoolean());
+        Assert.False(summary.TryGetProperty("dryRun", out _));
     }
 
     [Fact]

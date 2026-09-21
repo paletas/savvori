@@ -32,9 +32,11 @@ public static class KnnVoting
     }
 }
 
+/// <param name="AssignedByStoreCategory">Products categorised through a store-category decision you accepted earlier.</param>
+/// <param name="Confident">Predictions at the confident level, waiting for a click (or bulk apply).</param>
 public sealed record ClassifierRunResult(
-    string? SkippedReason, bool DryRun, int Targets, int AutoAssigned, int WouldAssign, int ToReview,
-    int NoSuggestion, int StringsDecided, int StringsMixed);
+    string? SkippedReason, int Targets, int AssignedByStoreCategory, int Confident, int ToReview,
+    int NoSuggestion, int StringsProposed, int StringsMixed);
 
 /// <summary>
 /// Predicts categories for uncategorised canonical products by k-NN over the stored embeddings of already
@@ -51,7 +53,7 @@ public sealed class CategoryClassifier(
     {
         var opts = options.Value;
         var o = opts.Categories;
-        ClassifierRunResult Skipped(string why) => new(why, o.DryRun, 0, 0, 0, 0, 0, 0, 0);
+        ClassifierRunResult Skipped(string why) => new(why, 0, 0, 0, 0, 0, 0, 0);
         if (!opts.Enabled) return Skipped("Model features are disabled.");
         if (!breaker.IsClosed) return Skipped("Model unavailable (degraded mode): categories come from the rule-based mapper only.");
 
@@ -144,15 +146,10 @@ public sealed class CategoryClassifier(
             }
             else
             {
+                // Proposed only: it takes effect when you accept it ("Apply to all"), never on its own.
                 row.CategoryId = vote.CategoryId;
                 row.Confidence = vote.Confidence;
-                if (!o.DryRun)
-                {
-                    row.Status = CategorySuggestionStatus.Applied;
-                    row.DecidedAt = Now;
-                    foreach (var i in idx) decidedByString[i] = (vote.CategoryId, vote.Confidence, vote.Neighbours);
-                }
-                else row.Status = CategorySuggestionStatus.Suggested;
+                row.Status = CategorySuggestionStatus.Suggested;
                 stringsDecided++;
             }
             if (known is null) db.CategoryStringDecisions.Add(row);
@@ -180,15 +177,13 @@ public sealed class CategoryClassifier(
                 none++;
                 continue;
             }
-            var apply = vote.Confidence >= o.AutoAssignConfidence && !o.DryRun;
-            Upsert(product, row, vote.CategoryId, vote.RunnerUp, vote.Confidence, vote.Neighbours, "embedding-knn", apply, identity);
-            if (apply) auto++;
-            else if (vote.Confidence >= o.AutoAssignConfidence) would++;
+            Upsert(product, row, vote.CategoryId, vote.RunnerUp, vote.Confidence, vote.Neighbours, "embedding-knn", apply: false, identity);
+            if (vote.Confidence >= o.AutoAssignConfidence) would++;
             else review++;
         }
 
         await db.SaveChangesAsync(ct);
-        return new(null, o.DryRun, targets.Count, auto, would, review, none, stringsDecided, stringsMixed);
+        return new(null, targets.Count, auto, would, review, none, stringsDecided, stringsMixed);
 
         void Upsert(Product product, CategorySuggestion? row, Guid category, Guid? runnerUp, double confidence,
             int neighbours, string method, bool apply, ModelInfo id)
@@ -338,8 +333,8 @@ public sealed class CategoryClassifierJob(
         using var scope = scopes.CreateScope();
         var r = await scope.ServiceProvider.GetRequiredService<CategoryClassifier>().RunAsync(context.CancellationToken);
         logger.LogInformation(
-            "Category classifier (dryRun={DryRun}): skipped={Skipped}, {Targets} uncategorised, {Auto} assigned, " +
-            "{Would} would assign, {Review} to review, {None} without suggestion, {Strings} strings decided, {Mixed} mixed.",
-            r.DryRun, r.SkippedReason, r.Targets, r.AutoAssigned, r.WouldAssign, r.ToReview, r.NoSuggestion, r.StringsDecided, r.StringsMixed);
+            "Category classifier: skipped={Skipped}, {Targets} uncategorised, {Assigned} assigned through accepted store categories, " +
+            "{Confident} confident suggestions, {Review} to review, {None} without suggestion, {Strings} store categories proposed, {Mixed} mixed.",
+            r.SkippedReason, r.Targets, r.AssignedByStoreCategory, r.Confident, r.ToReview, r.NoSuggestion, r.StringsProposed, r.StringsMixed);
     }
 }

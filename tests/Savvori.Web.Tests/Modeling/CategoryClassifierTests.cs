@@ -43,7 +43,6 @@ public sealed class CategoryClassifierTests : IDisposable
 
     public CategoryClassifierTests()
     {
-        _h.Options.Categories.DryRun = false;
         _h.With(db =>
         {
             db.ProductCategories.Add(new ProductCategory { Id = _catX, Name = "Leite", Slug = "leite" });
@@ -88,6 +87,16 @@ public sealed class CategoryClassifierTests : IDisposable
     private CategorySuggestion? Sugg(Guid productId) =>
         _h.Query(db => db.CategorySuggestions.AsNoTracking().SingleOrDefault(s => s.ProductId == productId));
 
+    /// <summary>What a person does with the confident suggestions: one bulk apply (the method stays "embedding-knn").</summary>
+    private async Task BulkApplyAsync(double min)
+    {
+        using var scope = _h.Services.CreateScope();
+        var svc = scope.ServiceProvider.GetRequiredService<CategoryBulkService>();
+        var ct = TestContext.Current.CancellationToken;
+        var batch = await svc.CreateAsync(min, ct);
+        await svc.RunApplyAsync(batch.Id, ct);
+    }
+
     private async Task<ClassifierRunResult> RunAsync()
     {
         using var scope = _h.Services.CreateScope();
@@ -112,38 +121,29 @@ public sealed class CategoryClassifierTests : IDisposable
     }
 
     [Fact]
-    public async Task ConfidentPrediction_IsAssigned_WithMethodScoreModelAndTimestamp()
+    public async Task ConfidentPrediction_IsOnlySuggested_WithMethodScoreAndModel_TheRunNeverAssignsIt()
     {
         SeedClusters();
         var p = Unlabelled(_h.ChainC, 3);
 
         var r = await RunAsync();
 
-        Assert.Equal(1, r.AutoAssigned);
-        Assert.Equal(_catX, Prod(p).CategoryId);
-        var s = Sugg(p)!;
-        Assert.Equal(CategorySuggestionStatus.Applied, s.Status);
-        Assert.Equal("embedding-knn", s.Method);
-        Assert.InRange(s.Confidence, 0.85, 1.0);
-        Assert.Equal("fake-embed", s.ModelName);
-        Assert.Equal("digest-1", s.ModelDigest);
-        Assert.NotNull(s.DecidedAt);
-        Assert.Null(s.PreviousCategoryId);
-    }
-
-    [Fact]
-    public async Task DryRun_IsTheDefault_PredictionsGoToTheReviewQueueAndNothingIsAssigned()
-    {
-        Assert.True(new ModelOptions().Categories.DryRun);
-        _h.Options.Categories.DryRun = true;
-        SeedClusters();
-        var p = Unlabelled(_h.ChainC, 3);
-
-        var r = await RunAsync();
-
-        Assert.Equal(1, r.WouldAssign);
+        Assert.Equal(1, r.Confident);
         Assert.Null(Prod(p).CategoryId);
-        Assert.Equal(CategorySuggestionStatus.Suggested, Sugg(p)!.Status);
+        var suggestion = Sugg(p)!;
+        Assert.Equal(CategorySuggestionStatus.Suggested, suggestion.Status);
+        Assert.Equal(_catX, suggestion.SuggestedCategoryId);
+        Assert.Equal("embedding-knn", suggestion.Method);
+        Assert.InRange(suggestion.Confidence, 0.85, 1.0);
+        Assert.Equal("fake-embed", suggestion.ModelName);
+        Assert.Equal("digest-1", suggestion.ModelDigest);
+        Assert.Null(suggestion.DecidedAt);
+
+        // A bulk apply is what assigns it, and it stays a model decision (it never trains the model).
+        await BulkApplyAsync(0.85);
+        Assert.Equal(_catX, Prod(p).CategoryId);
+        Assert.Equal("embedding-knn", Sugg(p)!.Method);
+        Assert.Equal(CategorySuggestionStatus.Applied, Sugg(p)!.Status);
     }
 
     [Fact]
@@ -195,7 +195,7 @@ public sealed class CategoryClassifierTests : IDisposable
 
         var r = await RunAsync();
 
-        Assert.Equal(0, r.AutoAssigned);
+        Assert.Equal(0, r.Confident);
         Assert.Equal(CategorySuggestionStatus.Suggested, Sugg(p)!.Status);
     }
 
@@ -205,6 +205,7 @@ public sealed class CategoryClassifierTests : IDisposable
         for (var i = 0; i < 3; i++) Labelled(_h.ChainA, _catX, i); // only 3 real labels, all near angle 0
         var first = Unlabelled(_h.ChainB, 1);
         await RunAsync();
+        await BulkApplyAsync(0.85);
         Assert.Equal(_catX, Prod(first).CategoryId);
 
         // A product far from the real labels but right next to the model-labelled one must get no vote from it.
@@ -219,7 +220,6 @@ public sealed class CategoryClassifierTests : IDisposable
     [Fact]
     public async Task RejectedSuggestions_AreNeverProposedAgain()
     {
-        _h.Options.Categories.DryRun = true;
         SeedClusters();
         var p = Unlabelled(_h.ChainC, 3);
         await RunAsync();
@@ -227,10 +227,9 @@ public sealed class CategoryClassifierTests : IDisposable
             await scope.ServiceProvider.GetRequiredService<CategoryClassifier>()
                 .RejectAsync(Sugg(p)!.Id, TestContext.Current.CancellationToken);
 
-        _h.Options.Categories.DryRun = false;
         var r = await RunAsync();
 
-        Assert.Equal(0, r.AutoAssigned);
+        Assert.Equal(0, r.Confident);
         Assert.Null(Prod(p).CategoryId);
         Assert.Equal(CategorySuggestionStatus.Rejected, Sugg(p)!.Status);
     }
@@ -238,7 +237,6 @@ public sealed class CategoryClassifierTests : IDisposable
     [Fact]
     public async Task HumanAccept_SetsTheCategory_AndUndoRestoresIt()
     {
-        _h.Options.Categories.DryRun = true;
         SeedClusters();
         var p = Unlabelled(_h.ChainC, 3);
         await RunAsync();
@@ -260,7 +258,6 @@ public sealed class CategoryClassifierTests : IDisposable
     [Fact]
     public async Task HumanAccept_IsRefused_IfTheProductWasCategorisedInTheMeantime()
     {
-        _h.Options.Categories.DryRun = true;
         SeedClusters();
         var p = Unlabelled(_h.ChainC, 3);
         await RunAsync();
@@ -277,7 +274,7 @@ public sealed class CategoryClassifierTests : IDisposable
     // --- store-category strings, decided once ---------------------------------------------------------
 
     [Fact]
-    public async Task HomogeneousStoreString_IsDecidedOnce_CachedAndReusedForNewProducts()
+    public async Task HomogeneousStoreString_IsProposedOnce_AndOnceYouAcceptIt_ReusedForNewProducts()
     {
         SeedClusters();
         var group = Enumerable.Range(0, 6)
@@ -285,21 +282,23 @@ public sealed class CategoryClassifierTests : IDisposable
 
         var r = await RunAsync();
 
-        Assert.Equal(1, r.StringsDecided);
+        Assert.Equal(1, r.StringsProposed);
         var decision = _h.Query(db => db.CategoryStringDecisions.AsNoTracking().Single());
         Assert.Equal("produtos lacteos", decision.RawString);
         Assert.Equal(_catX, decision.CategoryId);
-        Assert.Equal(CategorySuggestionStatus.Applied, decision.Status);
+        Assert.Equal(CategorySuggestionStatus.Suggested, decision.Status);   // a proposal: nothing is categorised yet
         Assert.Equal(6, decision.Support);
-        Assert.All(group, g =>
-        {
-            Assert.Equal(_catX, Prod(g).CategoryId);
-            Assert.Equal("string-cache", Sugg(g)!.Method);
-        });
+        Assert.All(group, g => Assert.Null(Prod(g).CategoryId));
 
-        // A new product with the same string reuses the cached decision, even though its own vector looks odd.
+        using (var scope = _h.Services.CreateScope())
+            Assert.True((await scope.ServiceProvider.GetRequiredService<CategoryClassifier>()
+                .AcceptStringAsync(decision.Id, TestContext.Current.CancellationToken)).Ok);
+        Assert.All(group, g => Assert.Equal(_catX, Prod(g).CategoryId));
+
+        // A new product with the same string reuses the decision you accepted, even though its own vector looks odd.
         var later = Unlabelled(_h.ChainC, 45, raw: "Produtos lácteos", name: "Estranho");
-        await RunAsync();
+        var second = await RunAsync();
+        Assert.Equal(1, second.AssignedByStoreCategory);
         Assert.Equal(_catX, Prod(later).CategoryId);
         Assert.Equal("string-cache", Sugg(later)!.Method);
         Assert.Equal(1, _h.Query(db => db.CategoryStringDecisions.Count()));
@@ -317,8 +316,9 @@ public sealed class CategoryClassifierTests : IDisposable
 
         Assert.Equal(1, r.StringsMixed);
         Assert.Equal(CategorySuggestionStatus.Mixed, _h.Query(db => db.CategoryStringDecisions.Single()).Status);
-        Assert.All(milk, m => Assert.Equal(_catX, Prod(m).CategoryId));
-        Assert.All(juice, j => Assert.Equal(_catY, Prod(j).CategoryId));
+        Assert.All(milk, m => Assert.Equal(_catX, Sugg(m)!.SuggestedCategoryId));
+        Assert.All(juice, j => Assert.Equal(_catY, Sugg(j)!.SuggestedCategoryId));
+        Assert.All(milk.Concat(juice), x => Assert.Null(Prod(x).CategoryId));     // suggestions only
     }
 
     [Fact]
@@ -330,14 +330,13 @@ public sealed class CategoryClassifierTests : IDisposable
 
         var r = await RunAsync();
 
-        Assert.Equal(0, r.StringsDecided + r.StringsMixed);
+        Assert.Equal(0, r.StringsProposed + r.StringsMixed);
         Assert.Empty(_h.Query(db => db.CategoryStringDecisions.ToList()));
     }
 
     [Fact]
-    public async Task DryRun_StringDecision_IsASuggestion_AndAcceptingItCategorisesEveryProductWithTheString()
+    public async Task StringDecision_IsASuggestion_AndAcceptingItCategorisesEveryProductWithTheString()
     {
-        _h.Options.Categories.DryRun = true;
         SeedClusters();
         var group = Enumerable.Range(0, 6)
             .Select(i => Unlabelled(_h.ChainC, 2 + i * 0.5, raw: "laticinios", name: $"L{i}")).ToList();

@@ -4,13 +4,13 @@ using Savvori.Shared;
 
 namespace Savvori.WebApi.Modeling;
 
-public enum MatchTier { AutoAccept, Judge, Review, Leave }
+public enum MatchTier { Confident, Judge, Review, Leave }
 
 /// <summary>The tier rules of the matching pipeline (pure; all thresholds come from configuration).</summary>
 public static class MatchPolicy
 {
     /// <summary>
-    /// Tier B: cosine at or above the accept threshold (stricter when a size is unknown) AND the brand check passed.
+    /// Tier B (confident, offered to bulk apply): cosine at or above the accept threshold (stricter when a size is unknown) AND the brand check passed.
     /// Tier C: from the judge lower bound up, including confident pairs whose brand is unknown.
     /// Tier D: from ReviewMinCosine up. Anything lower stays an unqueued proposal.
     /// </summary>
@@ -18,7 +18,7 @@ public static class MatchPolicy
     {
         var accept = sizeKnown ? o.AcceptCosineSizeKnown : o.AcceptCosineSizeUnknown;
         var judgeLower = sizeKnown ? o.JudgeLowerSizeKnown : o.JudgeLowerSizeUnknown;
-        if (cosine >= accept && (brand == CandidateBrandCheck.Ok || !o.AutoAcceptRequiresBrandOk)) return MatchTier.AutoAccept;
+        if (cosine >= accept && (brand == CandidateBrandCheck.Ok || !o.AutoAcceptRequiresBrandOk)) return MatchTier.Confident;
         if (cosine >= judgeLower) return MatchTier.Judge;
         if (cosine >= o.ReviewMinCosine) return MatchTier.Review;
         return MatchTier.Leave;

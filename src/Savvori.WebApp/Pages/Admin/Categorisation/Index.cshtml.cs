@@ -87,9 +87,9 @@ public class CategorisationIndexModel(SavvoriApiClient api) : PageModel
         else if (r.SkippedReason is not null) TempData["Error"] = $"Classifier did not run: {r.SkippedReason}";
         else
             TempData["Success"] =
-                $"{(r.DryRun ? "Dry run" : "Run")}: {r.Targets} uncategorised products, " +
-                $"{(r.DryRun ? $"{r.WouldAssign} would be assigned" : $"{r.AutoAssigned} assigned")}, " +
-                $"{r.ToReview} to review, {r.NoSuggestion} without a confident answer, {r.StringsDecided} store categories decided as a whole.";
+                $"{r.Targets} uncategorised products: {r.Confident} confident suggestions, " +
+                $"{r.ToReview} to review, {r.NoSuggestion} without a confident answer, {r.StringsProposed} whole store categories proposed" +
+                (r.AssignedByStoreCategory > 0 ? $", {r.AssignedByStoreCategory} categorised through store categories you accepted." : ".");
         return RedirectToPage(new { filter = Filter });
     }
 

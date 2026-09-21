@@ -169,7 +169,6 @@ public record RematchResponse(int Matched, int Remaining);
 
 // ===== Admin Matching (review queue) =====
 public record MatchingSummaryDto(
-    bool DryRun,
     List<MatchStatusCountDto> ByStatus,
     List<MatchMethodCountDto> AppliedByMethod,
     int MultiChainCanonicals);
@@ -185,12 +184,11 @@ public record ReviewItemDto(
 public record ReviewPageDto(int Page, int PageSize, int Total, int TotalPages, List<ReviewItemDto> Items);
 
 public record MatchingRunDto(
-    string? SkippedReason, bool DryRun, int Evaluated, int AutoAccepted, int WouldAccept,
-    int JudgeQueued, int SentToReview, int Blocked, int Left);
+    string? SkippedReason, int Evaluated, int Suggested, int JudgeQueued, int SentToReview, int Left);
 
 // ===== Admin Categorisation (model-suggested categories) =====
 public record CategorisationSummaryDto(
-    bool DryRun, int Uncategorised, List<MatchStatusCountDto> ByStatus, List<MatchStatusCountDto> StringsByStatus);
+    int Uncategorised, List<MatchStatusCountDto> ByStatus, List<MatchStatusCountDto> StringsByStatus);
 
 public record CategorySuggestionDto(
     Guid Id, Guid ProductId, string ProductName, string? Brand, string? ImageUrl, string? RawCategory,
@@ -201,8 +199,8 @@ public record CategorySuggestionPageDto(int Page, int PageSize, int Total, int T
 public record CategoryStringProposalDto(Guid Id, string RawString, int Support, double Confidence, string Category);
 
 public record ClassifierRunDto(
-    string? SkippedReason, bool DryRun, int Targets, int AutoAssigned, int WouldAssign, int ToReview,
-    int NoSuggestion, int StringsDecided, int StringsMixed);
+    string? SkippedReason, int Targets, int AssignedByStoreCategory, int Confident, int ToReview,
+    int NoSuggestion, int StringsProposed, int StringsMixed);
 
 public record MatchReportDto(
     int TotalStoreProducts,

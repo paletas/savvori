@@ -128,7 +128,7 @@ The `/api/shoppinglists/{id}/optimize` endpoint supports four modes via `?mode=`
 - Bulk apply: a "Bulk apply" tab takes every confident suggestion above a chosen cosine in one undoable run, after you spot-check a random sample. The judge's answers are never bulk-applied. Category suggestions have the same bulk tab.
 - Admin > Match review lists cross-chain matches proposed by the model that need a decision: both listings side by side with image, size, price and chain, the similarity score, flags, the judge's answer and any safety warning. Actions: Same product, Different variant, Not the same, and Undo for applied matches. Rejected and different-variant pairs are never proposed again.
 - A match that would put two prices from the same chain (or two different EANs) on one product is never applied automatically; it needs an explicit confirmation.
-- The first matching run is a dry run: proposals appear in the review queue and nothing is linked until the dry-run setting is turned off.
+- The model never links products by itself: it only suggests. Every merge is a human action (one pair at a time, or a bulk apply of the confident suggestions) and can be undone. There is no dry-run setting.
 - Admin > Mapping shows store products by match method and how many products are priced by two or more chains.
 
 ### Taxonomy v2
@@ -136,7 +136,7 @@ The `/api/shoppinglists/{id}/optimize` endpoint supports four modes via `?mode=`
 
 ### Category suggestions (optional feature)
 - Admin > Category suggestions lists categories predicted for products that have none, with the confidence and the runner-up category. Actions: Accept, Reject (never proposed again) and Undo for categories the model assigned. A store category that maps uniformly to one category (for example a store's "bolachas") is offered once as "Apply to all".
-- Existing categories are never changed. The first run is a dry run: predictions wait in the queue until the dry-run setting is turned off. When the model is unavailable, categories keep coming from the built-in rules only.
+- Existing categories are never changed. The model never assigns a category by itself (the keyword rules still do): predictions wait in the queue until you accept them one by one, in bulk, or as a whole store category. When the model is unavailable, categories keep coming from the built-in rules only.
 
 ## 10. Web Application (Frontend UI)
 

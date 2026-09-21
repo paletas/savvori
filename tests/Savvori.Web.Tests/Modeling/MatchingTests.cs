@@ -11,15 +11,15 @@ public sealed class MatchPolicyTests
     private static readonly ModelOptions.MatchingOptions O = new();
 
     [Theory]
-    [InlineData(0.95, true, CandidateBrandCheck.Ok, MatchTier.AutoAccept)]
-    [InlineData(0.90, true, CandidateBrandCheck.Ok, MatchTier.AutoAccept)]
+    [InlineData(0.95, true, CandidateBrandCheck.Ok, MatchTier.Confident)]
+    [InlineData(0.90, true, CandidateBrandCheck.Ok, MatchTier.Confident)]
     [InlineData(0.899, true, CandidateBrandCheck.Ok, MatchTier.Judge)]
     [InlineData(0.80, true, CandidateBrandCheck.Ok, MatchTier.Judge)]
     [InlineData(0.799, true, CandidateBrandCheck.Ok, MatchTier.Review)]
     [InlineData(0.70, true, CandidateBrandCheck.Ok, MatchTier.Review)]
     [InlineData(0.699, true, CandidateBrandCheck.Ok, MatchTier.Leave)]
     [InlineData(0.94, false, CandidateBrandCheck.Ok, MatchTier.Judge)]        // size unknown needs 0.95
-    [InlineData(0.95, false, CandidateBrandCheck.Ok, MatchTier.AutoAccept)]
+    [InlineData(0.95, false, CandidateBrandCheck.Ok, MatchTier.Confident)]
     [InlineData(0.85, false, CandidateBrandCheck.Ok, MatchTier.Judge)]
     [InlineData(0.84, false, CandidateBrandCheck.Ok, MatchTier.Review)]
     [InlineData(0.99, true, CandidateBrandCheck.Unknown, MatchTier.Judge)]    // brand not confirmed: never cosine-only
@@ -31,21 +31,34 @@ public sealed class MatchPolicyTests
     {
         var o = new ModelOptions.MatchingOptions { AcceptCosineSizeKnown = 0.97, AutoAcceptRequiresBrandOk = false };
         Assert.Equal(MatchTier.Judge, MatchPolicy.Decide(0.95, true, CandidateBrandCheck.Ok, o));
-        Assert.Equal(MatchTier.AutoAccept, MatchPolicy.Decide(0.98, true, CandidateBrandCheck.Unknown, o));
+        Assert.Equal(MatchTier.Confident, MatchPolicy.Decide(0.98, true, CandidateBrandCheck.Unknown, o));
     }
 }
 
 public sealed class MatchingTests : IDisposable
 {
     private readonly PipelineHost _h = new();
-    public MatchingTests()
-    {
-        _h.Options.Matching.DryRun = false;             // most tests exercise applying
-        _h.Options.Matching.AutoApplyJudgeYes = true;   // opt in: the default keeps judge answers in the review queue
-    }
     public void Dispose() => _h.Dispose();
 
     private Task DrainAsync() => _h.DrainAsync();
+
+    /// <summary>What a person does with the confident suggestions: one bulk apply at the default threshold.</summary>
+    private async Task<BulkBatch> BulkApplyAsync(double min = 0.90)
+    {
+        using var scope = _h.Services.CreateScope();
+        var svc = scope.ServiceProvider.GetRequiredService<MatchBulkService>();
+        var ct = TestContext.Current.CancellationToken;
+        var batch = await svc.CreateAsync(min, ct: ct);
+        await svc.RunApplyAsync(batch.Id, ct: ct);
+        return await scope.ServiceProvider.GetRequiredService<SavvoriDbContext>().BulkBatches.AsNoTracking().SingleAsync(b => b.Id == batch.Id, ct);
+    }
+
+    /// <summary>The nightly run, then a person bulk-applying its confident suggestions.</summary>
+    private async Task<BulkBatch> RunThenBulkApplyAsync()
+    {
+        await _h.RunMatchingAsync();
+        return await BulkApplyAsync();
+    }
 
     [Fact]
     public async Task FeatureOff_DecidesNothing()
@@ -79,16 +92,15 @@ public sealed class MatchingTests : IDisposable
     }
 
     [Fact]
-    public async Task DryRun_IsTheDefault_AndOnlyWritesProposalsToTheReviewQueue()
+    public async Task TheRun_NeverLinksAnything_ItOnlyQueuesSuggestions()
     {
-        _h.Options.Matching.DryRun = true;
         var (a, ca) = _h.AddListed(_h.ChainA, "Leite");
         var (b, cb) = _h.AddListed(_h.ChainB, "Leite");
         var c = _h.AddCandidate(a, b, 0.97);
 
         var r = await _h.RunMatchingAsync();
 
-        Assert.Equal(1, r.WouldAccept);
+        Assert.Equal(1, r.Suggested);
         var cand = _h.Candidate(c);
         Assert.Equal(CandidateStatus.NeedsReview, cand.Status);
         Assert.Equal("embedding-cosine", cand.Suggestion);
@@ -98,10 +110,7 @@ public sealed class MatchingTests : IDisposable
     }
 
     [Fact]
-    public void ModelOptions_DryRunDefaultsToTrue() => Assert.True(new ModelOptions().Matching.DryRun);
-
-    [Fact]
-    public async Task TierB_HighCosineWithBrandOk_MergesCanonicals_RecordsMethodAndKeepsPrices()
+    public async Task TierB_HighCosineWithBrandOk_IsSuggested_AndABulkApplyThenMergesCanonicals_RecordsMethodAndKeepsPrices()
     {
         var (a, ca) = _h.AddListed(_h.ChainA, "Leite Meio Gordo");
         var (b, cb) = _h.AddListed(_h.ChainB, "Leite Gordo Meio");
@@ -109,7 +118,13 @@ public sealed class MatchingTests : IDisposable
 
         var r = await _h.RunMatchingAsync();
 
-        Assert.Equal(1, r.AutoAccepted);
+        Assert.Equal(1, r.Suggested);
+        Assert.Equal(CandidateStatus.NeedsReview, _h.Candidate(c).Status);
+        Assert.Equal("embedding-cosine", _h.Candidate(c).Suggestion);
+        Assert.NotEqual(_h.Sp(a).CanonicalProductId, _h.Sp(b).CanonicalProductId);   // nothing linked yet
+
+        Assert.Equal(1, (await BulkApplyAsync()).Applied);
+
         var spa = _h.Sp(a);
         var spb = _h.Sp(b);
         Assert.Equal(spa.CanonicalProductId, spb.CanonicalProductId);
@@ -135,14 +150,15 @@ public sealed class MatchingTests : IDisposable
 
         var r = await _h.RunMatchingAsync();
 
-        Assert.Equal(1, r.AutoAccepted);
+        Assert.Equal(1, r.Suggested);
         Assert.Equal(1, r.JudgeQueued);
         Assert.Equal(CandidateStatus.PendingJudge, _h.Candidate(mid).Status);
-        Assert.Equal(CandidateStatus.Applied, _h.Candidate(high).Status);
+        Assert.Equal(CandidateStatus.NeedsReview, _h.Candidate(high).Status);
+        Assert.Equal("embedding-cosine", _h.Candidate(high).Suggestion);
     }
 
     [Fact]
-    public async Task UnknownBrand_IsNeverAutoAcceptedOnCosineAlone()
+    public async Task UnknownBrand_IsNeverConfidentOnCosineAlone()
     {
         var (a, _) = _h.AddListed(_h.ChainA, "Arroz", brand: null);
         var (b, _) = _h.AddListed(_h.ChainB, "Arroz");
@@ -179,7 +195,7 @@ public sealed class MatchingTests : IDisposable
     }
 
     [Fact]
-    public async Task Judge_Yes_AppliesTheMatchWithMethodAndModel()
+    public async Task Judge_Yes_IsOnlyASuggestion_NothingIsMerged_AndBulkApplyNeverTakesIt()
     {
         var (c, a, b) = JudgeCase();
         _h.Judge.Verdict = JudgeVerdict.Yes;
@@ -188,11 +204,14 @@ public sealed class MatchingTests : IDisposable
         await DrainAsync();
 
         var cand = _h.Candidate(c);
-        Assert.Equal(CandidateStatus.Applied, cand.Status);
-        Assert.Equal("embedding-judge", cand.Method);
+        Assert.Equal(CandidateStatus.NeedsReview, cand.Status);
+        Assert.Equal("embedding-judge", cand.Suggestion);
         Assert.Equal(JudgeVerdict.Yes, cand.JudgeVerdict);
         Assert.Equal("fake-judge", cand.JudgeModel);
-        Assert.Equal(_h.Sp(a).CanonicalProductId, _h.Sp(b).CanonicalProductId);
+        Assert.NotEqual(_h.Sp(a).CanonicalProductId, _h.Sp(b).CanonicalProductId);
+
+        Assert.Equal(0, (await BulkApplyAsync(0.5)).Total);   // a judge answer is never bulk-applied
+        Assert.NotEqual(_h.Sp(a).CanonicalProductId, _h.Sp(b).CanonicalProductId);
     }
 
     [Theory]
@@ -233,7 +252,8 @@ public sealed class MatchingTests : IDisposable
         _h.Time.Advance(TimeSpan.FromMinutes(5));
         await DrainAsync(); // probe
         await DrainAsync();
-        Assert.Equal(CandidateStatus.Applied, _h.Candidate(c).Status);
+        Assert.Equal(CandidateStatus.NeedsReview, _h.Candidate(c).Status);
+        Assert.Equal(JudgeVerdict.Yes, _h.Candidate(c).JudgeVerdict);
     }
 
     [Fact]
@@ -250,29 +270,7 @@ public sealed class MatchingTests : IDisposable
     }
 
     [Fact]
-    public async Task DryRun_JudgeYes_BecomesASuggestion_ThenAppliesWithoutAskingTheJudgeAgain()
-    {
-        _h.Options.Matching.DryRun = true;
-        var (c, a, b) = JudgeCase();
-        _h.Judge.Verdict = JudgeVerdict.Yes;
-        await _h.RunMatchingAsync();
-        await DrainAsync();
-
-        var proposed = _h.Candidate(c);
-        Assert.Equal(CandidateStatus.NeedsReview, proposed.Status);
-        Assert.Equal("embedding-judge", proposed.Suggestion);
-        Assert.NotEqual(_h.Sp(a).CanonicalProductId, _h.Sp(b).CanonicalProductId);
-        var asked = _h.JudgeCalls.Calls;
-
-        _h.Options.Matching.DryRun = false;
-        await _h.RunMatchingAsync();
-
-        Assert.Equal(CandidateStatus.Applied, _h.Candidate(c).Status);
-        Assert.Equal(asked, _h.JudgeCalls.Calls);
-    }
-
-    [Fact]
-    public async Task Matching_IsIdempotent_NoDuplicateJudgeJobsAndNoReapply()
+    public async Task Matching_IsIdempotent_NoDuplicateJudgeJobsAndNoMerges()
     {
         var (_, _, _) = JudgeCase();
         var (a2, _) = _h.AddListed(_h.ChainA, "Leite");
@@ -283,8 +281,8 @@ public sealed class MatchingTests : IDisposable
         var second = await _h.RunMatchingAsync();
 
         Assert.Equal(1, _h.Query(db => db.ModelJobs.Count()));
-        Assert.Equal(1, _h.Query(db => db.MatchMerges.Count()));
-        Assert.Equal(0, second.AutoAccepted);
+        Assert.Equal(0, _h.Query(db => db.MatchMerges.Count()));   // a run never merges
+        Assert.Equal(0, second.Suggested);
     }
 
     [Fact]
@@ -303,7 +301,7 @@ public sealed class MatchingTests : IDisposable
     // --- Safe merging ------------------------------------------------------------------------------------
 
     [Fact]
-    public async Task SameChainOverlap_IsNotMergedAutomatically_ButANoteExplainsWhy_AndHumanCanForceIt()
+    public async Task SameChainOverlap_IsNotMergedByABulkApply_ButANoteExplainsWhy_AndHumanCanForceIt()
     {
         // canonical X = {a1 (chain A)}, canonical Y = {b1 (chain B), a2 (chain A)}: merging X and Y would put two chain-A prices on one product.
         var (a1, _) = _h.AddListed(_h.ChainA, "Leite 1L");
@@ -311,9 +309,9 @@ public sealed class MatchingTests : IDisposable
         var a2 = _h.AddProduct(_h.ChainA, "Leite 6x1L", "Marca", 6, ProductUnit.L, cy);
         var c = _h.AddCandidate(a1, b1, 0.97);
 
-        var r = await _h.RunMatchingAsync();
+        var batch = await RunThenBulkApplyAsync();
 
-        Assert.Equal(1, r.Blocked);
+        Assert.Equal(1, batch.Blocked);
         var cand = _h.Candidate(c);
         Assert.Equal(CandidateStatus.NeedsReview, cand.Status);
         Assert.Contains("same chain", cand.Note);
@@ -330,13 +328,13 @@ public sealed class MatchingTests : IDisposable
     }
 
     [Fact]
-    public async Task DifferentEans_BlockAnAutomaticMerge()
+    public async Task DifferentEans_BlockABulkMerge()
     {
         var (a, ca) = _h.AddListed(_h.ChainA, "Leite", ean: "5601234567890");
         var (b, cb) = _h.AddListed(_h.ChainB, "Leite", ean: "5609999999999");
         var c = _h.AddCandidate(a, b, 0.98);
 
-        await _h.RunMatchingAsync();
+        await RunThenBulkApplyAsync();
 
         var cand = _h.Candidate(c);
         Assert.Equal(CandidateStatus.NeedsReview, cand.Status);
@@ -346,14 +344,14 @@ public sealed class MatchingTests : IDisposable
     }
 
     [Fact]
-    public async Task ManualDecisions_AreNeverOverwrittenByAJob_ButAHumanCanStillDecide()
+    public async Task ManualDecisions_AreNeverOverwrittenByABulkApply_ButAHumanCanStillDecide()
     {
         var (a, ca) = _h.AddListed(_h.ChainA, "Leite");
         var (b, cb) = _h.AddListed(_h.ChainB, "Leite");
         _h.With(db => { var p = db.StoreProducts.Single(x => x.Id == b); p.MatchStatus = MatchStatus.ManualMatched; p.MatchMethod = "manual"; });
         var c = _h.AddCandidate(a, b, 0.99);
 
-        await _h.RunMatchingAsync();
+        await RunThenBulkApplyAsync();
 
         Assert.Equal(CandidateStatus.NeedsReview, _h.Candidate(c).Status);
         Assert.Equal(cb, _h.Sp(b).CanonicalProductId);
@@ -364,7 +362,7 @@ public sealed class MatchingTests : IDisposable
     }
 
     [Fact]
-    public async Task ManualProductInsideAGroup_ProtectsTheWholeGroupFromAutoMerge()
+    public async Task ManualProductInsideAGroup_ProtectsTheWholeGroupFromABulkMerge()
     {
         var (a, _) = _h.AddListed(_h.ChainA, "Leite");
         var (b, cb) = _h.AddListed(_h.ChainB, "Leite");
@@ -372,7 +370,7 @@ public sealed class MatchingTests : IDisposable
         _h.With(db => db.StoreProducts.Single(x => x.Id == c3).MatchStatus = MatchStatus.ManualMatched);
         var c = _h.AddCandidate(a, b, 0.99);
 
-        await _h.RunMatchingAsync();
+        await RunThenBulkApplyAsync();
 
         Assert.Equal(CandidateStatus.NeedsReview, _h.Candidate(c).Status);
         Assert.Equal(cb, _h.Sp(c3).CanonicalProductId);
@@ -388,11 +386,11 @@ public sealed class MatchingTests : IDisposable
         _h.AddCandidate(b, c3, 0.96);
         _h.AddCandidate(a, c3, 0.95);
 
-        var r = await _h.RunMatchingAsync();
+        var batch = await RunThenBulkApplyAsync();
 
         Assert.Equal(1, _h.Query(db => db.Products.Count()));
         Assert.Equal(1, _h.Query(db => db.StoreProducts.Select(s => s.CanonicalProductId).Distinct().Count()));
-        Assert.Equal(3, r.AutoAccepted); // the third pair is already together and is recorded as applied
+        Assert.Equal(3, batch.Applied); // the third pair is already together and is recorded as applied
         Assert.Equal(1, await _h.MultiChainAsync());
     }
 
@@ -414,7 +412,7 @@ public sealed class MatchingTests : IDisposable
         var c = _h.AddCandidate(a, b, 0.97);
         var before = (_h.Sp(a), _h.Sp(b));
 
-        await _h.RunMatchingAsync();
+        await RunThenBulkApplyAsync();
 
         // Whichever canonical survived, the list item follows the surviving product and the category is kept.
         var survivor = _h.Sp(a).CanonicalProductId!.Value;
@@ -443,7 +441,7 @@ public sealed class MatchingTests : IDisposable
         var (c3, _) = _h.AddListed(_h.ChainC, "Leite");
         var first = _h.AddCandidate(a, b, 0.97);
         _h.AddCandidate(b, c3, 0.96);
-        await _h.RunMatchingAsync();
+        await RunThenBulkApplyAsync();
         // Simulate the survivor of `first` having been retired by a later merge.
         _h.With(db => db.MatchMerges.Single(m => m.CandidateId == first).SurvivorProductId = Guid.NewGuid());
 

@@ -242,3 +242,19 @@ like any bulk run.
 **What this does not fix.** One-sided extra words that are real variants and not in the marker list ("cálcio",
 "baunilha", "cebola e alho") still pass; the unflagged remainder of the 0.85-0.90 band was about 80% right, so that band
 is not bulk-applied. The word lists were tuned on this one data set.
+
+## Addendum: the dry-run switch is gone (2026-09-22)
+
+`Model:Matching:DryRun`, `Model:Categories:DryRun` and `Model:Matching:AutoApplyJudgeYes` were removed. Sections above that
+describe them are history. The model now only ever suggests:
+
+- The matching run sorts candidates into the review queue (confident suggestions, judge jobs, review band); it never links
+  anything. A judge "yes" is a suggestion like any other.
+- The classifier writes suggestions only. The one thing that categorises without a fresh click is a whole store category
+  you already accepted ("Apply to all"), which then applies to new products carrying the same string.
+- Applying is a person's action: accept or reject per item, bulk apply (undoable in one step), or accepting a whole store
+  category. Bulk apply is the only automatic-path caller of `MatchApplier` and keeps `guardVariants`.
+
+This keeps the brief's guarantee ("a dry run is used for the first run") by making the model permanently more
+conservative than a dry run, instead of a switch someone can turn on. On the beta sample the category classifier was about
+28% wrong even at confidence 1.00, which is why it is never given the authority to assign on its own.

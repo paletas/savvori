@@ -149,25 +149,6 @@ public sealed class BulkMatchTests : IDisposable
         Assert.Equal("boom", stored.Error);
         Assert.False(runner.IsBusy);
     }
-
-    [Fact]
-    public async Task ARealRunWithTheDefaults_NeverAppliesAJudgeYes_ByItself()
-    {
-        Assert.False(new ModelOptions().Matching.AutoApplyJudgeYes);
-        _h.Options.Matching.DryRun = false;
-        var (a, _) = _h.AddListed(_h.ChainA, "Iogurte Grego Natural");
-        var (b, _) = _h.AddListed(_h.ChainB, "Iogurte Grego");
-        var c = _h.AddCandidate(a, b, 0.85);
-        _h.Judge.Verdict = JudgeVerdict.Yes;
-        await _h.RunMatchingAsync();
-        await _h.DrainAsync();
-
-        var cand = _h.Candidate(c);
-
-        Assert.Equal(CandidateStatus.NeedsReview, cand.Status);
-        Assert.Equal("embedding-judge", cand.Suggestion);
-        Assert.NotEqual(_h.Sp(a).CanonicalProductId, _h.Sp(b).CanonicalProductId);
-    }
 }
 
 public sealed class BulkCategoryTests : IDisposable

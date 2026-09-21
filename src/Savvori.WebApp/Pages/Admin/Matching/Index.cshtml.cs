@@ -85,9 +85,8 @@ public class MatchingIndexModel(SavvoriApiClient api) : PageModel
         else if (r.SkippedReason is not null) TempData["Error"] = $"Matching did not run: {r.SkippedReason}";
         else
             TempData["Success"] =
-                $"{(r.DryRun ? "Dry run" : "Run")}: {r.Evaluated} candidates evaluated, " +
-                $"{(r.DryRun ? $"{r.WouldAccept} would be accepted" : $"{r.AutoAccepted} accepted")}, " +
-                $"{r.JudgeQueued} sent to the judge, {r.SentToReview} to review, {r.Blocked} blocked by safety rules.";
+                $"{r.Evaluated} new candidates sorted: {r.Suggested} confident suggestions, " +
+                $"{r.SentToReview} to review, {r.JudgeQueued} sent to the judge.";
         return RedirectToPage(new { filter = Filter });
     }
 
