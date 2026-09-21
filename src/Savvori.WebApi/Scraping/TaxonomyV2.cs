@@ -123,8 +123,11 @@ public static class TaxonomyV2
     public static IReadOnlyList<SplitRule> Seeds { get; } =
     [
         R("pet-supplies", "areia para gatos", "areia higienica", "coleira", "aquario", "comida para passaros", "comida para peixes"),
-        R("cat-food", "comida para gatos", "comida para gato", "racao para gatos", "alimento para gatos", "snack para gatos", "whiskas", "sheba"),
-        R("dog-food", "comida para caes", "comida para cao", "racao para caes", "alimento para caes", "snack para caes", "pedigree", "chappi"),
+        R("cat-food", "comida para gatos", "comida para gato", "comida humida para gato", "comida humida gato", "comida humido gato",
+            "racao para gatos", "racao para gato", "racao gato", "alimento para gatos", "snack para gatos", "whiskas", "sheba"),
+        R("dog-food", "comida para caes", "comida para cao", "comida humida para cao", "comida humida cao", "comida humido cao",
+            "racao para caes", "racao para cao", "racao cao", "alimento para caes", "snack para caes", "pedigree", "chappi"),
+        R("nappies-baby-care", "fralda", "fraldas", "fralda cueca", "toalhitas bebe", "pampers", "dodot", "huggies"),
         R("sun-care", "protetor solar", "protecao solar", "bronzeador", "after sun", "spf"),
         R("skincare-cosmetics", "creme facial", "creme de rosto", "serum", "maquilhagem", "batom", "rimel", "desmaquilhante", "creme de maos", "locao corporal"),
         R("energy-sports-drinks", "bebida energetica", "red bull", "monster energy", "isotonica", "gatorade", "powerade"),
@@ -143,7 +146,9 @@ public static class TaxonomyV2
         R("flour-baking", "farinha", "fermento", "pao ralado", "preparado para bolos", "levedura", "maizena"),
         R("ice-cream", "gelado", "gelados", "sorvete", "cornetto", "magnum"),
         R("potatoes-fries", "batatas pre fritas", "batatas congeladas", "pre frito"),
-        R("baby-gear-furniture", "berco", "carrinho de bebe", "cadeira auto", "cadeira de bebe", "alcofa", "andarilho"),
+        R("baby-gear-furniture", "berco", "carrinho de bebe", "cadeira auto", "cadeira de bebe", "alcofa", "andarilho",
+            "cama de grades", "comoda", "chupeta", "chupetas", "conjunto de rua", "assento auto", "cadeira de repouso",
+            "saco de dormir", "tetina", "tetinas", "bacio"),
         R("kitchen-dining", "frigideira", "tacho", "panela", "talheres", "tupperware", "caixa hermetica", "tabuleiro", "cafeteira"),
         R("stationery-books", "livro", "caderno", "caneta", "lapis", "esferografica", "agrafador", "cola escolar", "papel a4"),
     ];

@@ -173,6 +173,32 @@ public sealed class TaxonomyMigrationService(SavvoriDbContext db, TimeProvider t
         return new(true, null, plan with { V2Active = true });
     }
 
+    /// <summary>
+    /// Runs the seed rules again over products that still have no category (the rules grow after the migration was
+    /// applied). Never touches a product that has a category. A pending model suggestion for a product that gets a
+    /// category here is dropped, since it is moot. Returns how many products were seeded.
+    /// </summary>
+    public async Task<int> ReseedAsync(CancellationToken ct = default)
+    {
+        if (!await IsV2ActiveAsync(ct)) return 0;
+        var slugToId = await db.ProductCategories.AsNoTracking().ToDictionaryAsync(c => c.Slug, c => c.Id, ct);
+        var seeded = 0;
+        var seededIds = new List<Guid>();
+        foreach (var p in await db.Products.Where(p => p.CategoryId == null).ToListAsync(ct))
+            if (TaxonomyV2.Seed(p.Name) is { } seed && slugToId.TryGetValue(seed, out var id))
+            {
+                p.CategoryId = id;
+                p.CategorySource = SourceSeed;
+                seededIds.Add(p.Id);
+                seeded++;
+            }
+        foreach (var chunk in seededIds.Chunk(500))
+            db.CategorySuggestions.RemoveRange(await db.CategorySuggestions
+                .Where(s => chunk.Contains(s.ProductId) && s.Status == CategorySuggestionStatus.Suggested).ToListAsync(ct));
+        await db.SaveChangesAsync(ct);
+        return seeded;
+    }
+
     /// <summary>Creates the v2 aisles and categories. Slugs shared with v1 reuse the existing row (renamed and re-parented).</summary>
     private async Task SeedV2CategoriesAsync(CancellationToken ct)
     {

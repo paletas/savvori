@@ -31,6 +31,11 @@ public class TaxonomyAdminController(TaxonomyMigrationService migration) : Contr
         return reverted ? Ok(new { Restored = restored }) : Conflict(new { Message = reason });
     }
 
+    /// <summary>POST /api/admin/taxonomy/reseed — applies the current seed rules to products that still have no category.</summary>
+    [HttpPost("reseed")]
+    public async Task<IActionResult> Reseed(CancellationToken ct = default) =>
+        Ok(new { Seeded = await migration.ReseedAsync(ct) });
+
     /// <summary>POST /api/admin/taxonomy/backfill-tags — adds missing bio / sem-lactose / sem-gluten / vegan / sem-acucar tags.</summary>
     [HttpPost("backfill-tags")]
     public async Task<IActionResult> BackfillTags(CancellationToken ct = default) =>

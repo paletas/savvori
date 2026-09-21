@@ -141,6 +141,20 @@ public sealed class TaxonomySeedRuleTests
     [InlineData("Carrinho de Bebé Duplo", "baby-gear-furniture")]
     [InlineData("Gelado de Baunilha 1L", "ice-cream")]
     [InlineData("Vinho Tinto Douro", "wine")]
+    [InlineData("COMIDA HÚMIDA PARA GATO FELIX SOUP PEIXES 6X48G", "cat-food")]
+    [InlineData("RAÇÃO GATO BREKKIES PEIXE 3.5KG", "cat-food")]
+    [InlineData("COMIDA HÚMIDA CÃO SCHESIR PEIXE OCEANO/ATUM 85", "dog-food")]
+    [InlineData("COMIDA HÚMIDO CÃO PRO PLAN ALL SIZE PEIXE 400G", "dog-food")]
+    [InlineData("RAÇÃO CÃO MAXI PUPPY ADVANCE FRANGO/ ARROZ 3K", "dog-food")]
+    [InlineData("RAÇÃO PARA CÃO AVENAL AVES E ARROZ 15KG", "dog-food")]
+    [InlineData("Fraldas Bebé Seco 9-14kg T4 Dodot", "nappies-baby-care")]
+    [InlineData("Fralda Cueca Aqua 12-17Kg T5 Continente do Bebé", "nappies-baby-care")]
+    [InlineData("Toalhitas Bebé Pure Aqua Dodot", "nappies-baby-care")]
+    [InlineData("Chupetas 0-6M Confort Silicone Bebeconfort", "baby-gear-furniture")]
+    [InlineData("Cama de Grades Madeira 125x66cm Nuvem Neli Twinkle", "baby-gear-furniture")]
+    [InlineData("Cómoda 3 Gavetas 84x45x87cm Amélia", "baby-gear-furniture")]
+    [InlineData("Saco de Dormir Animais da Selva M Twinko", "baby-gear-furniture")]
+    [InlineData("Conjunto de Rua Duo Bege Biarritz Asalvo", "baby-gear-furniture")]
     public void Seed_PlacesTheNewV2Categories_ByName(string name, string expected) =>
         Assert.Equal(expected, TaxonomyV2.Seed(name));
 
@@ -150,6 +164,8 @@ public sealed class TaxonomySeedRuleTests
     [InlineData("Coca-Cola Zero")]                   // "cola" must not fire the stationery glue rule
     [InlineData("Leite Meio Gordo")]
     [InlineData("Produto Misterioso")]
+    [InlineData("Toalhitas Desmaquilhantes")]        // wipes without "bebe" are not nappy-aisle wipes
+    [InlineData("Leite Para Cão Royal Canin 400g")]  // not food: left to a human
     public void Seed_DoesNotGuess_OnAmbiguousWords(string name) => Assert.Null(TaxonomyV2.Seed(name));
 
     [Fact]
@@ -319,6 +335,41 @@ public sealed class TaxonomyMigrationTests : IAsyncLifetime
         Assert.Null((await Get(dog)).CategoryId);                     // back to uncategorised
         Assert.Null((await Get(dog)).CategorySource);
         Assert.Equal(V1("carne"), (await Get(leftBehind)).CategoryId);
+    }
+
+    [Fact]
+    public async Task Reseed_CategorisesOnlyProductsWithNoCategory_DropsTheirPendingSuggestion_AndRevertUndoesIt()
+    {
+        await AddProduct("Leite Meio Gordo", "leite");
+        await _svc.ApplyAsync(Ct);
+        var nappies = await AddProduct("Fraldas Bebé Seco 9-14kg T4 Dodot", null, raw: "Fraldas T3 e T4");
+        var already = await AddProduct("Fraldas de Pano", "leite"); // has a category: never touched
+        var bath = _db.ProductCategories.Single(c => c.Slug == "bath-body").Id;
+        _db.CategorySuggestions.Add(new CategorySuggestion
+        {
+            Id = Guid.NewGuid(), ProductId = nappies, SuggestedCategoryId = bath, Confidence = 0.75,
+            Status = CategorySuggestionStatus.Suggested, Method = "embedding-knn", ModelName = "m", ModelDigest = "d", CreatedAt = DateTime.UtcNow
+        });
+        await _db.SaveChangesAsync(Ct);
+
+        Assert.Equal(1, await _svc.ReseedAsync(Ct));
+
+        Assert.Equal("nappies-baby-care", await SlugOf((await Get(nappies)).CategoryId));
+        Assert.Equal("taxonomy-seed", (await Get(nappies)).CategorySource);
+        Assert.Equal(V1("leite"), (await Get(already)).CategoryId);
+        Assert.False(await _db.CategorySuggestions.AnyAsync(s => s.ProductId == nappies, Ct));
+        Assert.Equal(0, await _svc.ReseedAsync(Ct)); // idempotent
+
+        await _svc.RevertAsync(Ct);
+        Assert.Null((await Get(nappies)).CategoryId);
+    }
+
+    [Fact]
+    public async Task Reseed_DoesNothing_BeforeTheMigrationIsApplied()
+    {
+        var p = await AddProduct("Fraldas Bebé Seco 9-14kg T4 Dodot", null);
+        Assert.Equal(0, await _svc.ReseedAsync(Ct));
+        Assert.Null((await Get(p)).CategoryId);
     }
 
     [Fact]
