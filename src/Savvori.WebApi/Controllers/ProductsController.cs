@@ -13,9 +13,12 @@ public class ProductsController : ControllerBase
 {
     private readonly SavvoriDbContext _db;
 
-    public ProductsController(SavvoriDbContext db)
+    private readonly Scraping.ICategoryLocalizer _localizer;
+
+    public ProductsController(SavvoriDbContext db, Scraping.ICategoryLocalizer localizer)
     {
         _db = db;
+        _localizer = localizer;
     }
 
     /// <summary>
@@ -134,7 +137,9 @@ public class ProductsController : ControllerBase
             product.Brand,
             product.Category,
             product.CategoryId,
-            CategoryName = product.ProductCategory?.Name,
+            CategoryName = product.CategoryId is { } catId
+                ? (await _localizer.GetNamesAsync(_localizer.ResolveLanguage(Request), ct)).GetValueOrDefault(catId, product.ProductCategory?.Name ?? string.Empty)
+                : null,
             product.EAN,
             product.Unit,
             product.SizeValue,

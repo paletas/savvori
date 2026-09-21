@@ -179,11 +179,12 @@ public sealed class TaxonomyMigrationService(SavvoriDbContext db, TimeProvider t
         var existing = await db.ProductCategories.ToDictionaryAsync(c => c.Slug, ct);
         foreach (var aisle in TaxonomyV2Data.Aisles)
         {
-            var aisleRow = Upsert(existing, aisle.Slug, aisle.Name, null);
+            var aisleRow = Upsert(existing, aisle.Slug, aisle.NamePt, null);
             foreach (var leaf in aisle.Leaves)
-                Upsert(existing, leaf.Slug, leaf.Name, aisleRow);
+                Upsert(existing, leaf.Slug, leaf.NamePt, aisleRow);
         }
         await db.SaveChangesAsync(ct);
+        await CategoryTranslations.SeedAsync(db, ct); // English names for the new categories
     }
 
     private ProductCategory Upsert(Dictionary<string, ProductCategory> existing, string slug, string name, ProductCategory? parent)

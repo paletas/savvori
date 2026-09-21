@@ -36,48 +36,48 @@ public sealed class TaxonomyV2DataTests
     public void ThePrototypesGapCategories_ExistInV2()
     {
         var leaves = TaxonomyV2Data.Aisles.SelectMany(a => a.Leaves.Select(l => l.Slug)).ToHashSet();
-        foreach (var gap in new[] { "comida-caes", "comida-gatos", "protecao-solar", "cosmetica-rosto-corpo", "cozinha-mesa",
-                     "papelaria-livros", "puericultura-mobiliario", "vinho", "cocktails", "cafe", "cha-infusoes", "chocolate", "snacks-salgados" })
+        foreach (var gap in new[] { "dog-food", "cat-food", "sun-care", "skincare-cosmetics", "kitchen-dining",
+                     "stationery-books", "baby-gear-furniture", "wine", "cocktails-mixed", "coffee", "tea-infusions", "chocolate", "savoury-snacks" })
             Assert.Contains(gap, leaves);
     }
 
     [Theory]
-    [InlineData("carne", "Bife de Vaca Maturada 500g", "carne-vaca")]
-    [InlineData("carne", "Hambúrguer de Vaca 2x100g", "carne-picada-preparados")] // preparados beat vaca
-    [InlineData("carne", "Peito de Frango Fatiado", "aves")]
-    [InlineData("carne", "Entremeada de Porco", "carne-porco")]
-    [InlineData("peixe-marisco", "Camarão Cozido 200g", "marisco")]
-    [InlineData("peixe-marisco", "Bacalhau Graúdo", "bacalhau-salgados")]
-    [InlineData("charcutaria", "Presunto Fatiado", "fiambre-presunto")]
-    [InlineData("charcutaria", "Paio de Lombo", "fiambre-presunto")]
-    [InlineData("charcutaria", "Chouriço de Carne", "enchidos")]
-    [InlineData("conservas", "Atum em Azeite 3x80g", "conservas-peixe")]
-    [InlineData("conservas", "Grão-de-bico Cozido", "conservas-vegetais")]
-    [InlineData("bolachas", "Bolacha Maria Dourada", "bolachas-simples")]
-    [InlineData("bolachas", "Bolacha Recheada Chocolate", "bolachas-recheadas")]
-    [InlineData("bolachas", "Tostas Integrais", "bolachas-salgadas")]
-    [InlineData("bebidas-alcoolicas", "Vinho Tinto Alentejo 75cl", "vinho")]
-    [InlineData("bebidas-alcoolicas", "Cerveja Sagres 6x33cl", "cerveja")]
-    [InlineData("bebidas-alcoolicas", "Whisky Escocês", "espirituosas-licores")]
-    [InlineData("bebidas-alcoolicas", "Sangria Tinta", "cocktails")]
-    [InlineData("sumos", "Coca-Cola Zero 1.5L", "refrigerantes")]
-    [InlineData("sumos", "Red Bull 250ml", "energeticas-desporto")]
-    [InlineData("sumos", "Sumo de Laranja 1L", "sumos")]                         // default: stays
-    [InlineData("iogurtes", "Pudim de Baunilha", "sobremesas-lacteas")]
-    [InlineData("iogurtes", "Iogurte Grego Natural", "iogurtes")]                 // default: stays
-    [InlineData("higiene-pessoal", "Protetor Solar SPF 50", "protecao-solar")]
-    [InlineData("higiene-pessoal", "Champô Anticaspa", "cabelo")]
-    [InlineData("higiene-pessoal", "Desodorizante Roll On", "desodorizantes")]
-    [InlineData("higiene-pessoal", "Gel de Banho Hidratante", "banho-higiene")]
-    [InlineData("detergentes", "Detergente Loiça Fairy", "detergentes-loica")]
-    [InlineData("detergentes", "Amaciador Roupa", "detergentes-roupa")]
-    [InlineData("limpeza-lar", "Papel de Cozinha 2 rolos", "papel-descartaveis")]
-    [InlineData("bebe-puericultura", "Fraldas Pampers T3", "fraldas-higiene-bebe")]
-    [InlineData("bebe-puericultura", "Papa Láctea Nutriben", "alimentacao-bebe")]
-    [InlineData("pao", "Pão de Forma Fatiado", "pao-forma-embalado")]
-    [InlineData("pao", "Pão Alentejano", "pao")]                                  // default: stays
-    [InlineData("leite", "Bebida de Aveia 1L", "bebidas-vegetais")]
-    [InlineData("leite", "Leite Meio Gordo 1L", "leite")]
+    [InlineData("carne", "Bife de Vaca Maturada 500g", "beef")]
+    [InlineData("carne", "Hambúrguer de Vaca 2x100g", "minced-prepared-meat")] // preparados beat vaca
+    [InlineData("carne", "Peito de Frango Fatiado", "poultry")]
+    [InlineData("carne", "Entremeada de Porco", "pork")]
+    [InlineData("peixe-marisco", "Camarão Cozido 200g", "seafood")]
+    [InlineData("peixe-marisco", "Bacalhau Graúdo", "salt-cod-cured-fish")]
+    [InlineData("charcutaria", "Presunto Fatiado", "ham-cold-cuts")]
+    [InlineData("charcutaria", "Paio de Lombo", "ham-cold-cuts")]
+    [InlineData("charcutaria", "Chouriço de Carne", "cured-sausages")]
+    [InlineData("conservas", "Atum em Azeite 3x80g", "canned-fish")]
+    [InlineData("conservas", "Grão-de-bico Cozido", "canned-vegetables-fruit")]
+    [InlineData("bolachas", "Bolacha Maria Dourada", "plain-biscuits")]
+    [InlineData("bolachas", "Bolacha Recheada Chocolate", "filled-biscuits")]
+    [InlineData("bolachas", "Tostas Integrais", "crackers")]
+    [InlineData("bebidas-alcoolicas", "Vinho Tinto Alentejo 75cl", "wine")]
+    [InlineData("bebidas-alcoolicas", "Cerveja Sagres 6x33cl", "beer-cider")]
+    [InlineData("bebidas-alcoolicas", "Whisky Escocês", "spirits-liqueurs")]
+    [InlineData("bebidas-alcoolicas", "Sangria Tinta", "cocktails-mixed")]
+    [InlineData("sumos", "Coca-Cola Zero 1.5L", "soft-drinks")]
+    [InlineData("sumos", "Red Bull 250ml", "energy-sports-drinks")]
+    [InlineData("sumos", "Sumo de Laranja 1L", "juices")]                         // default: stays
+    [InlineData("iogurtes", "Pudim de Baunilha", "dairy-desserts")]
+    [InlineData("iogurtes", "Iogurte Grego Natural", "yoghurt")]                 // default: stays
+    [InlineData("higiene-pessoal", "Protetor Solar SPF 50", "sun-care")]
+    [InlineData("higiene-pessoal", "Champô Anticaspa", "hair-care")]
+    [InlineData("higiene-pessoal", "Desodorizante Roll On", "deodorants")]
+    [InlineData("higiene-pessoal", "Gel de Banho Hidratante", "bath-body")]
+    [InlineData("detergentes", "Detergente Loiça Fairy", "dishwashing")]
+    [InlineData("detergentes", "Amaciador Roupa", "laundry")]
+    [InlineData("limpeza-lar", "Papel de Cozinha 2 rolos", "paper-disposables")]
+    [InlineData("bebe-puericultura", "Fraldas Pampers T3", "nappies-baby-care")]
+    [InlineData("bebe-puericultura", "Papa Láctea Nutriben", "baby-food")]
+    [InlineData("pao", "Pão de Forma Fatiado", "packaged-bread")]
+    [InlineData("pao", "Pão Alentejano", "bread")]                                  // default: stays
+    [InlineData("leite", "Bebida de Aveia 1L", "plant-drinks")]
+    [InlineData("leite", "Leite Meio Gordo 1L", "milk")]
     public void Place_UsesKeywordRules_ThenTheDefault(string legacy, string name, string expected)
     {
         var placement = TaxonomyV2.Place(legacy, name)!;
@@ -128,19 +128,19 @@ public sealed class TaxonomyV2DataTests
 public sealed class TaxonomySeedRuleTests
 {
     [Theory]
-    [InlineData("Comida para Cães Frango 400g", "comida-caes")]
-    [InlineData("Comida para Gatos Salmão 85g", "comida-gatos")]
-    [InlineData("Areia para Gatos 10L", "animais-acessorios")]
-    [InlineData("Café Moído Torrado 250g", "cafe")]
-    [InlineData("Chá Verde Limão 20 saquetas", "cha-infusoes")]
+    [InlineData("Comida para Cães Frango 400g", "dog-food")]
+    [InlineData("Comida para Gatos Salmão 85g", "cat-food")]
+    [InlineData("Areia para Gatos 10L", "pet-supplies")]
+    [InlineData("Café Moído Torrado 250g", "coffee")]
+    [InlineData("Chá Verde Limão 20 saquetas", "tea-infusions")]
     [InlineData("Tablete de Chocolate Negro 70%", "chocolate")]
-    [InlineData("Batatas Fritas Lisas 150g", "snacks-salgados")]
-    [InlineData("Protetor Solar SPF 50 200ml", "protecao-solar")]
-    [InlineData("Frigideira Antiaderente 28cm", "cozinha-mesa")]
-    [InlineData("Livro de Receitas", "papelaria-livros")]
-    [InlineData("Carrinho de Bebé Duplo", "puericultura-mobiliario")]
-    [InlineData("Gelado de Baunilha 1L", "gelados")]
-    [InlineData("Vinho Tinto Douro", "vinho")]
+    [InlineData("Batatas Fritas Lisas 150g", "savoury-snacks")]
+    [InlineData("Protetor Solar SPF 50 200ml", "sun-care")]
+    [InlineData("Frigideira Antiaderente 28cm", "kitchen-dining")]
+    [InlineData("Livro de Receitas", "stationery-books")]
+    [InlineData("Carrinho de Bebé Duplo", "baby-gear-furniture")]
+    [InlineData("Gelado de Baunilha 1L", "ice-cream")]
+    [InlineData("Vinho Tinto Douro", "wine")]
     public void Seed_PlacesTheNewV2Categories_ByName(string name, string expected) =>
         Assert.Equal(expected, TaxonomyV2.Seed(name));
 
@@ -207,17 +207,17 @@ public sealed class TaxonomyMigrationTests : IAsyncLifetime
         Assert.Equal(3, carne.Products);
         Assert.Equal(2, carne.ByRule);
         Assert.Equal(1, carne.LeftForClassifier);
-        Assert.Equal(1, carne.RuleTargets["carne-vaca"]);
+        Assert.Equal(1, carne.RuleTargets["beef"]);
         Assert.Equal(1, plan.Rows.Single(r => r.LegacySlug == "leite").OneToOne);
         Assert.Equal(before, await _db.Products.CountAsync(Ct));
         Assert.Equal(0, await _db.Products.CountAsync(p => p.LegacyCategoryId != null, Ct));
-        Assert.False(await _db.ProductCategories.AnyAsync(c => c.Slug == "carne-vaca", Ct));
+        Assert.False(await _db.ProductCategories.AnyAsync(c => c.Slug == "beef", Ct));
     }
 
     [Fact]
-    public async Task Apply_SeedsTheV2Tree_ReusingSharedSlugsAndReparentingThem()
+    public async Task Apply_SeedsTheV2Tree_AsNewRows_LeavingTheV1TreeUntouched()
     {
-        var leiteIdBefore = V1("leite");
+        var leiteBefore = await _db.ProductCategories.AsNoTracking().Include(c => c.Parent).SingleAsync(c => c.Slug == "leite", Ct);
 
         var result = await _svc.ApplyAsync(Ct);
 
@@ -225,10 +225,29 @@ public sealed class TaxonomyMigrationTests : IAsyncLifetime
         Assert.Equal(12, await _db.ProductCategories.CountAsync(c => TaxonomyV2.AisleSlugs.Contains(c.Slug), Ct));
         var leaves = await _db.ProductCategories.CountAsync(c => TaxonomyV2.V2Slugs.Contains(c.Slug) && !TaxonomyV2.AisleSlugs.Contains(c.Slug), Ct);
         Assert.Equal(87, leaves);
-        var leite = await _db.ProductCategories.Include(c => c.Parent).SingleAsync(c => c.Slug == "leite", Ct);
-        Assert.Equal(leiteIdBefore, leite.Id);                 // same row, same id
-        Assert.Equal("laticinios-ovos", leite.Parent!.Slug);   // now in the new aisle
+
+        // English slugs never collide with the Portuguese v1 ones, so the v1 rows are not touched at all.
+        var leiteAfter = await _db.ProductCategories.AsNoTracking().Include(c => c.Parent).SingleAsync(c => c.Slug == "leite", Ct);
+        Assert.Equal(leiteBefore.Id, leiteAfter.Id);
+        Assert.Equal(leiteBefore.Name, leiteAfter.Name);
+        Assert.Equal("laticinios", leiteAfter.Parent!.Slug);
+        var milk = await _db.ProductCategories.Include(c => c.Parent).SingleAsync(c => c.Slug == "milk", Ct);
+        Assert.Equal("dairy-eggs", milk.Parent!.Slug);
+        Assert.Equal("Leite", milk.Name);   // pt-PT is the default display name
         Assert.True(await _svc.IsV2ActiveAsync(Ct));
+    }
+
+    [Fact]
+    public async Task Apply_AddsEnglishNames_ForV2Categories_AndSeedingIsIdempotent()
+    {
+        await _svc.ApplyAsync(Ct);
+
+        var en = await _db.ProductCategoryTranslations.Where(t => t.Language == "en").ToDictionaryAsync(t => t.ProductCategoryId, t => t.Name, Ct);
+        var slugs = await _db.ProductCategories.ToDictionaryAsync(c => c.Slug, c => c.Id, Ct);
+        Assert.Equal("Beef", en[slugs["beef"]]);
+        Assert.Equal("Fruit & Vegetables", en[slugs["produce"]]);
+        Assert.Equal("Dairy", en[slugs["laticinios"]]);       // v1 names are translated too
+        Assert.Equal(0, await CategoryTranslations.SeedAsync(_db, Ct));
     }
 
     [Fact]
@@ -243,7 +262,7 @@ public sealed class TaxonomyMigrationTests : IAsyncLifetime
         await _svc.ApplyAsync(Ct);
 
         var pVaca = await Get(vaca);
-        Assert.Equal("carne-vaca", await SlugOf(pVaca.CategoryId));
+        Assert.Equal("beef", await SlugOf(pVaca.CategoryId));
         Assert.Equal(carneV1, pVaca.LegacyCategoryId);
         Assert.Equal("taxonomy-rule", pVaca.CategorySource);
 
@@ -253,10 +272,10 @@ public sealed class TaxonomyMigrationTests : IAsyncLifetime
         Assert.Equal("taxonomy-left", pUnknown.CategorySource);
 
         var pLeite = await Get(leite);
-        Assert.Equal("leite", await SlugOf(pLeite.CategoryId));
+        Assert.Equal("milk", await SlugOf(pLeite.CategoryId));
         Assert.Equal("taxonomy-1to1", pLeite.CategorySource);
 
-        Assert.Equal("bebidas-vegetais", await SlugOf((await Get(soja)).CategoryId));
+        Assert.Equal("plant-drinks", await SlugOf((await Get(soja)).CategoryId));
     }
 
     [Fact]
@@ -283,16 +302,16 @@ public sealed class TaxonomyMigrationTests : IAsyncLifetime
         var leftBehind = await AddProduct("Carne Cafe Especial", "carne"); // v1 split with no rule match, but "cafe" seeds it
 
         var plan = await _svc.PlanAsync(Ct);
-        Assert.Equal(1, plan.SeedTargets!["comida-caes"]);
+        Assert.Equal(1, plan.SeedTargets!["dog-food"]);
 
         await _svc.ApplyAsync(Ct);
 
         var pDog = await Get(dog);
-        Assert.Equal("comida-caes", await SlugOf(pDog.CategoryId));
+        Assert.Equal("dog-food", await SlugOf(pDog.CategoryId));
         Assert.Equal("taxonomy-seed", pDog.CategorySource);
         Assert.Null(pDog.LegacyCategoryId);                          // it never had a v1 category
         Assert.Null((await Get(yoghurt)).CategoryId);                 // not guessed
-        Assert.Equal("cafe", await SlugOf((await Get(leftBehind)).CategoryId));
+        Assert.Equal("coffee", await SlugOf((await Get(leftBehind)).CategoryId));
         Assert.Equal(V1("carne"), (await Get(leftBehind)).LegacyCategoryId);
 
         await _svc.RevertAsync(Ct);
@@ -330,13 +349,12 @@ public sealed class TaxonomyMigrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Revert_RestoresEveryMigratedProduct_AndTheV1Tree()
+    public async Task Revert_RestoresEveryMigratedProduct()
     {
         var vaca = await AddProduct("Bife de Vaca", "carne");
         var unknown = await AddProduct("Carne Sem Palavra Chave", "carne");
         var leite = await AddProduct("Leite", "leite");
         var carneV1 = V1("carne");
-        var leiteRow = await _db.ProductCategories.AsNoTracking().SingleAsync(c => c.Slug == "leite", Ct);
         await _svc.ApplyAsync(Ct);
 
         var (reverted, _, restored) = await _svc.RevertAsync(Ct);
@@ -352,8 +370,7 @@ public sealed class TaxonomyMigrationTests : IAsyncLifetime
         }
         Assert.Equal(V1("leite"), (await Get(leite)).CategoryId);
         var leiteAfter = await _db.ProductCategories.Include(c => c.Parent).AsNoTracking().SingleAsync(c => c.Slug == "leite", Ct);
-        Assert.Equal(leiteRow.Name, leiteAfter.Name);
-        Assert.Equal("laticinios", leiteAfter.Parent!.Slug);   // back under its v1 parent
+        Assert.Equal("laticinios", leiteAfter.Parent!.Slug);   // the v1 tree was never touched
         Assert.False(await _svc.IsV2ActiveAsync(Ct));
         Assert.False((await _svc.RevertAsync(Ct)).Reverted);   // nothing left to revert
     }
@@ -367,10 +384,10 @@ public sealed class TaxonomyMigrationTests : IAsyncLifetime
 
         // You re-categorise by hand (the endpoint clears the marker); the classifier labels another product in v2.
         var hand = await _db.Products.SingleAsync(p => p.Id == byHand, Ct);
-        hand.CategoryId = _db.ProductCategories.Single(c => c.Slug == "carne-porco").Id;
+        hand.CategoryId = _db.ProductCategories.Single(c => c.Slug == "pork").Id;
         hand.CategorySource = null;
         var auto = await _db.Products.SingleAsync(p => p.Id == byClassifier, Ct);
-        auto.CategoryId = _db.ProductCategories.Single(c => c.Slug == "cafe").Id;
+        auto.CategoryId = _db.ProductCategories.Single(c => c.Slug == "coffee").Id;
         _db.CategorySuggestions.Add(new CategorySuggestion
         {
             Id = Guid.NewGuid(), ProductId = byClassifier, SuggestedCategoryId = auto.CategoryId!.Value, Confidence = 0.9,
@@ -380,7 +397,7 @@ public sealed class TaxonomyMigrationTests : IAsyncLifetime
 
         await _svc.RevertAsync(Ct);
 
-        Assert.Equal("carne-porco", await SlugOf((await Get(byHand)).CategoryId)); // hand decision kept
+        Assert.Equal("pork", await SlugOf((await Get(byHand)).CategoryId)); // hand decision kept
         Assert.Null((await Get(byClassifier)).CategoryId);                         // no v1 equivalent: uncategorised
     }
 }
@@ -434,12 +451,12 @@ public sealed class TaxonomyScraperTests : IAsyncLifetime
             Scraped("Leite Sem Lactose Bio", "leite"),
         ], ct: Ct);
 
-        Assert.Equal("carne-vaca", await CategorySlugOf("Bife de Vaca"));
+        Assert.Equal("beef", await CategorySlugOf("Bife de Vaca"));
         Assert.Null(await CategorySlugOf("Carne Sem Palavra Chave")); // left for the classifier
-        Assert.Equal("leite", await CategorySlugOf("Leite Meio Gordo"));
+        Assert.Equal("milk", await CategorySlugOf("Leite Meio Gordo"));
         // A product the rule mapper cannot place at all is still seeded by name into a category that is new in v2.
         await _processor.ProcessProductsAsync("continente", [Scraped("Comida para Gatos Salmão 85g", "alimentacao-animal-desconhecida")], ct: Ct);
-        Assert.Equal("comida-gatos", await CategorySlugOf("Comida para Gatos Salmão 85g"));
+        Assert.Equal("cat-food", await CategorySlugOf("Comida para Gatos Salmão 85g"));
         var tags = await _db.ProductTags.Include(t => t.Product).Where(t => t.Product.Name == "Leite Sem Lactose Bio").Select(t => t.Tag).ToListAsync(Ct);
         Assert.Contains("sem-lactose", tags);
         Assert.Contains("bio", tags);

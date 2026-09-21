@@ -25,6 +25,7 @@ public class SavvoriDbContext : DbContext
     public DbSet<MatchMerge> MatchMerges { get; set; } = default!;
     public DbSet<CategorySuggestion> CategorySuggestions { get; set; } = default!;
     public DbSet<ProductTag> ProductTags { get; set; } = default!;
+    public DbSet<ProductCategoryTranslation> ProductCategoryTranslations { get; set; } = default!;
     public DbSet<TaxonomyMigration> TaxonomyMigrations { get; set; } = default!;
     public DbSet<CategoryStringDecision> CategoryStringDecisions { get; set; } = default!;
 
@@ -188,6 +189,11 @@ public class SavvoriDbContext : DbContext
         modelBuilder.Entity<MatchCandidate>().HasIndex(c => c.Cosine);
         modelBuilder.Entity<MatchCandidate>().HasIndex(c => c.Status);
         modelBuilder.Entity<MatchMerge>().HasIndex(m => m.CandidateId);
+
+        // Category display names per language (default language lives in ProductCategory.Name)
+        modelBuilder.Entity<ProductCategoryTranslation>().HasKey(t => new { t.ProductCategoryId, t.Language });
+        modelBuilder.Entity<ProductCategoryTranslation>()
+            .HasOne(t => t.ProductCategory).WithMany().HasForeignKey(t => t.ProductCategoryId).OnDelete(DeleteBehavior.Cascade);
 
         // Tags (bio, sem-lactose, ...) per canonical product; one row per (product, tag)
         modelBuilder.Entity<ProductTag>().HasKey(t => new { t.ProductId, t.Tag });

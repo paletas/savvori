@@ -131,8 +131,8 @@ public class AdminPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savvo
         var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains("Taxonomy v1 is active", html);
         Assert.Contains("Apply taxonomy v2", html);
-        Assert.Contains("carne-vaca: 40", html);
-        Assert.Contains("bebidas-vegetais: 2", html);
+        Assert.Contains("beef: 40", html);
+        Assert.Contains("plant-drinks: 2", html);
         Assert.Contains("tag bio: 12", html);
         Assert.DoesNotContain("Could not load the migration plan", html);
     }

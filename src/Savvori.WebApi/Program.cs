@@ -78,6 +78,7 @@ builder.Services.AddHttpClient("lidl", c =>
 
 builder.Services.AddScoped<ScraperResultProcessor>();
 builder.Services.AddScoped<TaxonomyMigrationService>();
+builder.Services.AddScoped<ICategoryLocalizer, CategoryLocalizer>();
 
 // Register all IStoreScraper implementations
 builder.Services.AddScoped<IStoreScraper, ContinenteScraper>();
@@ -166,6 +167,7 @@ using (var scope = app.Services.CreateScope())
         DatabaseBackup.BackupIfMigrationsPending(db, app.Logger);
         await db.Database.MigrateAsync();
         await CategorySeeder.SeedAsync(db, app.Logger);
+        await CategoryTranslations.SeedAsync(db);
         await StoreChainSeeder.SeedAsync(db, app.Configuration, app.Logger);
 
         // Mark any jobs left in Running state as Failed — they were interrupted by a restart.

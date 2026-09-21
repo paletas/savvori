@@ -3,7 +3,7 @@
 Status: **approved (aisles as proposed, all non-food leaves kept, tags: bio, sem-lactose, sem-gluten, vegan, sem-acucar). The migration is implemented but NOT applied to any real database: it is an explicit admin action (Admin > Taxonomy v2), with a dry-run plan first.**
 
 Implementation notes (differences from the proposal below):
-- A migrated product keeps its v1 category in `Product.LegacyCategoryId` and is marked in `Product.CategorySource` (`taxonomy-1to1`, `taxonomy-rule`, `taxonomy-left`). There is no `TaxonomyVersion` column: v1 and v2 categories are told apart by slug, and the category API shows only the active tree. Slugs shared by v1 and v2 (for example `leite`) reuse the existing row (same id), renamed and moved under its new aisle; a revert restores names and parents.
+- A migrated product keeps its v1 category in `Product.LegacyCategoryId` and is marked in `Product.CategorySource` (`taxonomy-1to1`, `taxonomy-rule`, `taxonomy-left`). There is no `TaxonomyVersion` column: v1 and v2 categories are told apart by slug, and the category API shows only the active tree. v2 slugs are English, so they never collide with the Portuguese v1 slugs: v2 is a set of new rows and the v1 rows are never modified (a revert only restores product labels).
 - v1 labels do not record who set them, so **hand-made v1 labels cannot be told from rule-made ones**. For a split, every product is placed by the keyword rules regardless. The dry-run plan shows the counts first, and the whole migration is reversible.
 - The classifier only predicts categories that already have products. The new gap categories (pet food, coffee, chocolate, sun care, ...) start empty, so the classifier cannot fill them until they have a few examples.
 
@@ -15,154 +15,157 @@ This document proposes 12 aisles and 87 leaf categories, replacing today's 10 to
 - Several v1 categories are catch-alls (`bolachas`, `bebidas-alcoolicas`, `bolos-sobremesas`, `higiene-pessoal`, and products sitting directly on the `Mercearia` parent). A classifier cannot learn a coherent label from a catch-all.
 - 'Bio', 'sem lactose' and 'sem glúten' cut across aisles (a bio yoghurt and a bio rice are both bio); as categories they fragment the tree and confuse the classifier. As tags they combine with any category.
 
+
+> **Slugs and languages (added after approval).** v2 slugs are English identifiers (`beef`, `dairy-eggs`); v1 slugs stay Portuguese and are hidden once v2 is applied, so the two trees never collide. Display names are per language: the default `ProductCategory.Name` is pt-PT and English names live in `ProductCategoryTranslations` (all v1 and v2 categories). The API returns the name for `?lang=` or the request's `Accept-Language` (pt or en, fallback pt); the web app forwards the browser's language. The tables below give both names and the English slug.
+
 ## Aisles and categories
 
-### Frutas e Legumes (`frutas-legumes`) — 3 categories
+### Frutas e Legumes / Fruit & Vegetables (`produce`) — 3 categories
 
-| Category | Slug | Notes |
-|---|---|---|
-| Frutas | `frutas` | kept from v1 `frutas` |
-| Legumes e Hortícolas | `legumes` | kept from v1 `legumes` |
-| Saladas e Ervas Aromáticas | `saladas-ervas` | new: bagged salads, herbs, sprouts |
+| Category (pt-PT) | Category (en) | Slug | Notes |
+|---|---|---|---|
+| Frutas | Fruit | `fruit` | kept from v1 `frutas` |
+| Legumes e Hortícolas | Vegetables | `vegetables` | kept from v1 `legumes` |
+| Saladas e Ervas Aromáticas | Salads & Herbs | `salads-herbs` | new: bagged salads, herbs, sprouts |
 
-### Talho e Peixaria (`talho-peixaria`) — 7 categories
+### Talho e Peixaria / Meat & Fish (`meat-fish`) — 7 categories
 
-| Category | Slug | Notes |
-|---|---|---|
-| Carne de Vaca | `carne-vaca` | split of v1 `carne` |
-| Carne de Porco | `carne-porco` | split of v1 `carne` |
-| Aves | `aves` | split of v1 `carne`: chicken, turkey, duck |
-| Carne Picada e Preparados | `carne-picada-preparados` | split of v1 `carne`: mince, burgers, marinated, kebabs |
-| Peixe Fresco | `peixe-fresco` | split of v1 `peixe-marisco` |
-| Marisco | `marisco` | split of v1 `peixe-marisco` |
-| Bacalhau e Salgados | `bacalhau-salgados` | new: dried/salted cod and other salted fish |
+| Category (pt-PT) | Category (en) | Slug | Notes |
+|---|---|---|---|
+| Carne de Vaca | Beef | `beef` | split of v1 `carne` |
+| Carne de Porco | Pork | `pork` | split of v1 `carne` |
+| Aves | Poultry | `poultry` | split of v1 `carne`: chicken, turkey, duck |
+| Carne Picada e Preparados | Minced & Prepared Meat | `minced-prepared-meat` | split of v1 `carne`: mince, burgers, marinated, kebabs |
+| Peixe Fresco | Fresh Fish | `fresh-fish` | split of v1 `peixe-marisco` |
+| Marisco | Seafood | `seafood` | split of v1 `peixe-marisco` |
+| Bacalhau e Salgados | Salt Cod & Cured Fish | `salt-cod-cured-fish` | new: dried/salted cod and other salted fish |
 
-### Charcutaria e Queijos (`charcutaria-queijos`) — 4 categories
+### Charcutaria e Queijos / Deli & Cheese (`deli-cheese`) — 4 categories
 
-| Category | Slug | Notes |
-|---|---|---|
-| Fiambre e Presunto | `fiambre-presunto` | split of v1 `charcutaria` |
-| Enchidos | `enchidos` | split of v1 `charcutaria`: chouriço, alheira, salsichas |
-| Patés e Charcutaria Cozida | `pates-cozidos` | split of v1 `charcutaria` |
-| Queijos | `queijos` | moved from Laticínios; v1 `queijos` |
+| Category (pt-PT) | Category (en) | Slug | Notes |
+|---|---|---|---|
+| Fiambre e Presunto | Ham & Cold Cuts | `ham-cold-cuts` | split of v1 `charcutaria` |
+| Enchidos | Cured Sausages | `cured-sausages` | split of v1 `charcutaria`: chouriço, alheira, salsichas |
+| Patés e Charcutaria Cozida | Pâtés & Cooked Deli | `pates-cooked-deli` | split of v1 `charcutaria` |
+| Queijos | Cheese | `cheese` | moved from Laticínios; v1 `queijos` |
 
-### Laticínios e Ovos (`laticinios-ovos`) — 7 categories
+### Laticínios e Ovos / Dairy & Eggs (`dairy-eggs`) — 7 categories
 
-| Category | Slug | Notes |
-|---|---|---|
-| Leite | `leite` | kept from v1 `leite` |
-| Bebidas Vegetais | `bebidas-vegetais` | new: soy, oat, almond drinks (today mixed into leite/sumos) |
-| Iogurtes | `iogurtes` | kept from v1 `iogurtes` |
-| Sobremesas Lácteas | `sobremesas-lacteas` | split of v1 `iogurtes` and `bolos-sobremesas`: pudins, gelatinas, arroz doce, mousses |
-| Manteiga e Margarinas | `manteiga-margarinas` | kept from v1 `manteiga-margarinas` |
-| Natas e Cremes Culinários | `natas-cremes` | kept from v1 `natas-cremes` |
-| Ovos | `ovos` | moved from Frescos; v1 `ovos` |
+| Category (pt-PT) | Category (en) | Slug | Notes |
+|---|---|---|---|
+| Leite | Milk | `milk` | kept from v1 `leite` |
+| Bebidas Vegetais | Plant-Based Drinks | `plant-drinks` | new: soy, oat, almond drinks (today mixed into leite/sumos) |
+| Iogurtes | Yoghurt | `yoghurt` | kept from v1 `iogurtes` |
+| Sobremesas Lácteas | Dairy Desserts | `dairy-desserts` | split of v1 `iogurtes` and `bolos-sobremesas`: pudins, gelatinas, arroz doce, mousses |
+| Manteiga e Margarinas | Butter & Margarine | `butter-margarine` | kept from v1 `manteiga-margarinas` |
+| Natas e Cremes Culinários | Cooking Cream | `cooking-cream` | kept from v1 `natas-cremes` |
+| Ovos | Eggs | `eggs` | moved from Frescos; v1 `ovos` |
 
-### Padaria e Pastelaria (`padaria-pastelaria`) — 4 categories
+### Padaria e Pastelaria / Bakery & Pastry (`bakery`) — 4 categories
 
-| Category | Slug | Notes |
-|---|---|---|
-| Pão | `pao` | kept from v1 `pao` |
-| Pão de Forma e Embalado | `pao-forma-embalado` | split of v1 `pao`: sliced bread, wraps, tostas de pão |
-| Bolos e Pastelaria | `bolos-pastelaria` | split of v1 `bolos-sobremesas` |
-| Sobremesas Preparadas | `sobremesas-preparadas` | split of v1 `bolos-sobremesas`: tartes, tiramisu, prepared desserts (non-dairy-aisle) |
+| Category (pt-PT) | Category (en) | Slug | Notes |
+|---|---|---|---|
+| Pão | Bread | `bread` | kept from v1 `pao` |
+| Pão de Forma e Embalado | Sliced & Packaged Bread | `packaged-bread` | split of v1 `pao`: sliced bread, wraps, tostas de pão |
+| Bolos e Pastelaria | Cakes & Pastries | `cakes-pastries` | split of v1 `bolos-sobremesas` |
+| Sobremesas Preparadas | Prepared Desserts | `prepared-desserts` | split of v1 `bolos-sobremesas`: tartes, tiramisu, prepared desserts (non-dairy-aisle) |
 
-### Mercearia (`mercearia`) — 9 categories
+### Mercearia / Pantry (`pantry`) — 9 categories
 
-| Category | Slug | Notes |
-|---|---|---|
-| Arroz | `arroz` | kept from v1 `arroz` |
-| Massas | `massas` | kept from v1 `massas` |
-| Leguminosas e Grãos | `leguminosas-graos` | new: beans, chickpeas, lentils, quinoa, couscous |
-| Farinhas e Preparados | `farinhas-preparados` | new: flour, baking mixes, yeast, breadcrumbs |
-| Conservas de Peixe | `conservas-peixe` | split of v1 `conservas`: tuna, sardines, mackerel |
-| Conservas Vegetais e de Fruta | `conservas-vegetais` | split of v1 `conservas` |
-| Molhos e Temperos | `molhos-temperos` | kept from v1 `molhos-temperos` |
-| Azeite, Óleos e Vinagres | `azeite-oleos` | kept from v1 `azeite-oleos` (+ vinegars) |
-| Sopas e Pratos Preparados | `sopas-pratos-preparados` | new: soups, ready-to-heat jars and pouches |
+| Category (pt-PT) | Category (en) | Slug | Notes |
+|---|---|---|---|
+| Arroz | Rice | `rice` | kept from v1 `arroz` |
+| Massas | Pasta | `pasta` | kept from v1 `massas` |
+| Leguminosas e Grãos | Pulses & Grains | `pulses-grains` | new: beans, chickpeas, lentils, quinoa, couscous |
+| Farinhas e Preparados | Flour & Baking | `flour-baking` | new: flour, baking mixes, yeast, breadcrumbs |
+| Conservas de Peixe | Canned Fish | `canned-fish` | split of v1 `conservas`: tuna, sardines, mackerel |
+| Conservas Vegetais e de Fruta | Canned Vegetables & Fruit | `canned-vegetables-fruit` | split of v1 `conservas` |
+| Molhos e Temperos | Sauces & Seasonings | `sauces-seasonings` | kept from v1 `molhos-temperos` |
+| Azeite, Óleos e Vinagres | Olive Oil, Oils & Vinegar | `oil-vinegar` | kept from v1 `azeite-oleos` (+ vinegars) |
+| Sopas e Pratos Preparados | Soups & Ready Meals | `soups-ready-meals` | new: soups, ready-to-heat jars and pouches |
 
-### Doces, Café e Snacks (`doces-cafe-snacks`) — 13 categories
+### Doces, Café e Snacks / Sweets, Coffee & Snacks (`sweets-coffee-snacks`) — 13 categories
 
-| Category | Slug | Notes |
-|---|---|---|
-| Cereais e Granola | `cereais` | kept from v1 `cereais` |
-| Bolachas Maria e Simples | `bolachas-simples` | split of v1 `bolachas` |
-| Bolachas Recheadas e Wafers | `bolachas-recheadas` | split of v1 `bolachas` |
-| Bolachas Integrais e de Cereais | `bolachas-integrais` | split of v1 `bolachas` |
-| Bolachas Salgadas e Tostas | `bolachas-salgadas` | split of v1 `bolachas` |
-| Chocolate | `chocolate` | new gap: bars, tablets, cocoa, spreads with chocolate |
-| Confeitaria e Doces | `confeitaria-doces` | new: sweets, gums, candy |
-| Compotas, Mel e Cremes de Barrar | `compotas-mel` | new |
-| Açúcar e Adoçantes | `acucar-adocantes` | new |
-| Café | `cafe` | new gap: ground, beans, capsules, soluble |
-| Chá e Infusões | `cha-infusoes` | new gap |
-| Snacks Salgados | `snacks-salgados` | new gap: crisps, popcorn, puffs |
-| Frutos Secos e Sementes | `frutos-secos` | new |
+| Category (pt-PT) | Category (en) | Slug | Notes |
+|---|---|---|---|
+| Cereais e Granola | Cereals & Granola | `cereals` | kept from v1 `cereais` |
+| Bolachas Maria e Simples | Plain Biscuits | `plain-biscuits` | split of v1 `bolachas` |
+| Bolachas Recheadas e Wafers | Filled Biscuits & Wafers | `filled-biscuits` | split of v1 `bolachas` |
+| Bolachas Integrais e de Cereais | Wholegrain & Cereal Biscuits | `wholegrain-biscuits` | split of v1 `bolachas` |
+| Bolachas Salgadas e Tostas | Crackers & Savoury Biscuits | `crackers` | split of v1 `bolachas` |
+| Chocolate | Chocolate | `chocolate` | new gap: bars, tablets, cocoa, spreads with chocolate |
+| Confeitaria e Doces | Confectionery & Sweets | `confectionery` | new: sweets, gums, candy |
+| Compotas, Mel e Cremes de Barrar | Jams, Honey & Spreads | `jams-honey-spreads` | new |
+| Açúcar e Adoçantes | Sugar & Sweeteners | `sugar-sweeteners` | new |
+| Café | Coffee | `coffee` | new gap: ground, beans, capsules, soluble |
+| Chá e Infusões | Tea & Infusions | `tea-infusions` | new gap |
+| Snacks Salgados | Savoury Snacks | `savoury-snacks` | new gap: crisps, popcorn, puffs |
+| Frutos Secos e Sementes | Nuts & Seeds | `nuts-seeds` | new |
 
-### Bebidas (`bebidas`) — 8 categories
+### Bebidas / Drinks (`drinks`) — 8 categories
 
-| Category | Slug | Notes |
-|---|---|---|
-| Água | `agua` | kept from v1 `agua` |
-| Refrigerantes | `refrigerantes` | split of v1 `sumos` |
-| Sumos e Néctares | `sumos` | kept from v1 `sumos` |
-| Bebidas Energéticas e Desportivas | `energeticas-desporto` | new |
-| Cerveja e Sidra | `cerveja` | split of v1 `bebidas-alcoolicas` |
-| Vinho | `vinho` | split of v1 `bebidas-alcoolicas` |
-| Espirituosas e Licores | `espirituosas-licores` | split of v1 `bebidas-alcoolicas` |
-| Cocktails e Bebidas Mistas | `cocktails` | new gap: ready-to-drink, sangria, mixers |
+| Category (pt-PT) | Category (en) | Slug | Notes |
+|---|---|---|---|
+| Água | Water | `water` | kept from v1 `agua` |
+| Refrigerantes | Soft Drinks | `soft-drinks` | split of v1 `sumos` |
+| Sumos e Néctares | Juices & Nectars | `juices` | kept from v1 `sumos` |
+| Bebidas Energéticas e Desportivas | Energy & Sports Drinks | `energy-sports-drinks` | new |
+| Cerveja e Sidra | Beer & Cider | `beer-cider` | split of v1 `bebidas-alcoolicas` |
+| Vinho | Wine | `wine` | split of v1 `bebidas-alcoolicas` |
+| Espirituosas e Licores | Spirits & Liqueurs | `spirits-liqueurs` | split of v1 `bebidas-alcoolicas` |
+| Cocktails e Bebidas Mistas | Cocktails & Mixed Drinks | `cocktails-mixed` | new gap: ready-to-drink, sangria, mixers |
 
-### Congelados (`congelados`) — 7 categories
+### Congelados / Frozen (`frozen`) — 7 categories
 
-| Category | Slug | Notes |
-|---|---|---|
-| Legumes Congelados | `legumes-congelados` | kept from v1 `legumes-congelados` |
-| Peixe e Marisco Congelados | `peixe-marisco-congelado` | kept from v1 `peixe-congelado` |
-| Carne e Aves Congeladas | `carne-congelada` | new |
-| Refeições Prontas Congeladas | `refeicoes-prontas` | kept from v1 `refeicoes-prontas` |
-| Pizzas e Salgados | `pizzas-salgados` | split of v1 `refeicoes-prontas` |
-| Batatas e Pré-Fritos | `batatas-pre-fritos` | new |
-| Gelados | `gelados` | new |
+| Category (pt-PT) | Category (en) | Slug | Notes |
+|---|---|---|---|
+| Legumes Congelados | Frozen Vegetables | `frozen-vegetables` | kept from v1 `legumes-congelados` |
+| Peixe e Marisco Congelados | Frozen Fish & Seafood | `frozen-fish-seafood` | kept from v1 `peixe-congelado` |
+| Carne e Aves Congeladas | Frozen Meat & Poultry | `frozen-meat-poultry` | new |
+| Refeições Prontas Congeladas | Frozen Ready Meals | `frozen-ready-meals` | kept from v1 `refeicoes-prontas` |
+| Pizzas e Salgados | Pizzas & Savouries | `pizzas-savouries` | split of v1 `refeicoes-prontas` |
+| Batatas e Pré-Fritos | Potatoes & Fries | `potatoes-fries` | new |
+| Gelados | Ice Cream | `ice-cream` | new |
 
-### Higiene e Beleza (`higiene-beleza`) — 9 categories
+### Higiene e Beleza / Personal Care & Beauty (`personal-care`) — 9 categories
 
-| Category | Slug | Notes |
-|---|---|---|
-| Banho e Higiene Pessoal | `banho-higiene` | split of v1 `higiene-pessoal` |
-| Desodorizantes | `desodorizantes` | split of v1 `higiene-pessoal` |
-| Higiene Oral | `higiene-oral` | kept from v1 `higiene-oral` |
-| Cabelo | `cabelo` | split of v1 `higiene-pessoal` |
-| Cosmética, Rosto e Corpo | `cosmetica-rosto-corpo` | new gap |
-| Proteção Solar | `protecao-solar` | new gap: sun care, after-sun |
-| Higiene Íntima e Feminina | `higiene-intima` | split of v1 `higiene-pessoal` |
-| Barbear e Depilação | `barbear-depilacao` | split of v1 `higiene-pessoal` |
-| Papel Higiénico e Lenços | `papel-higienico-lencos` | split of v1 `higiene-pessoal`/`limpeza-lar` |
+| Category (pt-PT) | Category (en) | Slug | Notes |
+|---|---|---|---|
+| Banho e Higiene Pessoal | Bath & Body | `bath-body` | split of v1 `higiene-pessoal` |
+| Desodorizantes | Deodorants | `deodorants` | split of v1 `higiene-pessoal` |
+| Higiene Oral | Oral Care | `oral-care` | kept from v1 `higiene-oral` |
+| Cabelo | Hair Care | `hair-care` | split of v1 `higiene-pessoal` |
+| Cosmética, Rosto e Corpo | Skincare & Cosmetics | `skincare-cosmetics` | new gap |
+| Proteção Solar | Sun Care | `sun-care` | new gap: sun care, after-sun |
+| Higiene Íntima e Feminina | Intimate & Feminine Care | `intimate-care` | split of v1 `higiene-pessoal` |
+| Barbear e Depilação | Shaving & Hair Removal | `shaving-hair-removal` | split of v1 `higiene-pessoal` |
+| Papel Higiénico e Lenços | Toilet Paper & Tissues | `toilet-paper-tissues` | split of v1 `higiene-pessoal`/`limpeza-lar` |
 
-### Casa e Limpeza (`casa-limpeza`) — 8 categories
+### Casa e Limpeza / Home & Cleaning (`home-cleaning`) — 8 categories
 
-| Category | Slug | Notes |
-|---|---|---|
-| Detergentes de Roupa | `detergentes-roupa` | split of v1 `detergentes` |
-| Detergentes de Loiça | `detergentes-loica` | split of v1 `detergentes` |
-| Limpeza do Lar | `limpeza-lar` | kept from v1 `limpeza-lar` |
-| Papel e Descartáveis | `papel-descartaveis` | split of v1 `limpeza-lar`: kitchen paper, napkins, bags, foil |
-| Ambientadores e Inseticidas | `ambientadores-inseticidas` | split of v1 `limpeza-lar` |
-| Cozinha e Mesa | `cozinha-mesa` | new gap: kitchenware, cookware, tableware, storage |
-| Papelaria e Livros | `papelaria-livros` | new gap: books, stationery |
-| Bazar e Sazonais | `bazar-sazonal` | new: small appliances, batteries, bulbs, seasonal |
+| Category (pt-PT) | Category (en) | Slug | Notes |
+|---|---|---|---|
+| Detergentes de Roupa | Laundry | `laundry` | split of v1 `detergentes` |
+| Detergentes de Loiça | Dishwashing | `dishwashing` | split of v1 `detergentes` |
+| Limpeza do Lar | Household Cleaning | `household-cleaning` | kept from v1 `limpeza-lar` |
+| Papel e Descartáveis | Paper & Disposables | `paper-disposables` | split of v1 `limpeza-lar`: kitchen paper, napkins, bags, foil |
+| Ambientadores e Inseticidas | Air Fresheners & Insecticides | `air-fresheners-insecticides` | split of v1 `limpeza-lar` |
+| Cozinha e Mesa | Kitchen & Dining | `kitchen-dining` | new gap: kitchenware, cookware, tableware, storage |
+| Papelaria e Livros | Stationery & Books | `stationery-books` | new gap: books, stationery |
+| Bazar e Sazonais | General & Seasonal | `general-seasonal` | new: small appliances, batteries, bulbs, seasonal |
 
-### Bebé, Animais e Saúde (`bebe-animais-saude`) — 8 categories
+### Bebé, Animais e Saúde / Baby, Pets & Health (`baby-pets-health`) — 8 categories
 
-| Category | Slug | Notes |
-|---|---|---|
-| Alimentação Bebé | `alimentacao-bebe` | split of v1 `bebe-puericultura`: milks, purées, cereals |
-| Fraldas e Higiene Bebé | `fraldas-higiene-bebe` | split of v1 `bebe-puericultura` |
-| Puericultura e Mobiliário Bebé | `puericultura-mobiliario` | new gap: cribs, strollers, car seats, toys |
-| Comida para Cães | `comida-caes` | new gap |
-| Comida para Gatos | `comida-gatos` | new gap |
-| Outros Animais e Acessórios | `animais-acessorios` | new gap: birds, fish, litter, toys |
-| Suplementos e Bem-Estar | `suplementos-bem-estar` | split of v1 `saude-bem-estar`: vitamins, dietetic |
-| Farmácia e Primeiros Socorros | `farmacia-primeiros-socorros` | split of v1 `saude-bem-estar` |
+| Category (pt-PT) | Category (en) | Slug | Notes |
+|---|---|---|---|
+| Alimentação Bebé | Baby Food | `baby-food` | split of v1 `bebe-puericultura`: milks, purées, cereals |
+| Fraldas e Higiene Bebé | Nappies & Baby Care | `nappies-baby-care` | split of v1 `bebe-puericultura` |
+| Puericultura e Mobiliário Bebé | Baby Gear & Furniture | `baby-gear-furniture` | new gap: cribs, strollers, car seats, toys |
+| Comida para Cães | Dog Food | `dog-food` | new gap |
+| Comida para Gatos | Cat Food | `cat-food` | new gap |
+| Outros Animais e Acessórios | Other Pets & Supplies | `pet-supplies` | new gap: birds, fish, litter, toys |
+| Suplementos e Bem-Estar | Supplements & Wellness | `supplements-wellness` | split of v1 `saude-bem-estar`: vitamins, dietetic |
+| Farmácia e Primeiros Socorros | Pharmacy & First Aid | `pharmacy-first-aid` | split of v1 `saude-bem-estar` |
 
 ## Tags (not categories)
 
@@ -180,42 +183,42 @@ Tags are stored per canonical product (a small `ProductTags` table: product id +
 
 | Current (v1) slug | Kind | New category or categories | How products are placed / notes |
 |---|---|---|---|
-| `leite` | 1:1 | `leite` | Products with `sem lactose` in the name get that tag; the category does not change. Vegetable drinks are split out by rule (soja, aveia, amêndoa, arroz + `bebida`). |
-| `iogurtes` | split | `iogurtes`, `sobremesas-lacteas` | By rule: pudim, gelatina, mousse, arroz doce, sobremesa -> Sobremesas Lácteas. |
-| `queijos` | 1:1 | `queijos` | Moves aisle (Laticínios -> Charcutaria e Queijos); slug unchanged. |
-| `manteiga-margarinas` | 1:1 | `manteiga-margarinas` |  |
-| `natas-cremes` | 1:1 | `natas-cremes` | Renamed 'Natas e Cremes Culinários'. |
-| `frutas` | 1:1 | `frutas` |  |
-| `legumes` | split | `legumes`, `saladas-ervas` | By rule: salada, alface embalada, ervas, rebentos. |
-| `carne` | split | `carne-vaca`, `carne-porco`, `aves`, `carne-picada-preparados` | By keyword (vaca/novilho/bife, porco/entremeada, frango/peru/pato, picada/hambúrguer/espetada); anything left goes to the classifier/review. |
-| `peixe-marisco` | split | `peixe-fresco`, `marisco`, `bacalhau-salgados` | By keyword (camarão, mexilhão, amêijoa... -> Marisco; bacalhau, salgado -> Bacalhau e Salgados). |
-| `ovos` | 1:1 | `ovos` | Moves aisle (Frescos -> Laticínios e Ovos). |
-| `charcutaria` | split | `fiambre-presunto`, `enchidos`, `pates-cozidos` | By keyword (fiambre/presunto/paio-de-lombo, chouriço/alheira/salsicha/linguiça, paté/mortadela). |
-| `arroz` | 1:1 | `arroz` | Arroz-doce goes to Sobremesas Lácteas by rule. |
-| `massas` | 1:1 | `massas` |  |
-| `conservas` | split | `conservas-peixe`, `conservas-vegetais`, `sopas-pratos-preparados` | By keyword (atum, sardinha, cavala -> peixe; grão, feijão, milho, ananás -> vegetais; sopa, guisado -> sopas). Beans/chickpeas/lentils in dry form move to Leguminosas e Grãos. |
-| `molhos-temperos` | 1:1 | `molhos-temperos` | Sopas and baking mixes found here are moved by rule. |
-| `azeite-oleos` | 1:1 | `azeite-oleos` | Renamed 'Azeite, Óleos e Vinagres'. |
-| `cereais` | 1:1 | `cereais` |  |
-| `bolachas` | split | `bolachas-simples`, `bolachas-recheadas`, `bolachas-integrais`, `bolachas-salgadas` | Too broad today. By keyword (maria, recheada/wafer/cream, integral/aveia/cereais, tostas/salgadas/crackers); the rest via classifier. |
-| `pao` | split | `pao`, `pao-forma-embalado` | By keyword (fatiado, forma, wrap, tortilha -> embalado). |
-| `bolos-sobremesas` | split | `bolos-pastelaria`, `sobremesas-preparadas`, `sobremesas-lacteas` | Catch-all today; split by keyword, remainder via classifier. |
-| `agua` | 1:1 | `agua` |  |
-| `sumos` | split | `sumos`, `refrigerantes`, `energeticas-desporto` | Refrigerantes and energy drinks are mixed in today. |
-| `bebidas-alcoolicas` | split | `cerveja`, `vinho`, `espirituosas-licores`, `cocktails` | Catch-all today; by keyword (cerveja/cider, vinho/espumante/porto, whisky/vodka/gin/licor, sangria/cocktail). |
-| `legumes-congelados` | 1:1 | `legumes-congelados` |  |
-| `peixe-congelado` | 1:1 | `peixe-marisco-congelado` | Renamed. |
-| `refeicoes-prontas` | split | `refeicoes-prontas`, `pizzas-salgados` | By keyword (pizza, croquete, rissol, folhado). |
-| `higiene-pessoal` | split | `banho-higiene`, `desodorizantes`, `cabelo`, `higiene-intima`, `barbear-depilacao`, `papel-higienico-lencos`, `cosmetica-rosto-corpo`, `protecao-solar` | Catch-all today; by keyword then classifier. Sun care and cosmetics are currently uncategorised or stuffed here. |
-| `higiene-oral` | 1:1 | `higiene-oral` |  |
-| `detergentes` | split | `detergentes-roupa`, `detergentes-loica` | By keyword (roupa/amaciador/máquina roupa vs loiça/máquina loiça). |
-| `limpeza-lar` | split | `limpeza-lar`, `papel-descartaveis`, `ambientadores-inseticidas` | By keyword (papel de cozinha, guardanapo, película, saco -> descartáveis; ambientador, inseticida -> ambientadores). |
-| `bebe-puericultura` | split | `alimentacao-bebe`, `fraldas-higiene-bebe`, `puericultura-mobiliario` | By keyword (papa, leite lactantes -> alimentação; fralda, toalhita -> fraldas; berço, carrinho, cadeira -> puericultura). |
-| `saude-bem-estar` | split | `suplementos-bem-estar`, `farmacia-primeiros-socorros` | By keyword (vitamina, suplemento -> suplementos; penso, desinfetante -> farmácia). |
+| `leite` | 1:1 | `milk` | Products with `sem lactose` in the name get that tag; the category does not change. Vegetable drinks are split out by rule (soja, aveia, amêndoa, arroz + `bebida`). |
+| `iogurtes` | split | `yoghurt`, `dairy-desserts` | By rule: pudim, gelatina, mousse, arroz doce, sobremesa -> Sobremesas Lácteas. |
+| `queijos` | 1:1 | `cheese` | Moves aisle (Laticínios -> Charcutaria e Queijos); slug unchanged. |
+| `manteiga-margarinas` | 1:1 | `butter-margarine` |  |
+| `natas-cremes` | 1:1 | `cooking-cream` | Renamed 'Natas e Cremes Culinários'. |
+| `frutas` | 1:1 | `fruit` |  |
+| `legumes` | split | `vegetables`, `salads-herbs` | By rule: salada, alface embalada, ervas, rebentos. |
+| `carne` | split | `beef`, `pork`, `poultry`, `minced-prepared-meat` | By keyword (vaca/novilho/bife, porco/entremeada, frango/peru/pato, picada/hambúrguer/espetada); anything left goes to the classifier/review. |
+| `peixe-marisco` | split | `fresh-fish`, `seafood`, `salt-cod-cured-fish` | By keyword (camarão, mexilhão, amêijoa... -> Marisco; bacalhau, salgado -> Bacalhau e Salgados). |
+| `ovos` | 1:1 | `eggs` | Moves aisle (Frescos -> Laticínios e Ovos). |
+| `charcutaria` | split | `ham-cold-cuts`, `cured-sausages`, `pates-cooked-deli` | By keyword (fiambre/presunto/paio-de-lombo, chouriço/alheira/salsicha/linguiça, paté/mortadela). |
+| `arroz` | 1:1 | `rice` | Arroz-doce goes to Sobremesas Lácteas by rule. |
+| `massas` | 1:1 | `pasta` |  |
+| `conservas` | split | `canned-fish`, `canned-vegetables-fruit`, `soups-ready-meals` | By keyword (atum, sardinha, cavala -> peixe; grão, feijão, milho, ananás -> vegetais; sopa, guisado -> sopas). Beans/chickpeas/lentils in dry form move to Leguminosas e Grãos. |
+| `molhos-temperos` | 1:1 | `sauces-seasonings` | Sopas and baking mixes found here are moved by rule. |
+| `azeite-oleos` | 1:1 | `oil-vinegar` | Renamed 'Azeite, Óleos e Vinagres'. |
+| `cereais` | 1:1 | `cereals` |  |
+| `bolachas` | split | `plain-biscuits`, `filled-biscuits`, `wholegrain-biscuits`, `crackers` | Too broad today. By keyword (maria, recheada/wafer/cream, integral/aveia/cereais, tostas/salgadas/crackers); the rest via classifier. |
+| `pao` | split | `bread`, `packaged-bread` | By keyword (fatiado, forma, wrap, tortilha -> embalado). |
+| `bolos-sobremesas` | split | `cakes-pastries`, `prepared-desserts`, `dairy-desserts` | Catch-all today; split by keyword, remainder via classifier. |
+| `agua` | 1:1 | `water` |  |
+| `sumos` | split | `juices`, `soft-drinks`, `energy-sports-drinks` | Refrigerantes and energy drinks are mixed in today. |
+| `bebidas-alcoolicas` | split | `beer-cider`, `wine`, `spirits-liqueurs`, `cocktails-mixed` | Catch-all today; by keyword (cerveja/cider, vinho/espumante/porto, whisky/vodka/gin/licor, sangria/cocktail). |
+| `legumes-congelados` | 1:1 | `frozen-vegetables` |  |
+| `peixe-congelado` | 1:1 | `frozen-fish-seafood` | Renamed. |
+| `refeicoes-prontas` | split | `frozen-ready-meals`, `pizzas-savouries` | By keyword (pizza, croquete, rissol, folhado). |
+| `higiene-pessoal` | split | `bath-body`, `deodorants`, `hair-care`, `intimate-care`, `shaving-hair-removal`, `toilet-paper-tissues`, `skincare-cosmetics`, `sun-care` | Catch-all today; by keyword then classifier. Sun care and cosmetics are currently uncategorised or stuffed here. |
+| `higiene-oral` | 1:1 | `oral-care` |  |
+| `detergentes` | split | `laundry`, `dishwashing` | By keyword (roupa/amaciador/máquina roupa vs loiça/máquina loiça). |
+| `limpeza-lar` | split | `household-cleaning`, `paper-disposables`, `air-fresheners-insecticides` | By keyword (papel de cozinha, guardanapo, película, saco -> descartáveis; ambientador, inseticida -> ambientadores). |
+| `bebe-puericultura` | split | `baby-food`, `nappies-baby-care`, `baby-gear-furniture` | By keyword (papa, leite lactantes -> alimentação; fralda, toalhita -> fraldas; berço, carrinho, cadeira -> puericultura). |
+| `saude-bem-estar` | split | `supplements-wellness`, `pharmacy-first-aid` | By keyword (vitamina, suplemento -> suplementos; penso, desinfetante -> farmácia). |
 
 The v1 parent groups have no products of their own in v2. Products sitting directly on a v1 parent (for example the broad `Mercearia`) count as uncategorised and go through the classifier and review queue.
 
-New categories with no v1 source (created empty, filled by rules, the classifier and review): `bebidas-vegetais`, `leguminosas-graos`, `farinhas-preparados`, `chocolate`, `confeitaria-doces`, `compotas-mel`, `acucar-adocantes`, `cafe`, `cha-infusoes`, `snacks-salgados`, `frutos-secos`, `carne-congelada`, `batatas-pre-fritos`, `gelados`, `cozinha-mesa`, `papelaria-livros`, `bazar-sazonal`, `comida-caes`, `comida-gatos`, `animais-acessorios`.
+New categories with no v1 source (created empty, filled by rules, the classifier and review): `plant-drinks`, `pulses-grains`, `flour-baking`, `chocolate`, `confectionery`, `jams-honey-spreads`, `sugar-sweeteners`, `coffee`, `tea-infusions`, `savoury-snacks`, `nuts-seeds`, `frozen-meat-poultry`, `potatoes-fries`, `ice-cream`, `kitchen-dining`, `stationery-books`, `general-seasonal`, `dog-food`, `cat-food`, `pet-supplies`.
 
 ## How the migration would work (after your approval)
 

@@ -39,9 +39,9 @@ public class MockApiHandler : HttpMessageHandler
                 rows = new[]
                 {
                     new { legacySlug = "carne", legacyName = "Carne", products = 100, oneToOne = 0, byRule = 70, leftForClassifier = 30,
-                          ruleTargets = new Dictionary<string, int> { ["carne-vaca"] = 40, ["aves"] = 30 } },
+                          ruleTargets = new Dictionary<string, int> { ["beef"] = 40, ["aves"] = 30 } },
                     new { legacySlug = "leite", legacyName = "Leite", products = 50, oneToOne = 48, byRule = 2, leftForClassifier = 0,
-                          ruleTargets = new Dictionary<string, int> { ["bebidas-vegetais"] = 2 } }
+                          ruleTargets = new Dictionary<string, int> { ["plant-drinks"] = 2 } }
                 },
                 tags = new Dictionary<string, int> { ["bio"] = 12, ["vegan"] = 3 }
             });

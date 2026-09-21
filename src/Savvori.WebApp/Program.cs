@@ -6,6 +6,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
 
 builder.Services.AddRazorPages();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddTransient<AcceptLanguageForwardingHandler>();
 
 // Typed HTTP client for WebApi calls
 builder.Services.AddHttpClient<SavvoriApiClient>(client =>
@@ -16,6 +18,7 @@ builder.Services.AddHttpClient<SavvoriApiClient>(client =>
     client.BaseAddress = new Uri(apiUrl);
     client.DefaultRequestHeaders.Add("Accept", "application/json");
 })
+.AddHttpMessageHandler<AcceptLanguageForwardingHandler>()
 .AddStandardResilienceHandler();
 
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
