@@ -68,7 +68,7 @@ public sealed class CategoryClassifier(
 
         // Never learn from the classifier's own decisions.
         var selfLabelled = (await db.CategorySuggestions.AsNoTracking()
-            .Where(s => s.Status == CategorySuggestionStatus.Applied && s.Method != MatchApplier.ManualMethod)
+            .Where(s => s.Status == CategorySuggestionStatus.Applied && (s.Method == "embedding-knn" || s.Method == "string-cache"))
             .Select(s => s.ProductId).ToListAsync(ct)).ToHashSet();
         var rejected = (await db.CategorySuggestions.AsNoTracking()
             .Where(s => s.Status == CategorySuggestionStatus.Rejected).Select(s => s.ProductId).ToListAsync(ct)).ToHashSet();

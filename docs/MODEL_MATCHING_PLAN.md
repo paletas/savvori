@@ -1,6 +1,6 @@
 # Model-assisted matching and categorisation: plan
 
-Status: **approved. Phases 1, 2 and 3 implemented; Phase 4: taxonomy v2 document written and awaiting your approval (no label migration done); the classifier is implemented and ships in dry run.**
+Status: **approved. Phases 1, 2 and 3 implemented; Phase 4: taxonomy v2 approved and implemented (explicit admin apply/revert, not yet applied to your database); the classifier is implemented and ships in dry run.**
 
 ## Principles (from the brief)
 
@@ -198,3 +198,20 @@ Commit: `feat: model backend foundation (breaker, job queue, status) behind a fe
 **What to do next (your decisions).**
 1. Answer the open points in `docs/TAXONOMY_V2.md` and approve or change the taxonomy; then I implement the additive migration and the v1 to v2 mapping (dry-run report first).
 2. Deploy dark (`Model:Enabled=false`), enable it against your Ollama, let embeddings fill, look at the match dry run and the category dry run, and only then switch off `Model:Matching:DryRun` / `Model:Categories:DryRun`.
+
+## Taxonomy v2 migration report
+
+**Decisions received.** Aisles as proposed (Queijos in Charcutaria e Queijos, Ovos in Laticínios e Ovos), all non-food leaves kept, tags bio / sem-lactose / sem-gluten / vegan / sem-acucar.
+
+**Built.** Explicit admin actions (Admin > Taxonomy v2): a dry-run plan per v1 category, apply, revert, tag backfill. Apply seeds 12 aisles and 87 categories (slugs shared with v1 reuse the same row), relabels products through the approved mapping with deterministic keyword rules (whole-word, accent-insensitive; unmatched splits are left uncategorised for the classifier, never guessed), keeps `Product.LegacyCategoryId`, and adds tags. Once active the category API shows the v2 tree and the scraper translates the rule mapper's v1 slug to v2 by product name. A revert restores labels, names and parents and leaves labels you set by hand alone. The classifier no longer excludes taxonomy-made labels from training (only its own).
+
+**Migration `AddTaxonomyV2`.** Adds two nullable columns to `Products` (`LegacyCategoryId`, `CategorySource`) and two tables (`ProductTags`, `TaxonomyMigrations`). Additive. The label migration itself is NOT run by the schema migration: it happens only when you press Apply.
+
+**Verified.** All tests pass (LiveScraperTests not run): mapping completeness (every v1 category mapped, every target exists), about 40 keyword placement cases, tag rules, plan is a dry run, apply/idempotency, revert (including hand decisions and classifier labels), scraper retargeting before and after, and the whole plan/apply/revert cycle through the API on real SQLite. **Live check** on the running app with real Ollama and 24 seeded products: the plan placed 19 of 21 products by rule or 1:1, applied, the category API showed the 12 aisles, revert restored all 21 products and the v1 tree, no errors.
+
+**Findings from the live run (please read).**
+- The classifier can only predict categories that already contain products. The new gap categories (pet food, coffee, chocolate, snacks, sun care, ...) start empty, so with few labelled examples it gave two weak suggestions (confidence about 0.5, for example a dog food product suggested as "Aves") and left the rest uncategorised. That is the classifier behaving correctly (it did not auto-assign), but it means the gap aisles will stay empty until they get a few examples.
+- Hand-made v1 labels cannot be told from rule-made ones, so rules place every product of a split category.
+- After a revert, a label you set by hand on a v2-only category stays but that category is not shown in the (v1) tree.
+
+**Not verified.** No run on your real catalogue: the plan numbers on your 18k products are unknown until you open Admin > Taxonomy v2. The keyword lists were written from general Portuguese grocery vocabulary and will misplace some products; check the plan counts and a sample after applying.

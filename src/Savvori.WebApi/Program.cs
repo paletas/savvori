@@ -77,6 +77,7 @@ builder.Services.AddHttpClient("lidl", c =>
 });
 
 builder.Services.AddScoped<ScraperResultProcessor>();
+builder.Services.AddScoped<TaxonomyMigrationService>();
 
 // Register all IStoreScraper implementations
 builder.Services.AddScoped<IStoreScraper, ContinenteScraper>();

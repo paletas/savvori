@@ -128,6 +128,9 @@ The `/api/shoppinglists/{id}/optimize` endpoint supports four modes via `?mode=`
 - The first matching run is a dry run: proposals appear in the review queue and nothing is linked until the dry-run setting is turned off.
 - Admin > Mapping shows store products by match method and how many products are priced by two or more chains.
 
+### Taxonomy v2
+- Admin > Taxonomy v2 shows, per current category, how many products stay, are placed by keyword rules, or are left uncategorised for the classifier, and lets you apply or revert the new 12-aisle / 87-category tree. Products also get tags (bio, sem lactose, sem glúten, vegan, sem açúcar). Applying keeps every product's old category so it can be reverted.
+
 ### Category suggestions (optional feature)
 - Admin > Category suggestions lists categories predicted for products that have none, with the confidence and the runner-up category. Actions: Accept, Reject (never proposed again) and Undo for categories the model assigned. A store category that maps uniformly to one category (for example a store's "bolachas") is offered once as "Apply to all".
 - Existing categories are never changed. The first run is a dry run: predictions wait in the queue until the dry-run setting is turned off. When the model is unavailable, categories keep coming from the built-in rules only.

@@ -27,6 +27,24 @@ public class MockApiHandler : HttpMessageHandler
         var method = request.Method.Method.ToUpperInvariant();
         var pathLower = path.ToLowerInvariant();
 
+        // ===== Admin: taxonomy v2 migration =====
+        if (method == "GET" && pathLower == "/api/admin/taxonomy/plan")
+            return Json(new
+            {
+                v2Active = false, productsWithCategory = 1200, productsAlreadyMigrated = 0, unchanged = 0, movedToUncategorised = 90,
+                rows = new[]
+                {
+                    new { legacySlug = "carne", legacyName = "Carne", products = 100, oneToOne = 0, byRule = 70, leftForClassifier = 30,
+                          ruleTargets = new Dictionary<string, int> { ["carne-vaca"] = 40, ["aves"] = 30 } },
+                    new { legacySlug = "leite", legacyName = "Leite", products = 50, oneToOne = 48, byRule = 2, leftForClassifier = 0,
+                          ruleTargets = new Dictionary<string, int> { ["bebidas-vegetais"] = 2 } }
+                },
+                tags = new Dictionary<string, int> { ["bio"] = 12, ["vegan"] = 3 }
+            });
+
+        if (method == "POST" && pathLower.StartsWith("/api/admin/taxonomy/"))
+            return Json(new { status = "ok" });
+
         // ===== Admin: category suggestions =====
         if (method == "GET" && pathLower == "/api/admin/categorisation/summary")
             return Json(new

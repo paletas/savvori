@@ -15,6 +15,7 @@ public sealed class ScraperResultProcessor
 
     // In-memory cache populated once per ProcessProductsAsync call: slug -> Guid
     private Dictionary<string, Guid> _categoryCache = [];
+    private bool _taxonomyV2Active;
 
     public ScraperResultProcessor(SavvoriDbContext db, ILogger<ScraperResultProcessor> logger)
     {
@@ -43,6 +44,7 @@ public sealed class ScraperResultProcessor
         // Cache category slugs for fast lookup during this processing run
         _categoryCache = await _db.ProductCategories
             .ToDictionaryAsync(pc => pc.Slug, pc => pc.Id, ct);
+        _taxonomyV2Active = await new TaxonomyMigrationService(_db, TimeProvider.System).IsV2ActiveAsync(ct);
 
         var scrapedExternalIds = scraped.Select(s => s.ExternalId).ToHashSet();
         var chainId = chain.Id;
@@ -92,6 +94,17 @@ public sealed class ScraperResultProcessor
             stale.IsActive = false;
 
         await _db.SaveChangesAsync(ct);
+
+        // Taxonomy v2 tags (bio, sem-lactose, ...) for new products. Deterministic; a failure here must never fail a scrape.
+        if (_taxonomyV2Active)
+        {
+            try { await new TaxonomyMigrationService(_db, TimeProvider.System).BackfillTagsAsync(ct); }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(ex, "Tag backfill after scraping {Chain} failed; continuing.", storeChainSlug);
+            }
+        }
+
         _logger.LogInformation(
             "Processed {Count}/{Total} products for {Chain}. Skipped {Skipped}. Marked {Stale} inactive.",
             processedCount, scraped.Count, storeChainSlug, skippedCount, staleProducts.Count);
@@ -214,7 +227,7 @@ public sealed class ScraperResultProcessor
 
         if (needsMatch)
         {
-            var categoryId = ResolveCategoryId(scraped.Category);
+            var categoryId = ResolveCategoryId(scraped.Category, scraped.Name);
             await MatchCanonicalProductAsync(storeProduct, scraped, normalized, sizeValue, unit, categoryId, ct);
         }
 
@@ -225,7 +238,7 @@ public sealed class ScraperResultProcessor
                             await _db.Products.FindAsync([storeProduct.CanonicalProductId.Value], ct);
             if (canonical is not null && canonical.CategoryId is null)
             {
-                var catId = ResolveCategoryId(scraped.Category);
+                var catId = ResolveCategoryId(scraped.Category, scraped.Name);
                 if (catId is not null)
                     canonical.CategoryId = catId;
             }
@@ -252,9 +265,13 @@ public sealed class ScraperResultProcessor
         });
     }
 
-    private Guid? ResolveCategoryId(string? scrapedCategory)
+    private Guid? ResolveCategoryId(string? scrapedCategory, string productName)
     {
         var slug = CategoryMapper.MapToSlug(scrapedCategory);
+        if (slug is null) return null;
+        // Taxonomy v2: the rule mapper still speaks v1 slugs; translate with the approved mapping (unmatched splits stay
+        // uncategorised for the classifier instead of being guessed).
+        if (_taxonomyV2Active) slug = TaxonomyV2.ResolveForScraper(slug, productName);
         if (slug is null) return null;
         return _categoryCache.TryGetValue(slug, out var id) ? id : null;
     }

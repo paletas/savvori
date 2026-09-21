@@ -203,3 +203,12 @@ public record CategoryStringProposalDto(Guid Id, string RawString, int Support, 
 public record ClassifierRunDto(
     string? SkippedReason, bool DryRun, int Targets, int AutoAssigned, int WouldAssign, int ToReview,
     int NoSuggestion, int StringsDecided, int StringsMixed);
+
+// ===== Admin Taxonomy v2 migration =====
+public record TaxonomyPlanRowDto(
+    string LegacySlug, string LegacyName, int Products, int OneToOne, int ByRule, int LeftForClassifier,
+    Dictionary<string, int> RuleTargets);
+
+public record TaxonomyPlanDto(
+    bool V2Active, int ProductsWithCategory, int ProductsAlreadyMigrated, int Unchanged, int MovedToUncategorised,
+    List<TaxonomyPlanRowDto> Rows, Dictionary<string, int> Tags);

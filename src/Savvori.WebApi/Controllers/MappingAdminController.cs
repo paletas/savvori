@@ -304,6 +304,7 @@ public class MappingAdminController : ControllerBase
         if (category is null) return BadRequest(new { Message = "Category not found." });
 
         product.CategoryId = req.CategoryId;
+        product.CategorySource = null; // a hand decision: the taxonomy migration must never revert it
         await _db.SaveChangesAsync(ct);
 
         return Ok(new { product.Id, product.Name, CategoryId = req.CategoryId, CategoryName = category.Name });

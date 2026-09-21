@@ -25,9 +25,7 @@ public class CategoriesController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetCategories(CancellationToken ct = default)
     {
-        var all = await _db.ProductCategories
-            .OrderBy(c => c.Name)
-            .ToListAsync(ct);
+        var all = await ActiveCategoriesAsync(ct);
 
         var roots = all
             .Where(c => c.ParentCategoryId == null)
@@ -35,6 +33,17 @@ public class CategoriesController : ControllerBase
             .ToList();
 
         return Ok(roots);
+    }
+
+    /// <summary>
+    /// The categories of the active taxonomy: the v2 tree once the v2 migration is applied, otherwise the v1 tree.
+    /// (The tree of the taxonomy that is not active stays in the database but is hidden.)
+    /// </summary>
+    private async Task<List<ProductCategory>> ActiveCategoriesAsync(CancellationToken ct)
+    {
+        var v2 = await new Scraping.TaxonomyMigrationService(_db, TimeProvider.System).IsV2ActiveAsync(ct);
+        var all = await _db.ProductCategories.OrderBy(c => c.Name).ToListAsync(ct);
+        return all.Where(c => v2 ? Scraping.TaxonomyV2.V2Slugs.Contains(c.Slug) : !Scraping.TaxonomyV2.V2Slugs.Contains(c.Slug) || Scraping.TaxonomyV2.V1Slugs.Contains(c.Slug)).ToList();
     }
 
     /// <summary>

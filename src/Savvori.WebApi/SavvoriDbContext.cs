@@ -24,6 +24,8 @@ public class SavvoriDbContext : DbContext
     public DbSet<MatchCandidate> MatchCandidates { get; set; } = default!;
     public DbSet<MatchMerge> MatchMerges { get; set; } = default!;
     public DbSet<CategorySuggestion> CategorySuggestions { get; set; } = default!;
+    public DbSet<ProductTag> ProductTags { get; set; } = default!;
+    public DbSet<TaxonomyMigration> TaxonomyMigrations { get; set; } = default!;
     public DbSet<CategoryStringDecision> CategoryStringDecisions { get; set; } = default!;
 
     // SQLite has no native decimal type: EF stores it as TEXT, which breaks ORDER BY / MIN / SUM
@@ -186,6 +188,12 @@ public class SavvoriDbContext : DbContext
         modelBuilder.Entity<MatchCandidate>().HasIndex(c => c.Cosine);
         modelBuilder.Entity<MatchCandidate>().HasIndex(c => c.Status);
         modelBuilder.Entity<MatchMerge>().HasIndex(m => m.CandidateId);
+
+        // Tags (bio, sem-lactose, ...) per canonical product; one row per (product, tag)
+        modelBuilder.Entity<ProductTag>().HasKey(t => new { t.ProductId, t.Tag });
+        modelBuilder.Entity<ProductTag>()
+            .HasOne(t => t.Product).WithMany().HasForeignKey(t => t.ProductId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<ProductTag>().HasIndex(t => t.Tag);
 
         // Category suggestions: one live decision per product; cached decision per raw store-category string
         modelBuilder.Entity<CategorySuggestion>()

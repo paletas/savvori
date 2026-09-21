@@ -1,6 +1,11 @@
 # Taxonomy v2 (proposal)
 
-Status: **proposal only. Nothing has been migrated. Awaiting approval before any data change.**
+Status: **approved (aisles as proposed, all non-food leaves kept, tags: bio, sem-lactose, sem-gluten, vegan, sem-acucar). The migration is implemented but NOT applied to any real database: it is an explicit admin action (Admin > Taxonomy v2), with a dry-run plan first.**
+
+Implementation notes (differences from the proposal below):
+- A migrated product keeps its v1 category in `Product.LegacyCategoryId` and is marked in `Product.CategorySource` (`taxonomy-1to1`, `taxonomy-rule`, `taxonomy-left`). There is no `TaxonomyVersion` column: v1 and v2 categories are told apart by slug, and the category API shows only the active tree. Slugs shared by v1 and v2 (for example `leite`) reuse the existing row (same id), renamed and moved under its new aisle; a revert restores names and parents.
+- v1 labels do not record who set them, so **hand-made v1 labels cannot be told from rule-made ones**. For a split, every product is placed by the keyword rules regardless. The dry-run plan shows the counts first, and the whole migration is reversible.
+- The classifier only predicts categories that already have products. The new gap categories (pet food, coffee, chocolate, sun care, ...) start empty, so the classifier cannot fill them until they have a few examples.
 
 This document proposes 12 aisles and 87 leaf categories, replacing today's 10 top-level groups and 32 assignable categories. It covers the gaps found in the prototype (pet food, cosmetics and sun care, kitchenware, books, baby furniture, wine and cocktails, coffee/tea/infusions, chocolate, snacks), splits the catch-all categories (Mercearia, Bolachas e Biscoitos, Bebidas Alcoólicas, Bolos e Sobremesas, Higiene Pessoal), and turns Bio, sem lactose and sem glúten into tags.
 

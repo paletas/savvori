@@ -120,6 +120,23 @@ public class AdminPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savvo
         Assert.DoesNotContain("Could not load suggestions", html);
     }
 
+    // ===== Admin Taxonomy v2 =====
+
+    [Fact]
+    public async Task AdminTaxonomyPage_ShowsTheDryRunPlan_AndAnApplyButton()
+    {
+        var client = factory.CreateClient();
+        var response = await client.GetAsync("/Admin/Taxonomy", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.Contains("Taxonomy v1 is active", html);
+        Assert.Contains("Apply taxonomy v2", html);
+        Assert.Contains("carne-vaca: 40", html);
+        Assert.Contains("bebidas-vegetais: 2", html);
+        Assert.Contains("tag bio: 12", html);
+        Assert.DoesNotContain("Could not load the migration plan", html);
+    }
+
     // ===== Admin Stores =====
 
     [Fact]
