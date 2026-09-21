@@ -32,10 +32,13 @@
                 }
             </div>
             <div class="flex flex-wrap gap-2 mt-2">
-                @foreach (var s in summary.ByStatus)
-                {
-                    <span class="badge badge-outline">@s.Status: @s.Count.ToString("N0")</span>
+                @{
+                    int Count(params string[] statuses) => summary.ByStatus.Where(x => statuses.Contains(x.Status)).Sum(x => x.Count);
                 }
+                <span class="badge badge-outline">To review: @Count("NeedsReview").ToString("N0")</span>
+                <span class="badge badge-outline" title="Close enough to be candidates but not looked at yet: they move to the queue at the next matching run or judge answer">Not evaluated yet: @Count("Proposed", "PendingJudge").ToString("N0")</span>
+                <span class="badge badge-outline">Merged: @Count("Applied").ToString("N0")</span>
+                <span class="badge badge-outline" title="Decided as not the same product or a different variant; never proposed again">Ruled out: @Count("Rejected", "DifferentVariant").ToString("N0")</span>
                 <span class="badge badge-info">Products priced by 2+ chains: @summary.MultiChainCanonicals.ToString("N0")</span>
                 @foreach (var m in summary.AppliedByMethod)
                 {

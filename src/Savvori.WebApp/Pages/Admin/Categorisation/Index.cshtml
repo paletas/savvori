@@ -30,10 +30,12 @@
                     <span class="text-sm">Confident predictions are assigned automatically and can be undone under "Applied".</span>
                 }
                 <span class="badge badge-outline">Uncategorised products: @summary.Uncategorised.ToString("N0")</span>
-                @foreach (var s in summary.ByStatus)
-                {
-                    <span class="badge badge-ghost">@s.Status: @s.Count.ToString("N0")</span>
+                @{
+                    int Count(params string[] statuses) => summary.ByStatus.Where(x => statuses.Contains(x.Status)).Sum(x => x.Count);
                 }
+                <span class="badge badge-ghost">To review: @Count("Suggested").ToString("N0")</span>
+                <span class="badge badge-ghost">Assigned: @Count("Applied").ToString("N0")</span>
+                <span class="badge badge-ghost" title="Decided as not this category; never proposed again for that product">Ruled out: @Count("Rejected").ToString("N0")</span>
             </div>
             <form method="post" asp-page-handler="Run" class="mt-3">
                 <input type="hidden" name="Filter" value="@Model.Filter" />
