@@ -268,7 +268,7 @@ public sealed class ScraperResultProcessor
     private Guid? ResolveCategoryId(string? scrapedCategory, string productName)
     {
         var slug = CategoryMapper.MapToSlug(scrapedCategory);
-        if (slug is null) return null;
+        if (slug is null) return _taxonomyV2Active && TaxonomyV2.Seed(productName) is { } seeded && _categoryCache.TryGetValue(seeded, out var seededId) ? seededId : null;
         // Taxonomy v2: the rule mapper still speaks v1 slugs; translate with the approved mapping (unmatched splits stay
         // uncategorised for the classifier instead of being guessed).
         if (_taxonomyV2Active) slug = TaxonomyV2.ResolveForScraper(slug, productName);

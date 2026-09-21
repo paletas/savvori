@@ -46,6 +46,22 @@ else
         </div>
     </div>
 
+    @if (plan.SeedTargets is { Count: > 0 })
+    {
+        <div class="card bg-base-100 shadow mb-6">
+            <div class="card-body p-4">
+                <h2 class="font-semibold">Seeded from product names (categories that are new in v2)</h2>
+                <p class="text-xs text-base-content/60">Uncategorised products only. These give the classifier its first examples.</p>
+                <div class="flex flex-wrap gap-2 mt-2">
+                    @foreach (var s in plan.SeedTargets.OrderByDescending(x => x.Value))
+                    {
+                        <span class="badge badge-info">@s.Key: @s.Value.ToString("N0")</span>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
     <div class="overflow-x-auto">
         <table class="table table-sm bg-base-100">
             <thead><tr><th>Current (v1) category</th><th>Products</th><th>Stay / 1:1</th><th>Placed by rule</th><th>Left for classifier</th><th>Rule targets</th></tr></thead>

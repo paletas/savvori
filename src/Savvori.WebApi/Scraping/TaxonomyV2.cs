@@ -115,6 +115,48 @@ public static class TaxonomyV2
             R("farmacia-primeiros-socorros", "penso", "pensos rapidos", "desinfetante", "alcool", "termometro", "mascara", "gel desinfetante", "compressa", "ligadura", "paracetamol", "soro fisiologico")),
     };
 
+    /// <summary>
+    /// Seed rules for the categories that did not exist in v1 (pet food, coffee, chocolate, sun care, ...). They give the
+    /// classifier its first examples, and apply only to products that have no category. Deliberately conservative: a
+    /// word like "chocolate" alone is not enough (it would catch a chocolate yoghurt). Order matters: first match wins.
+    /// </summary>
+    public static IReadOnlyList<SplitRule> Seeds { get; } =
+    [
+        R("animais-acessorios", "areia para gatos", "areia higienica", "coleira", "aquario", "comida para passaros", "comida para peixes"),
+        R("comida-gatos", "comida para gatos", "comida para gato", "racao para gatos", "alimento para gatos", "snack para gatos", "whiskas", "sheba"),
+        R("comida-caes", "comida para caes", "comida para cao", "racao para caes", "alimento para caes", "snack para caes", "pedigree", "chappi"),
+        R("protecao-solar", "protetor solar", "protecao solar", "bronzeador", "after sun", "spf"),
+        R("cosmetica-rosto-corpo", "creme facial", "creme de rosto", "serum", "maquilhagem", "batom", "rimel", "desmaquilhante", "creme de maos", "locao corporal"),
+        R("energeticas-desporto", "bebida energetica", "red bull", "monster energy", "isotonica", "gatorade", "powerade"),
+        R("bebidas-vegetais", "bebida vegetal", "bebida de soja", "bebida de aveia", "bebida de amendoa", "bebida de arroz", "bebida de coco"),
+        R("cerveja", "cerveja", "sidra"),
+        R("vinho", "vinho", "espumante", "prosecco", "champagne"),
+        R("espirituosas-licores", "whisky", "vodka", "licor", "aguardente"),
+        R("cafe", "cafe", "capsulas de cafe", "nespresso", "dolce gusto"),
+        R("cha-infusoes", "cha", "infusao", "infusoes", "tisana", "camomila"),
+        R("chocolate", "tablete de chocolate", "chocolate negro", "chocolate de leite", "chocolate branco", "bombons", "bombom", "nutella", "cacau em po"),
+        R("snacks-salgados", "batatas fritas", "pipocas", "tremocos", "cheetos", "doritos", "pringles", "snack salgado"),
+        R("frutos-secos", "amendoim", "amendoas", "nozes", "caju", "pistacio", "avelas", "frutos secos", "passas"),
+        R("compotas-mel", "compota", "mel", "geleia", "marmelada", "creme de barrar"),
+        R("acucar-adocantes", "acucar branco", "acucar amarelo", "acucar mascavado", "adocante", "stevia"),
+        R("leguminosas-graos", "lentilhas", "quinoa", "cuscuz", "bulgur", "grao de bico seco", "feijao seco"),
+        R("farinhas-preparados", "farinha", "fermento", "pao ralado", "preparado para bolos", "levedura", "maizena"),
+        R("gelados", "gelado", "gelados", "sorvete", "cornetto", "magnum"),
+        R("batatas-pre-fritos", "batatas pre fritas", "batatas congeladas", "pre frito"),
+        R("puericultura-mobiliario", "berco", "carrinho de bebe", "cadeira auto", "cadeira de bebe", "alcofa", "andarilho"),
+        R("cozinha-mesa", "frigideira", "tacho", "panela", "talheres", "tupperware", "caixa hermetica", "tabuleiro", "cafeteira"),
+        R("papelaria-livros", "livro", "caderno", "caneta", "lapis", "esferografica", "agrafador", "cola escolar", "papel a4"),
+    ];
+
+    /// <summary>The v2 category a product with NO category can be seeded into by name, or null.</summary>
+    public static string? Seed(string productName)
+    {
+        var text = ProductNormalizer.Normalize(productName);
+        foreach (var rule in Seeds)
+            if (GetRegexes("seed", rule).Any(r => r.IsMatch(text))) return rule.Target;
+        return null;
+    }
+
     private static readonly Dictionary<string, Regex[]> RuleRegex = new();
 
     private static Regex Compile(string keyword) =>
@@ -150,7 +192,10 @@ public static class TaxonomyV2
     }
 
     /// <summary>The v2 slug for a category the scraper-time rule mapper produced (v1 slug), given the product name.</summary>
-    public static string? ResolveForScraper(string v1Slug, string productName)
+    public static string? ResolveForScraper(string v1Slug, string productName) =>
+        ResolveMapped(v1Slug, productName) ?? Seed(productName);
+
+    private static string? ResolveMapped(string v1Slug, string productName)
     {
         if (AisleSlugs.Contains(v1Slug)) return null;
         if (V2Slugs.Contains(v1Slug) && !Legacy.ContainsKey(v1Slug)) return v1Slug;

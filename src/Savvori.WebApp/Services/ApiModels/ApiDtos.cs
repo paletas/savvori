@@ -211,4 +211,4 @@ public record TaxonomyPlanRowDto(
 
 public record TaxonomyPlanDto(
     bool V2Active, int ProductsWithCategory, int ProductsAlreadyMigrated, int Unchanged, int MovedToUncategorised,
-    List<TaxonomyPlanRowDto> Rows, Dictionary<string, int> Tags);
+    List<TaxonomyPlanRowDto> Rows, Dictionary<string, int> Tags, Dictionary<string, int>? SeedTargets = null);

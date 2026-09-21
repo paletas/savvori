@@ -41,7 +41,8 @@ public sealed record PlanRow(
 
 public sealed record TaxonomyPlan(
     bool V2Active, int ProductsWithCategory, int ProductsAlreadyMigrated, int Unchanged, int MovedToUncategorised,
-    IReadOnlyList<PlanRow> Rows, IReadOnlyDictionary<string, int> Tags);
+    IReadOnlyList<PlanRow> Rows, IReadOnlyDictionary<string, int> Tags,
+    IReadOnlyDictionary<string, int>? SeedTargets = null);
 
 public sealed record TaxonomyApplyResult(bool Applied, string? Reason, TaxonomyPlan Plan);
 
@@ -55,6 +56,7 @@ public sealed class TaxonomyMigrationService(SavvoriDbContext db, TimeProvider t
     public const string SourceOneToOne = "taxonomy-1to1";
     public const string SourceRule = "taxonomy-rule";
     public const string SourceLeft = "taxonomy-left";
+    public const string SourceSeed = "taxonomy-seed";
 
     public async Task<bool> IsV2ActiveAsync(CancellationToken ct = default) =>
         await db.TaxonomyMigrations.Where(m => m.Version == 2).OrderByDescending(m => m.AppliedAt)
@@ -69,6 +71,7 @@ public sealed class TaxonomyMigrationService(SavvoriDbContext db, TimeProvider t
 
         var rows = new Dictionary<string, (int total, int one, int rule, int left, Dictionary<string, int> targets)>();
         int already = 0, unchanged = 0, toNull = 0;
+        var seeds = new Dictionary<string, int>();
         foreach (var p in products)
         {
             if (p.LegacyCategoryId is not null) { already++; continue; }
@@ -80,7 +83,11 @@ public sealed class TaxonomyMigrationService(SavvoriDbContext db, TimeProvider t
             row.total++;
             if (kind == PlacementKind.OneToOne) row.one++;
             else if (kind == PlacementKind.Rule) { row.rule++; row.targets[targetSlug!] = row.targets.GetValueOrDefault(targetSlug!) + 1; }
-            else { row.left++; toNull++; }
+            else
+            {
+                row.left++; toNull++;
+                if (TaxonomyV2.Seed(p.Name) is { } leftSeed) seeds[leftSeed] = seeds.GetValueOrDefault(leftSeed) + 1;
+            }
             rows[slug] = row;
         }
 
@@ -92,7 +99,12 @@ public sealed class TaxonomyMigrationService(SavvoriDbContext db, TimeProvider t
         foreach (var p in await db.Products.AsNoTracking().Select(p => new { p.Name, p.Brand, p.Category }).ToListAsync(ct))
             foreach (var t in TagRules.Compute(p.Name, p.Brand, p.Category)) tagCounts[t]++;
 
-        return new TaxonomyPlan(await IsV2ActiveAsync(ct), products.Count, already, unchanged, toNull, planRows, tagCounts);
+        // Products with no category at all (for example a whole chain that was never categorised).
+        foreach (var name in await db.Products.AsNoTracking().Where(p => p.CategoryId == null && p.LegacyCategoryId == null && p.CategorySource == null)
+                     .Select(p => p.Name).ToListAsync(ct))
+            if (TaxonomyV2.Seed(name) is { } seed) seeds[seed] = seeds.GetValueOrDefault(seed) + 1;
+
+        return new TaxonomyPlan(await IsV2ActiveAsync(ct), products.Count, already, unchanged, toNull, planRows, tagCounts, seeds);
     }
 
     /// <summary>Where a product in v1 category <paramref name="slug"/> goes. Known=false: not a v1 category, leave it alone.</summary>
@@ -139,11 +151,23 @@ public sealed class TaxonomyMigrationService(SavvoriDbContext db, TimeProvider t
             if (kind == PlacementKind.OneToOne) oneToOne++; else if (kind == PlacementKind.Rule) byRule++; else left++;
         }
 
+        await db.SaveChangesAsync(ct); // the relabelling above must be visible to the query below
+
+        // Seed the categories that are new in v2 from product names, for products that still have no category.
+        int seeded = 0;
+        foreach (var p in await db.Products.Where(p => p.CategoryId == null && (p.CategorySource == null || p.CategorySource == SourceLeft)).ToListAsync(ct))
+            if (TaxonomyV2.Seed(p.Name) is { } seed)
+            {
+                p.CategoryId = slugToId[seed];
+                p.CategorySource = SourceSeed;
+                seeded++;
+            }
+
         var tagged = await BackfillTagsAsync(ct);
         db.TaxonomyMigrations.Add(new TaxonomyMigration
         {
             Id = Guid.NewGuid(), Version = 2, AppliedAt = time.GetUtcNow().UtcDateTime,
-            Summary = JsonSerializer.Serialize(new { oneToOne, byRule, leftForClassifier = left, tagsAdded = tagged })
+            Summary = JsonSerializer.Serialize(new { oneToOne, byRule, leftForClassifier = left, seeded, tagsAdded = tagged })
         });
         await db.SaveChangesAsync(ct);
         return new(true, null, plan with { V2Active = true });
@@ -204,7 +228,7 @@ public sealed class TaxonomyMigrationService(SavvoriDbContext db, TimeProvider t
         if (current is null) return (false, "Taxonomy v2 is not applied.", 0);
 
         var restored = 0;
-        foreach (var p in await db.Products.Where(p => p.LegacyCategoryId != null).ToListAsync(ct))
+        foreach (var p in await db.Products.Where(p => p.LegacyCategoryId != null || p.CategorySource != null).ToListAsync(ct))
         {
             if (p.CategorySource is { } s && s.StartsWith("taxonomy", StringComparison.Ordinal))
             {
@@ -222,7 +246,7 @@ public sealed class TaxonomyMigrationService(SavvoriDbContext db, TimeProvider t
             .Where(s => s.Status == CategorySuggestionStatus.Applied && (s.Method == "embedding-knn" || s.Method == "string-cache"))
             .Select(s => s.ProductId).ToListAsync(ct)).ToHashSet();
         foreach (var p in await db.Products.Where(p => p.CategoryId != null).ToListAsync(ct))
-            if (v2OnlyIds.Contains(p.CategoryId!.Value) && byModel.Contains(p.Id)) p.CategoryId = null;
+            if (p.CategoryId is { } cid && v2OnlyIds.Contains(cid) && byModel.Contains(p.Id)) p.CategoryId = null;
 
         var rows = await db.ProductCategories.ToDictionaryAsync(c => c.Slug, ct);
         foreach (var def in CategoryTaxonomy.All)

@@ -125,6 +125,41 @@ public sealed class TaxonomyV2DataTests
             TagRules.Compute("Bebida Bio Sem Lactose Sem Glúten", null, null).Order());
 }
 
+public sealed class TaxonomySeedRuleTests
+{
+    [Theory]
+    [InlineData("Comida para Cães Frango 400g", "comida-caes")]
+    [InlineData("Comida para Gatos Salmão 85g", "comida-gatos")]
+    [InlineData("Areia para Gatos 10L", "animais-acessorios")]
+    [InlineData("Café Moído Torrado 250g", "cafe")]
+    [InlineData("Chá Verde Limão 20 saquetas", "cha-infusoes")]
+    [InlineData("Tablete de Chocolate Negro 70%", "chocolate")]
+    [InlineData("Batatas Fritas Lisas 150g", "snacks-salgados")]
+    [InlineData("Protetor Solar SPF 50 200ml", "protecao-solar")]
+    [InlineData("Frigideira Antiaderente 28cm", "cozinha-mesa")]
+    [InlineData("Livro de Receitas", "papelaria-livros")]
+    [InlineData("Carrinho de Bebé Duplo", "puericultura-mobiliario")]
+    [InlineData("Gelado de Baunilha 1L", "gelados")]
+    [InlineData("Vinho Tinto Douro", "vinho")]
+    public void Seed_PlacesTheNewV2Categories_ByName(string name, string expected) =>
+        Assert.Equal(expected, TaxonomyV2.Seed(name));
+
+    [Theory]
+    [InlineData("Iogurte com Chocolate")]            // "chocolate" alone is not enough
+    [InlineData("Iogurte Sem Açúcar")]               // sugar-free is a tag, not the sugar category
+    [InlineData("Coca-Cola Zero")]                   // "cola" must not fire the stationery glue rule
+    [InlineData("Leite Meio Gordo")]
+    [InlineData("Produto Misterioso")]
+    public void Seed_DoesNotGuess_OnAmbiguousWords(string name) => Assert.Null(TaxonomyV2.Seed(name));
+
+    [Fact]
+    public void EverySeedTarget_IsAV2Leaf()
+    {
+        var leaves = TaxonomyV2Data.Aisles.SelectMany(a => a.Leaves.Select(l => l.Slug)).ToHashSet();
+        Assert.All(TaxonomyV2.Seeds, r => Assert.Contains(r.Target, leaves));
+    }
+}
+
 public sealed class TaxonomyMigrationTests : IAsyncLifetime
 {
     private SavvoriDbContext _db = default!;
@@ -238,6 +273,33 @@ public sealed class TaxonomyMigrationTests : IAsyncLifetime
         Assert.Null(untouched.CategoryId);
         Assert.Null(untouched.LegacyCategoryId);
         Assert.Null(untouched.CategorySource);
+    }
+
+    [Fact]
+    public async Task Apply_SeedsTheNewCategories_ForUncategorisedProducts_AndRevertUndoesIt()
+    {
+        var dog = await AddProduct("Comida para Cães Frango 400g", null, raw: "alimentacao");
+        var yoghurt = await AddProduct("Iogurte com Chocolate", null, raw: "alimentacao");
+        var leftBehind = await AddProduct("Carne Cafe Especial", "carne"); // v1 split with no rule match, but "cafe" seeds it
+
+        var plan = await _svc.PlanAsync(Ct);
+        Assert.Equal(1, plan.SeedTargets!["comida-caes"]);
+
+        await _svc.ApplyAsync(Ct);
+
+        var pDog = await Get(dog);
+        Assert.Equal("comida-caes", await SlugOf(pDog.CategoryId));
+        Assert.Equal("taxonomy-seed", pDog.CategorySource);
+        Assert.Null(pDog.LegacyCategoryId);                          // it never had a v1 category
+        Assert.Null((await Get(yoghurt)).CategoryId);                 // not guessed
+        Assert.Equal("cafe", await SlugOf((await Get(leftBehind)).CategoryId));
+        Assert.Equal(V1("carne"), (await Get(leftBehind)).LegacyCategoryId);
+
+        await _svc.RevertAsync(Ct);
+
+        Assert.Null((await Get(dog)).CategoryId);                     // back to uncategorised
+        Assert.Null((await Get(dog)).CategorySource);
+        Assert.Equal(V1("carne"), (await Get(leftBehind)).CategoryId);
     }
 
     [Fact]
@@ -375,6 +437,9 @@ public sealed class TaxonomyScraperTests : IAsyncLifetime
         Assert.Equal("carne-vaca", await CategorySlugOf("Bife de Vaca"));
         Assert.Null(await CategorySlugOf("Carne Sem Palavra Chave")); // left for the classifier
         Assert.Equal("leite", await CategorySlugOf("Leite Meio Gordo"));
+        // A product the rule mapper cannot place at all is still seeded by name into a category that is new in v2.
+        await _processor.ProcessProductsAsync("continente", [Scraped("Comida para Gatos Salmão 85g", "alimentacao-animal-desconhecida")], ct: Ct);
+        Assert.Equal("comida-gatos", await CategorySlugOf("Comida para Gatos Salmão 85g"));
         var tags = await _db.ProductTags.Include(t => t.Product).Where(t => t.Product.Name == "Leite Sem Lactose Bio").Select(t => t.Tag).ToListAsync(Ct);
         Assert.Contains("sem-lactose", tags);
         Assert.Contains("bio", tags);
