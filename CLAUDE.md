@@ -58,7 +58,7 @@ tests/
 
 ### Model-assisted matching and categories (`src/Savvori.WebApi/Modeling`)
 
-- Optional, feature-flagged (`Model:Enabled`, default off) and never on a request or scrape path: a remote Ollama model embeds product text, proposes cross-chain matches and category predictions in background Quartz jobs. Everything degrades to the deterministic behaviour when the model is down (circuit breaker + durable `ModelJobs` queue). Matching and category runs default to dry run. Design, rules and per-phase reports: `docs/MODEL_MATCHING_PLAN.md`; category taxonomy proposal (not yet migrated): `docs/TAXONOMY_V2.md`.
+- Optional, feature-flagged (`Model:Enabled`, default off) and never on a request or scrape path: a remote Ollama model embeds product text, proposes cross-chain matches and category predictions in background Quartz jobs. Everything degrades to the deterministic behaviour when the model is down (circuit breaker + durable `ModelJobs` queue). Matching and category runs default to dry run. Design, rules and per-phase reports: `docs/MODEL_MATCHING_PLAN.md`; the category tree is taxonomy v2, applied automatically at startup: `docs/TAXONOMY_V2.md`.
 
 ### Optimization (`src/Savvori.WebApi/Services`)
 

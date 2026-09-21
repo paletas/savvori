@@ -1,6 +1,6 @@
 # Taxonomy v2 (proposal)
 
-Status: **approved (aisles as proposed, all non-food leaves kept, tags: bio, sem-lactose, sem-gluten, vegan, sem-acucar). The migration is implemented but NOT applied to any real database: it is an explicit admin action (Admin > Taxonomy v2), with a dry-run plan first.**
+Status: **the category tree. Approved (aisles as proposed, all non-food leaves kept, tags: bio, sem-lactose, sem-gluten, vegan, sem-acucar) and applied automatically at API startup on any database that has never had it (once; a revert via `POST /api/admin/taxonomy/revert` is not re-applied on restart). There is no admin page. Seed rules are re-run on products with no category at every start.**
 
 Implementation notes (differences from the proposal below):
 - A migrated product keeps its v1 category in `Product.LegacyCategoryId` and is marked in `Product.CategorySource` (`taxonomy-1to1`, `taxonomy-rule`, `taxonomy-left`). There is no `TaxonomyVersion` column: v1 and v2 categories are told apart by slug, and the category API shows only the active tree. v2 slugs are English, so they never collide with the Portuguese v1 slugs: v2 is a set of new rows and the v1 rows are never modified (a revert only restores product labels).

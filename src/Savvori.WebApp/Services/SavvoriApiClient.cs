@@ -541,31 +541,6 @@ public class SavvoriApiClient(HttpClient http, ILogger<SavvoriApiClient> logger)
         catch (Exception ex) { logger.LogError(ex, "Failed to run classifier"); return null; }
     }
 
-    // ===== Admin: taxonomy v2 migration =====
-
-    public async Task<TaxonomyPlanDto?> GetTaxonomyPlanAsync(CancellationToken ct = default)
-    {
-        try { return await http.GetFromJsonAsync<TaxonomyPlanDto>("/api/admin/taxonomy/plan", JsonOptions, ct); }
-        catch (Exception ex) { logger.LogError(ex, "Failed to get taxonomy plan"); return null; }
-    }
-
-    /// <summary>action: apply | revert</summary>
-    public async Task<(bool Success, string? Error)> TaxonomyActionAsync(string action, CancellationToken ct = default)
-    {
-        try
-        {
-            var resp = await http.PostAsync($"/api/admin/taxonomy/{action}", null, ct);
-            if (resp.IsSuccessStatusCode) return (true, null);
-            var body = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(JsonOptions, ct);
-            return (false, body.TryGetProperty("message", out var m) ? m.GetString() : "The action failed.");
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Taxonomy action {Action} failed", action);
-            return (false, "The action failed.");
-        }
-    }
-
     // ===== Admin: bulk review =====
 
     private static string Inv(double value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture);

@@ -159,7 +159,7 @@ Optional model-assisted matching/categorisation runs against a remote, unreliabl
 - `POST /api/admin/categorisation/suggestions/{id}/accept|reject|undo`, `POST .../strings/{id}/accept|reject`, `POST .../run`.
 
 ### Admin — Taxonomy v2
-- `GET /api/admin/taxonomy/plan` (dry run) | `POST /api/admin/taxonomy/apply` | `POST /api/admin/taxonomy/revert` | `POST /api/admin/taxonomy/backfill-tags`.
+- Taxonomy v2 is applied at startup on a database that has never had it (`Program.cs`; a revert is not re-applied on restart) and the seed rules are re-run on products with no category at every start. API: `GET /api/admin/taxonomy/plan` (dry run) | `POST /api/admin/taxonomy/revert` | `POST /api/admin/taxonomy/reseed` | `POST /api/admin/taxonomy/backfill-tags` | `POST /api/admin/taxonomy/apply` (only after a revert). No admin page.
 
 ### Admin — Model Backend
 - `GET /api/admin/model/status` — breaker state, last success/error, queue depth, oldest pending job, dead-lettered and stale-embedding counts (never calls the model).

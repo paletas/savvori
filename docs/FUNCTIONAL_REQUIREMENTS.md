@@ -132,7 +132,7 @@ The `/api/shoppinglists/{id}/optimize` endpoint supports four modes via `?mode=`
 - Admin > Mapping shows store products by match method and how many products are priced by two or more chains.
 
 ### Taxonomy v2
-- Admin > Taxonomy v2 shows, per current category, how many products stay, are placed by keyword rules, or are left uncategorised for the classifier, and lets you apply or revert the new 12-aisle / 87-category tree. Products also get tags (bio, sem lactose, sem glúten, vegan, sem açúcar). Applying keeps every product's old category so it can be reverted.
+- The category tree is taxonomy v2 (12 aisles, 87 categories, names in Portuguese and English). It is applied automatically the first time the API starts on a database that has never had it: each product is placed by a 1:1 mapping or a keyword rule, or left uncategorised for the classifier and the review queue, and keeps its old category so it can be reverted. Products also get tags (bio, sem lactose, sem glúten, vegan, sem açúcar). There is no admin page for it.
 
 ### Category suggestions (optional feature)
 - Admin > Category suggestions lists categories predicted for products that have none, with the confidence and the runner-up category. Actions: Accept, Reject (never proposed again) and Undo for categories the model assigned. A store category that maps uniformly to one category (for example a store's "bolachas") is offered once as "Apply to all".

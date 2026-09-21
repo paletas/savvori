@@ -167,6 +167,19 @@ using (var scope = app.Services.CreateScope())
         DatabaseBackup.BackupIfMigrationsPending(db, app.Logger);
         await db.Database.MigrateAsync();
         await CategorySeeder.SeedAsync(db, app.Logger);
+
+        // Taxonomy v2 is the category tree. A database that has never had it is migrated once, here (products keep their
+        // old category in LegacyCategoryId; POST /api/admin/taxonomy/revert undoes it and is not re-applied on restart).
+        // The seed rules are applied again on every start to products that still have no category.
+        var taxonomy = scope.ServiceProvider.GetRequiredService<TaxonomyMigrationService>();
+        if (!await db.TaxonomyMigrations.AnyAsync())
+        {
+            var applied = await taxonomy.ApplyAsync();
+            app.Logger.LogInformation("Taxonomy v2 applied on startup: {Applied}.", applied.Applied);
+        }
+        var reseeded = await taxonomy.ReseedAsync();
+        if (reseeded > 0) app.Logger.LogInformation("Seed rules categorised {Count} more product(s).", reseeded);
+
         await CategoryTranslations.SeedAsync(db);
         await StoreChainSeeder.SeedAsync(db, app.Configuration, app.Logger);
 
