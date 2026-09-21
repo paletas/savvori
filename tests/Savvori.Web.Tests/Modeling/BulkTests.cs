@@ -22,7 +22,7 @@ public sealed class BulkMatchTests : IDisposable
         CandidateBrandCheck brand = CandidateBrandCheck.Ok, string? note = null)
     {
         var (a, _) = _h.AddListed(chainA, "Leite Meio Gordo");
-        var (b, _) = _h.AddListed(chainB, "Leite M. Gordo");
+        var (b, _) = _h.AddListed(chainB, "Leite Gordo Meio");
         var id = _h.AddCandidate(a, b, cosine, brand: brand);
         _h.With(db =>
         {
@@ -37,8 +37,8 @@ public sealed class BulkMatchTests : IDisposable
     private Task<BulkBatch> RunApplyAsync(double min) => Scoped(async sp =>
     {
         var svc = sp.GetRequiredService<MatchBulkService>();
-        var batch = await svc.CreateAsync(min, TestContext.Current.CancellationToken);
-        await svc.RunApplyAsync(batch.Id, TestContext.Current.CancellationToken);
+        var batch = await svc.CreateAsync(min, ct: TestContext.Current.CancellationToken);
+        await svc.RunApplyAsync(batch.Id, ct: TestContext.Current.CancellationToken);
         return await sp.GetRequiredService<SavvoriDbContext>().BulkBatches.AsNoTracking().SingleAsync(b => b.Id == batch.Id);
     });
 
@@ -90,7 +90,7 @@ public sealed class BulkMatchTests : IDisposable
     public async Task Undo_RestoresTheWholeRun_AndPutsThePairsBackInTheQueueNotInRejected()
     {
         var (a, ca) = _h.AddListed(_h.ChainA, "Leite Meio Gordo");
-        var (b, cb) = _h.AddListed(_h.ChainB, "Leite M. Gordo");
+        var (b, cb) = _h.AddListed(_h.ChainB, "Leite Gordo Meio");
         var c = _h.AddCandidate(a, b, 0.97);
         _h.With(db => { var x = db.MatchCandidates.Single(y => y.Id == c); x.Status = CandidateStatus.NeedsReview; x.Suggestion = "embedding-cosine"; });
         var listId = Guid.NewGuid();

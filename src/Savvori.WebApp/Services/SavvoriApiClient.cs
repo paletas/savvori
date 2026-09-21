@@ -570,9 +570,9 @@ public class SavvoriApiClient(HttpClient http, ILogger<SavvoriApiClient> logger)
 
     private static string Inv(double value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
-    public async Task<MatchBulkPreviewDto?> GetMatchBulkPreviewAsync(double minCosine, CancellationToken ct = default)
+    public async Task<MatchBulkPreviewDto?> GetMatchBulkPreviewAsync(double minCosine, double? exactFloor = null, CancellationToken ct = default)
     {
-        try { return await http.GetFromJsonAsync<MatchBulkPreviewDto>($"/api/admin/matching/bulk/preview?minCosine={Inv(minCosine)}&sample=30", JsonOptions, ct); }
+        try { return await http.GetFromJsonAsync<MatchBulkPreviewDto>($"/api/admin/matching/bulk/preview?minCosine={Inv(minCosine)}&sample=30{(exactFloor is { } f ? $"&exactFloor={Inv(f)}" : "")}", JsonOptions, ct); }
         catch (Exception ex) { logger.LogError(ex, "Failed to get match bulk preview"); return null; }
     }
 
@@ -583,12 +583,12 @@ public class SavvoriApiClient(HttpClient http, ILogger<SavvoriApiClient> logger)
     }
 
     /// <summary>area: matching | categorisation. Starts a background run.</summary>
-    public async Task<(bool Success, string? Error)> StartBulkApplyAsync(string area, double threshold, CancellationToken ct = default)
+    public async Task<(bool Success, string? Error)> StartBulkApplyAsync(string area, double threshold, CancellationToken ct = default, double? exactFloor = null)
     {
         try
         {
             var name = area == "matching" ? "minCosine" : "minConfidence";
-            var resp = await http.PostAsync($"/api/admin/{area}/bulk/apply?{name}={Inv(threshold)}", null, ct);
+            var resp = await http.PostAsync($"/api/admin/{area}/bulk/apply?{name}={Inv(threshold)}{(exactFloor is { } f ? $"&exactFloor={Inv(f)}" : "")}", null, ct);
             if (resp.IsSuccessStatusCode) return (true, null);
             var body = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(JsonOptions, ct);
             return (false, body.TryGetProperty("message", out var m) ? m.GetString() : "The bulk run could not start.");

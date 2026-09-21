@@ -221,3 +221,24 @@ Commit: `feat: model backend foundation (breaker, job queue, status) behind a fe
 ## Bulk review (added after validating on beta)
 
 On beta's real data the review queues held about 7,750 match suggestions and 2,850 category suggestions. Nobody needs to click through them: most are low-value (the 0.70 to 0.80 band, judge "no"). The workflow is now: spot-check a random sample, apply everything above a threshold as one background run, undo the whole run if it looks wrong. Judge answers are never bulk-applied, and `Model:Matching:AutoApplyJudgeYes` (default false) also keeps a judge "yes" out of automatic application even with dry run off, because the judge said yes to own-brand vs branded pairs. Migration `AddBulkBatches`: one table plus a `BatchId` on `MatchMerges` and `CategorySuggestions`.
+
+## Addendum: variant guard and identical-name tier (measured on beta, 2026-09-21)
+
+**Measurements** (hand-labelled samples, not a benchmark): merges applied at cosine >= 0.90 were about 97-98% right; a
+random 45 of the pending 0.85-0.90 pairs were about 60% right, 0.80-0.85 about 35-40%. Almost every error was a
+different flavour or variant with an otherwise identical name ("Ananás" vs "Limão", chocolate 70% vs 85%, "light" vs
+regular, "com sal" vs "sem sal").
+
+**Change.** `VariantGuard` compares the words two names do not share (brand, size and filler words removed, crude
+plural stem). Both sides having words of their own, or either side carrying a variant marker (light, zero, proteína,
+infantil, ...), is a conflict. Automatic paths (bulk apply, nightly auto-accept, judge auto-apply) refuse conflicts and
+leave the pair in the queue with the reason. Manual accepts are never affected.
+
+Bulk apply gained an optional *identical names* tier (`exactFloor`, off by default): pairs below the cosine threshold
+whose names are identical once brand, size and filler words are removed (about 270 pairs between 0.80 and 0.90 on beta,
+about 96% right in a 45-pair sample). It is recorded with method `embedding-exact-name`, so it is separable and undoable
+like any bulk run.
+
+**What this does not fix.** One-sided extra words that are real variants and not in the marker list ("cálcio",
+"baunilha", "cebola e alho") still pass; the unflagged remainder of the 0.85-0.90 band was about 80% right, so that band
+is not bulk-applied. The word lists were tuned on this one data set.

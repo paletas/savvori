@@ -101,11 +101,11 @@ public class MatchingAdminController(
     /// take, and a random sample of them to spot-check first. Changes nothing.
     /// </summary>
     [HttpGet("bulk/preview")]
-    public async Task<IActionResult> BulkPreview(double minCosine = 0.90, int sample = 30, CancellationToken ct = default)
+    public async Task<IActionResult> BulkPreview(double minCosine = 0.90, int sample = 30, double? exactFloor = null, CancellationToken ct = default)
     {
         sample = Math.Clamp(sample, 1, 100);
-        var eligible = bulk.Eligible(minCosine);
-        var ids = await eligible.OrderBy(_ => EF.Functions.Random()).Take(sample).Select(c => c.Id).ToListAsync(ct);
+        var picks = await bulk.PickAsync(minCosine, exactFloor, ct);
+        var ids = picks.OrderBy(_ => Random.Shared.Next()).Take(sample).Select(p => p.Id).ToList();
         var items = new List<object>();
         foreach (var id in ids)
         {
@@ -118,16 +118,23 @@ public class MatchingAdminController(
                 A = await ListingAsync(c.StoreProductAId, ct), B = await ListingAsync(c.StoreProductBId, ct)
             });
         }
-        return Ok(new { MinCosine = minCosine, Eligible = await eligible.CountAsync(ct), Sample = items, Busy = runner.IsBusy });
+        return Ok(new
+        {
+            MinCosine = minCosine, ExactFloor = exactFloor, Eligible = picks.Count, EligibleExact = picks.Count(p => p.Exact),
+            Sample = items, Busy = runner.IsBusy
+        });
     }
 
-    /// <summary>POST /api/admin/matching/bulk/apply?minCosine=0.90 - applies every eligible suggestion as one undoable run (background).</summary>
+    /// <summary>
+    /// POST /api/admin/matching/bulk/apply?minCosine=0.90&amp;exactFloor=0.80 - applies every eligible suggestion as one
+    /// undoable run (background). <c>exactFloor</c> also takes pairs down to that cosine whose names are identical.
+    /// </summary>
     [HttpPost("bulk/apply")]
-    public async Task<IActionResult> BulkApply(double minCosine = 0.90, CancellationToken ct = default)
+    public async Task<IActionResult> BulkApply(double minCosine = 0.90, double? exactFloor = null, CancellationToken ct = default)
     {
         if (runner.IsBusy) return Conflict(new { Message = "Another bulk run is in progress." });
-        var batch = await bulk.CreateAsync(minCosine, ct);
-        if (!runner.TryStart(batch.Id, sp => sp.GetRequiredService<MatchBulkService>().RunApplyAsync(batch.Id)))
+        var batch = await bulk.CreateAsync(minCosine, exactFloor, ct);
+        if (!runner.TryStart(batch.Id, sp => sp.GetRequiredService<MatchBulkService>().RunApplyAsync(batch.Id, exactFloor)))
         {
             db.BulkBatches.Remove(batch);
             await db.SaveChangesAsync(ct);

@@ -104,7 +104,7 @@ public sealed class MatchingTests : IDisposable
     public async Task TierB_HighCosineWithBrandOk_MergesCanonicals_RecordsMethodAndKeepsPrices()
     {
         var (a, ca) = _h.AddListed(_h.ChainA, "Leite Meio Gordo");
-        var (b, cb) = _h.AddListed(_h.ChainB, "Leite M. Gordo");
+        var (b, cb) = _h.AddListed(_h.ChainB, "Leite Gordo Meio");
         var c = _h.AddCandidate(a, b, 0.93);
 
         var r = await _h.RunMatchingAsync();
@@ -400,7 +400,7 @@ public sealed class MatchingTests : IDisposable
     public async Task Merge_RedirectsShoppingListItems_AndUndoRestoresEverything()
     {
         var (a, ca) = _h.AddListed(_h.ChainA, "Leite Meio Gordo");
-        var (b, cb) = _h.AddListed(_h.ChainB, "Leite M. Gordo");
+        var (b, cb) = _h.AddListed(_h.ChainB, "Leite Gordo Meio");
         var listId = Guid.NewGuid();
         var itemId = Guid.NewGuid();
         var category = Guid.NewGuid();

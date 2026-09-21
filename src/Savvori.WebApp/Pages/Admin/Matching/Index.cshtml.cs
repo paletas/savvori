@@ -18,6 +18,10 @@ public class MatchingIndexModel(SavvoriApiClient api) : PageModel
     [BindProperty(Name = "min", SupportsGet = true)]
     public double Min { get; set; } = 0.90;
 
+    /// <summary>Bulk tab: also take pairs down to this cosine when their names are identical (query parameter "exact"; empty = off).</summary>
+    [BindProperty(Name = "exact", SupportsGet = true)]
+    public double? Exact { get; set; }
+
     public MatchBulkPreviewDto? BulkPreview { get; set; }
     public List<BulkBatchDto> Batches { get; set; } = [];
 
@@ -29,7 +33,7 @@ public class MatchingIndexModel(SavvoriApiClient api) : PageModel
         if (PageNumber < 1) PageNumber = 1;
         if (Filter == "bulk")
         {
-            var preview = api.GetMatchBulkPreviewAsync(Min, ct);
+            var preview = api.GetMatchBulkPreviewAsync(Min, Exact, ct);
             var batches = api.GetBulkBatchesAsync("matching", ct);
             var sum = api.GetMatchingSummaryAsync(ct);
             await Task.WhenAll(preview, batches, sum);
@@ -58,20 +62,20 @@ public class MatchingIndexModel(SavvoriApiClient api) : PageModel
     public Task<IActionResult> OnPostUndoAsync(Guid id, CancellationToken ct) =>
         ActAsync(id, "undo", false, "Match undone and the pair rejected.", ct);
 
-    public async Task<IActionResult> OnPostBulkApplyAsync(double min, CancellationToken ct)
+    public async Task<IActionResult> OnPostBulkApplyAsync(double min, double? exact, CancellationToken ct)
     {
-        var (success, error) = await api.StartBulkApplyAsync("matching", min, ct);
+        var (success, error) = await api.StartBulkApplyAsync("matching", min, ct, exact);
         if (success) TempData["Success"] = "Bulk apply started. It runs in the background; refresh to see progress.";
         else TempData["Error"] = error ?? "The bulk run could not start.";
-        return RedirectToPage(new { filter = "bulk", min });
+        return RedirectToPage(new { filter = "bulk", min, exact });
     }
 
-    public async Task<IActionResult> OnPostBulkUndoAsync(Guid id, double min, CancellationToken ct)
+    public async Task<IActionResult> OnPostBulkUndoAsync(Guid id, double min, double? exact, CancellationToken ct)
     {
         var (success, error) = await api.UndoBulkBatchAsync("matching", id, ct);
         if (success) TempData["Success"] = "Undo started. The pairs go back to the review queue.";
         else TempData["Error"] = error ?? "The undo could not start.";
-        return RedirectToPage(new { filter = "bulk", min });
+        return RedirectToPage(new { filter = "bulk", min, exact });
     }
 
     public async Task<IActionResult> OnPostRunAsync(CancellationToken ct)

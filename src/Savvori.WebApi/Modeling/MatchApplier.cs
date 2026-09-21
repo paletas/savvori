@@ -53,7 +53,9 @@ public sealed class MatchApplier(SavvoriDbContext db, TimeProvider time)
     /// <param name="method">Recorded on the moved products and the candidate ("embedding-cosine", "embedding-judge", <see cref="ManualMethod"/>).</param>
     /// <param name="manual">A human decision: may move manually matched products and marks the result ManualMatched.</param>
     /// <param name="force">A human confirmed a merge the safety rules would otherwise block.</param>
-    public async Task<ApplyResult> ApplyAsync(MatchCandidate c, string method, bool manual, bool force, CancellationToken ct = default, Guid? batchId = null)
+    /// <param name="guardVariants">Automatic paths: refuse a pair whose names describe different variants (<see cref="VariantGuard"/>).</param>
+    public async Task<ApplyResult> ApplyAsync(MatchCandidate c, string method, bool manual, bool force, CancellationToken ct = default,
+        Guid? batchId = null, bool guardVariants = false)
     {
         var a = await db.StoreProducts.FirstOrDefaultAsync(sp => sp.Id == c.StoreProductAId, ct);
         var b = await db.StoreProducts.FirstOrDefaultAsync(sp => sp.Id == c.StoreProductBId, ct);
@@ -69,6 +71,8 @@ public sealed class MatchApplier(SavvoriDbContext db, TimeProvider time)
             return new(ApplyOutcome.Blocked, "A product was matched manually; only you can change that.");
         if (a.CanonicalProductId is null && b.CanonicalProductId is null)
             return new(ApplyOutcome.Blocked, "Neither product has a canonical product yet.");
+        if (guardVariants && !manual && !force && VariantGuard.Compare(a.Name, a.Brand, b.Name, b.Brand) is { Conflict: true } variant)
+            return new(ApplyOutcome.Blocked, $"Probably different variants ({variant.Detail}).");
 
         var moved = new List<MovedStoreProduct>();
         var movedItems = new List<Guid>();

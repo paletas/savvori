@@ -69,28 +69,68 @@ public sealed class MatchBulkService(SavvoriDbContext db, MatchApplier applier, 
         db.MatchCandidates.Where(c => c.Status == CandidateStatus.NeedsReview && c.Suggestion == CosineMethod &&
                                       c.Cosine >= minCosine && c.BrandCheck == CandidateBrandCheck.Ok && c.Note == null);
 
-    public async Task<BulkBatch> CreateAsync(double minCosine, CancellationToken ct = default)
+    public const string ExactMethod = "embedding-exact-name";
+
+    /// <summary>One suggestion a bulk run would apply. <paramref name="Exact"/>: it is below the cosine threshold and only qualifies because the names say the same thing.</summary>
+    public sealed record Pick(Guid Id, double Cosine, bool Exact);
+
+    /// <summary>
+    /// Everything a run at these settings would apply. Above <paramref name="minCosine"/>: the eligible suggestions
+    /// whose names do not describe different variants. With <paramref name="exactFloor"/> (lower than the threshold):
+    /// also pairs down to that cosine whose names are identical once brand, size and filler words are removed, the
+    /// one case where a lower cosine is still very likely the same product. The judge is never involved.
+    /// </summary>
+    public async Task<List<Pick>> PickAsync(double minCosine, double? exactFloor = null, CancellationToken ct = default)
+    {
+        var strict = await Eligible(minCosine)
+            .Select(c => new { c.Id, c.Cosine, c.StoreProductAId, c.StoreProductBId }).ToListAsync(ct);
+        var exact = exactFloor is { } floor && floor < minCosine
+            ? await db.MatchCandidates.Where(c =>
+                    c.Status == CandidateStatus.NeedsReview && c.Note == null && c.BrandCheck == CandidateBrandCheck.Ok &&
+                    c.SizeKnown && c.Cosine >= floor && c.Cosine < minCosine && c.JudgeVerdict != JudgeVerdict.No)
+                .Select(c => new { c.Id, c.Cosine, c.StoreProductAId, c.StoreProductBId }).ToListAsync(ct)
+            : [];
+
+        var listings = new Dictionary<Guid, (string Name, string? Brand)>();
+        foreach (var chunk in strict.Concat(exact).SelectMany(c => new[] { c.StoreProductAId, c.StoreProductBId }).Distinct().Chunk(500))
+            foreach (var p in await db.StoreProducts.AsNoTracking().Where(sp => chunk.Contains(sp.Id))
+                         .Select(sp => new { sp.Id, sp.Name, sp.Brand }).ToListAsync(ct))
+                listings[p.Id] = (p.Name, p.Brand);
+
+        VariantVerdict? Verdict(Guid a, Guid b) =>
+            listings.TryGetValue(a, out var x) && listings.TryGetValue(b, out var y)
+                ? VariantGuard.Compare(x.Name, x.Brand, y.Name, y.Brand) : null;
+
+        var picks = new List<Pick>();
+        picks.AddRange(strict.Where(c => Verdict(c.StoreProductAId, c.StoreProductBId) is { Conflict: false })
+            .Select(c => new Pick(c.Id, c.Cosine, false)));
+        picks.AddRange(exact.Where(c => Verdict(c.StoreProductAId, c.StoreProductBId) is { Identical: true })
+            .Select(c => new Pick(c.Id, c.Cosine, true)));
+        return picks.OrderByDescending(p => p.Cosine).ToList();
+    }
+
+    public async Task<BulkBatch> CreateAsync(double minCosine, double? exactFloor = null, CancellationToken ct = default)
     {
         var batch = new BulkBatch
         {
             Id = Guid.NewGuid(), Kind = "matches", Method = CosineMethod, Threshold = minCosine,
-            Status = BulkBatchStatus.Running, Total = await Eligible(minCosine).CountAsync(ct), CreatedAt = Now
+            Status = BulkBatchStatus.Running, Total = (await PickAsync(minCosine, exactFloor, ct)).Count, CreatedAt = Now
         };
         db.BulkBatches.Add(batch);
         await db.SaveChangesAsync(ct);
         return batch;
     }
 
-    public async Task RunApplyAsync(Guid batchId, CancellationToken ct = default)
+    public async Task RunApplyAsync(Guid batchId, double? exactFloor = null, CancellationToken ct = default)
     {
         var batch = await db.BulkBatches.FirstAsync(b => b.Id == batchId, ct);
-        var ids = await Eligible(batch.Threshold).OrderByDescending(c => c.Cosine).Select(c => c.Id).ToListAsync(ct);
-        foreach (var id in ids)
+        var picks = await PickAsync(batch.Threshold, exactFloor, ct);
+        foreach (var pick in picks)
         {
-            var c = await db.MatchCandidates.FirstOrDefaultAsync(x => x.Id == id, ct);
+            var c = await db.MatchCandidates.FirstOrDefaultAsync(x => x.Id == pick.Id, ct);
             if (c is null || c.Status != CandidateStatus.NeedsReview) { batch.Blocked++; continue; }
 
-            var r = await applier.ApplyAsync(c, CosineMethod, manual: false, force: false, ct, batch.Id);
+            var r = await applier.ApplyAsync(c, pick.Exact ? ExactMethod : CosineMethod, manual: false, force: false, ct, batch.Id, guardVariants: true);
             if (r.Succeeded) batch.Applied++;
             else
             {

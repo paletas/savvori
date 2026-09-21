@@ -59,7 +59,7 @@ public sealed class MatchingService(
             // A dry-run judge "yes" that is now allowed to apply: no need to ask the judge again.
             if (!o.DryRun && o.AutoApplyJudgeYes && c.Suggestion == "embedding-judge" && c.JudgeVerdict == JudgeVerdict.Yes)
             {
-                var r = await applier.ApplyAsync(c, "embedding-judge", manual: false, force: false, ct);
+                var r = await applier.ApplyAsync(c, "embedding-judge", manual: false, force: false, ct, guardVariants: true);
                 if (r.Succeeded) autoAccepted++; else { Block(c, r); blocked++; }
                 continue;
             }
@@ -72,7 +72,7 @@ public sealed class MatchingService(
                     wouldAccept++;
                     break;
                 case MatchTier.AutoAccept:
-                    var applied = await applier.ApplyAsync(c, "embedding-cosine", manual: false, force: false, ct);
+                    var applied = await applier.ApplyAsync(c, "embedding-cosine", manual: false, force: false, ct, guardVariants: true);
                     if (applied.Succeeded) autoAccepted++; else { Block(c, applied); blocked++; }
                     break;
                 case MatchTier.Judge:
@@ -153,7 +153,7 @@ public sealed class JudgeJobHandler(
         }
         else if (verdict == JudgeVerdict.Yes)
         {
-            var r = await applier.ApplyAsync(c, "embedding-judge", manual: false, force: false, ct);
+            var r = await applier.ApplyAsync(c, "embedding-judge", manual: false, force: false, ct, guardVariants: true);
             if (!r.Succeeded) { c.Status = CandidateStatus.NeedsReview; c.Note = r.Reason; }
         }
         else

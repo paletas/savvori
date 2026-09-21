@@ -44,7 +44,7 @@ public class BulkAdminTests : IClassFixture<SavvoriWebApiFactory>
                 FirstSeen = DateTime.UtcNow, LastScraped = DateTime.UtcNow
             };
             db.StoreProducts.Add(Make(a, chainA, canonA, "Leite Meio Gordo Mimosa 1L"));
-            db.StoreProducts.Add(Make(b, chainB, canonB, "Leite M. Gordo Mimosa 1L"));
+            db.StoreProducts.Add(Make(b, chainB, canonB, "Leite Gordo Meio Mimosa 1L"));
             var (x, y) = a.CompareTo(b) < 0 ? (a, b) : (b, a);
             db.MatchCandidates.Add(new MatchCandidate
             {

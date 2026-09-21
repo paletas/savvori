@@ -227,7 +227,7 @@ public record MatchHistogramBucketDto(int StoreProducts, int Canonicals);
 public record RecomputeSizesResponse(bool DryRun, int Total, int Changed, int UnitPriceDisagreements, int CanonicalsUpdated);
 
 // ===== Bulk review =====
-public record MatchBulkPreviewDto(double MinCosine, int Eligible, List<ReviewItemDto> Sample, bool Busy);
+public record MatchBulkPreviewDto(double MinCosine, int Eligible, List<ReviewItemDto> Sample, bool Busy, double? ExactFloor = null, int EligibleExact = 0);
 
 public record CategoryBulkSampleDto(
     Guid Id, Guid ProductId, string ProductName, string? Brand, string? ImageUrl, string? RawCategory,
