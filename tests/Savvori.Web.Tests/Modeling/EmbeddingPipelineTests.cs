@@ -50,6 +50,7 @@ public sealed class PipelineHost : IDisposable
         s.AddSingleton<TimeProvider>(Time);
         s.AddSingleton(Microsoft.Extensions.Options.Options.Create(Options));
         s.AddSingleton<ModelCircuitBreaker>();
+        s.AddSingleton<ModelTelemetry>();
         s.AddSingleton(Faults);
         s.AddSingleton<IEmbeddingClient>(sp => new BreakerEmbeddingClient(
             new FlakyEmbeddingClient(Embedder, sp.GetRequiredService<FaultPlan>()), sp.GetRequiredService<ModelCircuitBreaker>()));
