@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.Extensions.Http.Resilience;
 using Savvori.WebApp.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -19,7 +20,15 @@ builder.Services.AddHttpClient<SavvoriApiClient>(client =>
     client.DefaultRequestHeaders.Add("Accept", "application/json");
 })
 .AddHttpMessageHandler<AcceptLanguageForwardingHandler>()
-.AddStandardResilienceHandler();
+.AddStandardResilienceHandler(options =>
+{
+    // The defaults (10s/attempt, 30s total) suit page loads, but a few admin triggers (classifier run, matching
+    // run, bulk-apply preview) can legitimately take tens of seconds once the catalog is large - they're manual,
+    // occasional, and idempotent-safe to just wait for, not something to retry-and-abandon.
+    options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(90);
+    options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(180);
+    options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(180);
+});
 
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
