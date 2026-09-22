@@ -17,6 +17,8 @@ public static class ModelServiceCollectionExtensions
         services.Configure<ModelOptions>(configuration.GetSection(ModelOptions.SectionName));
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<ModelCircuitBreaker>();
+        services.AddSingleton<ModelTelemetry>();
+        services.AddHostedService<ModelTelemetrySampler>();
 
         // RemoveAllResilienceHandlers is flagged experimental but is the only way to opt one client out of ConfigureHttpClientDefaults.
 #pragma warning disable EXTEXP0001

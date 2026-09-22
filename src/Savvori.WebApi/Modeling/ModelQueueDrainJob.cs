@@ -15,6 +15,7 @@ public sealed class ModelQueueDrainJob(
     ModelCircuitBreaker breaker,
     IEmbeddingClient embeddings,
     IServiceScopeFactory scopes,
+    ModelTelemetry telemetry,
     ILogger<ModelQueueDrainJob> logger) : IJob
 {
     public async Task Execute(IJobExecutionContext context)
@@ -52,6 +53,8 @@ public sealed class ModelQueueDrainJob(
             if (claimed.Count == 0) return;
 
             // Chunks of BatchSize: one model request per chunk for batch handlers, one job at a time otherwise.
+            // A run with nothing claimed (the common case, polled every 60s) emits no metrics on purpose - it
+            // would otherwise dominate savvori.model.runs.* with noise next to the nightly jobs.
             var chunks = claimed.Chunk(Math.Max(1, opts.BatchSize)).ToList();
             await Parallel.ForEachAsync(chunks,
                 new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, opts.MaxConcurrency), CancellationToken = ct },
@@ -80,25 +83,49 @@ public sealed class ModelQueueDrainJob(
             }
 
             var list = group.ToList();
-            if (handler is IBatchModelJobHandler batch)
-                await RunAsync(queue, list, () => batch.HandleBatchAsync(list, ct), ct);
-            else
-                foreach (var job in list)
-                    await RunAsync(queue, [job], () => handler.HandleAsync(job, ct), ct);
+            var jobName = group.Key == ModelJobType.Embed ? "embed" : group.Key.ToString().ToLowerInvariant();
+            using var activity = telemetry.StartRunActivity(jobName);
+            telemetry.RunsStarted.Add(1, new KeyValuePair<string, object?>("job.name", jobName));
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var ok = handler is IBatchModelJobHandler batch
+                ? await RunAsync(queue, list, () => batch.HandleBatchAsync(list, ct), ct)
+                : await RunManyAsync(queue, list, job => handler.HandleAsync(job, ct), ct);
+            telemetry.RunDurationMs.Record(sw.Elapsed.TotalMilliseconds, new KeyValuePair<string, object?>("job.name", jobName));
+            (ok ? telemetry.RunsCompleted : telemetry.RunsFailed).Add(1, new KeyValuePair<string, object?>("job.name", jobName));
         }
     }
 
-    private async Task RunAsync(ModelJobQueue queue, List<ModelJob> jobs, Func<Task> work, CancellationToken ct)
+    /// <summary>Runs one job at a time (non-batch handlers) so one bad job doesn't fail its siblings; the group's
+    /// telemetry outcome is "ok" only if every job in it succeeded.</summary>
+    private async Task<bool> RunManyAsync(ModelJobQueue queue, List<ModelJob> jobs, Func<ModelJob, Task> work, CancellationToken ct)
+    {
+        var allOk = true;
+        foreach (var job in jobs)
+        {
+            var ok = await RunAsync(queue, [job], () => work(job), ct);
+            allOk = allOk && ok;
+        }
+        return allOk;
+    }
+
+    /// <summary>
+    /// Runs one unit of work (a batch, or a single job) and settles every job in it. Never throws for a job-level
+    /// failure - errors are recorded on the queue row and swallowed, exactly as before this method returned a bool
+    /// instead of void, so one failing chunk does not stop the other chunks in this run's Parallel.ForEachAsync.
+    /// </summary>
+    private async Task<bool> RunAsync(ModelJobQueue queue, List<ModelJob> jobs, Func<Task> work, CancellationToken ct)
     {
         try
         {
             await work();
             foreach (var job in jobs) await queue.CompleteAsync(job.Id, ct);
+            return true;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Shutting down: not the job's fault.
+            // Shutting down: not the job's fault, and not a telemetry-worthy failure either.
             foreach (var job in jobs) await queue.ReleaseAsync(job.Id, null, CancellationToken.None);
+            return true;
         }
         catch (ModelUnavailableException ex)
         {
@@ -109,12 +136,14 @@ public sealed class ModelQueueDrainJob(
             foreach (var job in jobs)
                 await queue.FailAsync(job.Id, ex.Message, countAttempt: !systemWide,
                     systemWide ? breaker.Snapshot().RetryAt : null, CancellationToken.None);
+            return false;
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "{Count} model job(s) failed.", jobs.Count);
             foreach (var job in jobs)
                 await queue.FailAsync(job.Id, ex.Message, countAttempt: true, ct: CancellationToken.None);
+            return false;
         }
     }
 }

@@ -106,46 +106,85 @@ public sealed class MatchingService(
 /// candidate PendingJudge and the job retried by the queue. It is never treated as a "no".
 /// </summary>
 public sealed class JudgeJobHandler(
-    SavvoriDbContext db, IPairJudge judge, IOptions<ModelOptions> options) : IModelJobHandler
+    SavvoriDbContext db, IPairJudge judge, IOptions<ModelOptions> options, ModelTelemetry telemetry) : IModelJobHandler
 {
     public ModelJobType Type => ModelJobType.Judge;
 
     public async Task HandleAsync(ModelJob job, CancellationToken ct)
     {
-        var c = await db.MatchCandidates.FirstOrDefaultAsync(x => x.Id == job.SubjectId, ct);
-        if (c is null || c.Status != CandidateStatus.PendingJudge) return; // decided or removed meanwhile
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        using var activity = telemetry.StartRunActivity("judge");
+        telemetry.RunsStarted.Add(1, new KeyValuePair<string, object?>("job.name", "judge"));
+        try
+        {
+            var c = await db.MatchCandidates.FirstOrDefaultAsync(x => x.Id == job.SubjectId, ct);
+            if (c is null || c.Status != CandidateStatus.PendingJudge) return; // decided or removed meanwhile
 
-        var a = await db.StoreProducts.Include(sp => sp.StoreChain).FirstOrDefaultAsync(sp => sp.Id == c.StoreProductAId, ct);
-        var b = await db.StoreProducts.Include(sp => sp.StoreChain).FirstOrDefaultAsync(sp => sp.Id == c.StoreProductBId, ct);
-        if (a is null || b is null) return;
-        var opts = options.Value;
-        var (ia, ib, hash) = JudgeInputs.Build(a, b, opts.JudgeModel);
-        if (hash != job.PayloadHash) return; // the listings changed since queueing; the next matching run re-queues
+            var a = await db.StoreProducts.Include(sp => sp.StoreChain).FirstOrDefaultAsync(sp => sp.Id == c.StoreProductAId, ct);
+            var b = await db.StoreProducts.Include(sp => sp.StoreChain).FirstOrDefaultAsync(sp => sp.Id == c.StoreProductBId, ct);
+            if (a is null || b is null) return;
+            var opts = options.Value;
+            var (ia, ib, hash) = JudgeInputs.Build(a, b, opts.JudgeModel);
+            if (hash != job.PayloadHash) return; // the listings changed since queueing; the next matching run re-queues
 
-        var verdict = await judge.JudgeAsync(ia, ib, ct); // throws on failure: no decision, retried
-        c.JudgeVerdict = verdict;
-        c.JudgeModel = opts.JudgeModel;
+            var verdict = await judge.JudgeAsync(ia, ib, ct); // throws on failure: no decision, retried
+            c.JudgeVerdict = verdict;
+            c.JudgeModel = opts.JudgeModel;
 
-        // Whatever the answer, a human decides: a "yes" is shown as a suggestion, "no" and "unclear" as a hint.
-        c.Status = CandidateStatus.NeedsReview;
-        if (verdict == JudgeVerdict.Yes) c.Suggestion = "embedding-judge";
-        await db.SaveChangesAsync(ct);
+            // Whatever the answer, a human decides: a "yes" is shown as a suggestion, "no" and "unclear" as a hint.
+            c.Status = CandidateStatus.NeedsReview;
+            if (verdict == JudgeVerdict.Yes) c.Suggestion = "embedding-judge";
+            await db.SaveChangesAsync(ct);
+            telemetry.MatchesDecided.Add(1, new KeyValuePair<string, object?>("outcome", "judge-" + verdict.ToString().ToLowerInvariant()));
+            telemetry.RunsCompleted.Add(1, new KeyValuePair<string, object?>("job.name", "judge"));
+        }
+        catch
+        {
+            telemetry.RunsFailed.Add(1, new KeyValuePair<string, object?>("job.name", "judge"));
+            throw;
+        }
+        finally
+        {
+            telemetry.RunDurationMs.Record(sw.Elapsed.TotalMilliseconds, new KeyValuePair<string, object?>("job.name", "judge"));
+        }
     }
 }
 
 /// <summary>Nightly, after candidate generation: run the matching tiers. Skipped while the flag is off or in degraded mode.</summary>
 [DisallowConcurrentExecution]
 public sealed class MatchingJob(
-    IOptions<ModelOptions> options, IServiceScopeFactory scopes, ILogger<MatchingJob> logger) : IJob
+    IOptions<ModelOptions> options, IServiceScopeFactory scopes, ModelTelemetry telemetry, ILogger<MatchingJob> logger) : IJob
 {
+    private const string JobName = "matching";
+
     public async Task Execute(IJobExecutionContext context)
     {
         if (!options.Value.Enabled) return;
-        using var scope = scopes.CreateScope();
-        var r = await scope.ServiceProvider.GetRequiredService<MatchingService>().RunAsync(context.CancellationToken);
-        logger.LogInformation(
-            "Matching run: skipped={Skipped}, {Evaluated} evaluated, {Suggested} confident suggestions, " +
-            "{Judge} judge jobs, {Review} to review, {Left} left.",
-            r.SkippedReason, r.Evaluated, r.Suggested, r.JudgeQueued, r.SentToReview, r.Left);
+        using var activity = telemetry.StartRunActivity(JobName);
+        telemetry.RunsStarted.Add(1, new KeyValuePair<string, object?>("job.name", JobName));
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            using var scope = scopes.CreateScope();
+            var r = await scope.ServiceProvider.GetRequiredService<MatchingService>().RunAsync(context.CancellationToken);
+            logger.LogInformation(
+                "Matching run: skipped={Skipped}, {Evaluated} evaluated, {Suggested} confident suggestions, " +
+                "{Judge} judge jobs, {Review} to review, {Left} left.",
+                r.SkippedReason, r.Evaluated, r.Suggested, r.JudgeQueued, r.SentToReview, r.Left);
+            if (r.Suggested > 0) telemetry.MatchesDecided.Add(r.Suggested, new KeyValuePair<string, object?>("outcome", "confident"));
+            if (r.JudgeQueued > 0) telemetry.MatchesDecided.Add(r.JudgeQueued, new KeyValuePair<string, object?>("outcome", "judge-queued"));
+            if (r.SentToReview > 0) telemetry.MatchesDecided.Add(r.SentToReview, new KeyValuePair<string, object?>("outcome", "review"));
+            if (r.Left > 0) telemetry.MatchesDecided.Add(r.Left, new KeyValuePair<string, object?>("outcome", "left"));
+            telemetry.RunsCompleted.Add(1, new KeyValuePair<string, object?>("job.name", JobName));
+        }
+        catch
+        {
+            telemetry.RunsFailed.Add(1, new KeyValuePair<string, object?>("job.name", JobName));
+            throw;
+        }
+        finally
+        {
+            telemetry.RunDurationMs.Record(sw.Elapsed.TotalMilliseconds, new KeyValuePair<string, object?>("job.name", JobName));
+        }
     }
 }

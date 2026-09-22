@@ -64,7 +64,7 @@ public sealed class DbStaleEmbeddingSource(EmbeddingScanner scanner, CurrentMode
 
 /// <summary>Embeds queued products in batches and stores each vector with its full provenance.</summary>
 public sealed class EmbedJobHandler(
-    SavvoriDbContext db, IEmbeddingClient client, CurrentModelState state, TimeProvider time) : IBatchModelJobHandler
+    SavvoriDbContext db, IEmbeddingClient client, CurrentModelState state, TimeProvider time, ModelTelemetry telemetry) : IBatchModelJobHandler
 {
     public ModelJobType Type => ModelJobType.Embed;
 
@@ -112,39 +112,59 @@ public sealed class EmbedJobHandler(
             row.EmbeddedAt = now;
         }
         await db.SaveChangesAsync(ct);
+        telemetry.EmbeddingsCreated.Add(work.Count);
     }
 }
 
 /// <summary>Hourly: queue embedding jobs for new/changed products. Skipped entirely while the feature flag is off.</summary>
 [DisallowConcurrentExecution]
 public sealed class EmbeddingScanJob(
-    IOptions<ModelOptions> options, IServiceScopeFactory scopes, CurrentModelState state, ILogger<EmbeddingScanJob> logger) : IJob
+    IOptions<ModelOptions> options, IServiceScopeFactory scopes, CurrentModelState state,
+    ModelTelemetry telemetry, ILogger<EmbeddingScanJob> logger) : IJob
 {
+    private const string JobName = "embedding-scan";
+
     public async Task Execute(IJobExecutionContext context)
     {
         if (!options.Value.Enabled) return;
         var ct = context.CancellationToken;
-        using var scope = scopes.CreateScope();
-
-        // Learn the current model identity if the model is reachable; if not, queue work anyway (name + text only).
-        ModelInfo? info = null;
+        using var activity = telemetry.StartRunActivity(JobName);
+        telemetry.RunsStarted.Add(1, new KeyValuePair<string, object?>("job.name", JobName));
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            info = await scope.ServiceProvider.GetRequiredService<IEmbeddingClient>().GetModelInfoAsync(ct);
-            state.Info = info;
-        }
-        catch (ModelUnavailableException ex)
-        {
-            logger.LogInformation("Embedding scan running without model identity: {Error}", ex.Message);
-        }
-        catch (ModelResponseException ex)
-        {
-            logger.LogWarning("Embedding scan running without model identity: {Error}", ex.Message);
-        }
+            using var scope = scopes.CreateScope();
 
-        var result = await scope.ServiceProvider.GetRequiredService<EmbeddingScanner>().ScanAsync(info, ct);
-        logger.LogInformation(
-            "Embedding scan: {Active} active products, {Missing} missing, {Stale} stale, {Enqueued} jobs queued.",
-            result.ActiveProducts, result.Missing, result.Stale, result.Enqueued);
+            // Learn the current model identity if the model is reachable; if not, queue work anyway (name + text only).
+            ModelInfo? info = null;
+            try
+            {
+                info = await scope.ServiceProvider.GetRequiredService<IEmbeddingClient>().GetModelInfoAsync(ct);
+                state.Info = info;
+            }
+            catch (ModelUnavailableException ex)
+            {
+                logger.LogInformation("Embedding scan running without model identity: {Error}", ex.Message);
+            }
+            catch (ModelResponseException ex)
+            {
+                logger.LogWarning("Embedding scan running without model identity: {Error}", ex.Message);
+            }
+
+            var result = await scope.ServiceProvider.GetRequiredService<EmbeddingScanner>().ScanAsync(info, ct);
+            logger.LogInformation(
+                "Embedding scan: {Active} active products, {Missing} missing, {Stale} stale, {Enqueued} jobs queued.",
+                result.ActiveProducts, result.Missing, result.Stale, result.Enqueued);
+            telemetry.RunsCompleted.Add(1, new KeyValuePair<string, object?>("job.name", JobName));
+        }
+        catch
+        {
+            telemetry.RunsFailed.Add(1, new KeyValuePair<string, object?>("job.name", JobName));
+            throw;
+        }
+        finally
+        {
+            telemetry.RunDurationMs.Record(sw.Elapsed.TotalMilliseconds, new KeyValuePair<string, object?>("job.name", JobName));
+        }
     }
 }

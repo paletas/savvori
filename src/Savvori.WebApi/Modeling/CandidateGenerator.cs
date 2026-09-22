@@ -101,16 +101,37 @@ public sealed class CandidateGenerator(
 /// <summary>Nightly: regenerate match proposals from stored embeddings. Skipped while the feature flag is off.</summary>
 [DisallowConcurrentExecution]
 public sealed class CandidateGenerationJob(
-    IOptions<ModelOptions> options, IServiceScopeFactory scopes, ILogger<CandidateGenerationJob> logger) : IJob
+    IOptions<ModelOptions> options, IServiceScopeFactory scopes, ModelTelemetry telemetry, ILogger<CandidateGenerationJob> logger) : IJob
 {
+    private const string JobName = "candidate-generation";
+
     public async Task Execute(IJobExecutionContext context)
     {
         if (!options.Value.Enabled) return;
-        using var scope = scopes.CreateScope();
-        var r = await scope.ServiceProvider.GetRequiredService<CandidateGenerator>().GenerateAsync(context.CancellationToken);
-        logger.LogInformation(
-            "Candidate generation: {Indexed} embedded products, {Considered} pairs considered, {Size} rejected on size, " +
-            "{Brand} on brand, {Tags} on dietary tags, {Same} already same canonical; {Added} added, {Updated} updated, {Removed} removed.",
-            r.Indexed, r.Considered, r.RejectedSize, r.RejectedBrand, r.RejectedTags, r.AlreadySameCanonical, r.Added, r.Updated, r.Removed);
+        using var activity = telemetry.StartRunActivity(JobName);
+        telemetry.RunsStarted.Add(1, new KeyValuePair<string, object?>("job.name", JobName));
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            using var scope = scopes.CreateScope();
+            var r = await scope.ServiceProvider.GetRequiredService<CandidateGenerator>().GenerateAsync(context.CancellationToken);
+            logger.LogInformation(
+                "Candidate generation: {Indexed} embedded products, {Considered} pairs considered, {Size} rejected on size, " +
+                "{Brand} on brand, {Tags} on dietary tags, {Same} already same canonical; {Added} added, {Updated} updated, {Removed} removed.",
+                r.Indexed, r.Considered, r.RejectedSize, r.RejectedBrand, r.RejectedTags, r.AlreadySameCanonical, r.Added, r.Updated, r.Removed);
+            if (r.Added > 0) telemetry.CandidatesChanged.Add(r.Added, new KeyValuePair<string, object?>("change", "added"));
+            if (r.Updated > 0) telemetry.CandidatesChanged.Add(r.Updated, new KeyValuePair<string, object?>("change", "updated"));
+            if (r.Removed > 0) telemetry.CandidatesChanged.Add(r.Removed, new KeyValuePair<string, object?>("change", "removed"));
+            telemetry.RunsCompleted.Add(1, new KeyValuePair<string, object?>("job.name", JobName));
+        }
+        catch
+        {
+            telemetry.RunsFailed.Add(1, new KeyValuePair<string, object?>("job.name", JobName));
+            throw;
+        }
+        finally
+        {
+            telemetry.RunDurationMs.Record(sw.Elapsed.TotalMilliseconds, new KeyValuePair<string, object?>("job.name", JobName));
+        }
     }
 }

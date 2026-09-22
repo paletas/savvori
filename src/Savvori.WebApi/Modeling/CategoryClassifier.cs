@@ -45,7 +45,8 @@ public sealed record ClassifierRunResult(
 /// rule-based <see cref="CategoryMapper"/> stays the only path in degraded mode.
 /// </summary>
 public sealed class CategoryClassifier(
-    SavvoriDbContext db, EmbeddingIndex index, ModelCircuitBreaker breaker, IOptions<ModelOptions> options, TimeProvider time)
+    SavvoriDbContext db, EmbeddingIndex index, ModelCircuitBreaker breaker, IOptions<ModelOptions> options,
+    TimeProvider time, ModelTelemetry telemetry)
 {
     private DateTime Now => time.GetUtcNow().UtcDateTime;
 
@@ -246,6 +247,7 @@ public sealed class CategoryClassifier(
         s.Method = MatchApplier.ManualMethod;
         s.DecidedAt = Now;
         await db.SaveChangesAsync(ct);
+        telemetry.CategoriesDecided.Add(1, new KeyValuePair<string, object?>("outcome", "accepted"));
         return (true, null);
     }
 
@@ -258,6 +260,7 @@ public sealed class CategoryClassifier(
         s.Method = MatchApplier.ManualMethod;
         s.DecidedAt = Now;
         await db.SaveChangesAsync(ct);
+        telemetry.CategoriesDecided.Add(1, new KeyValuePair<string, object?>("outcome", "rejected"));
         return (true, null);
     }
 
@@ -272,6 +275,7 @@ public sealed class CategoryClassifier(
         s.DecidedAt = Now;
         s.Note = "Undone.";
         await db.SaveChangesAsync(ct);
+        telemetry.CategoriesDecided.Add(1, new KeyValuePair<string, object?>("outcome", "undone"));
         return (true, null);
     }
 
@@ -307,6 +311,7 @@ public sealed class CategoryClassifier(
         d.Method = MatchApplier.ManualMethod;
         d.DecidedAt = Now;
         await db.SaveChangesAsync(ct);
+        if (updated > 0) telemetry.CategoriesDecided.Add(updated, new KeyValuePair<string, object?>("outcome", "accepted-bulk"));
         return (true, null, updated);
     }
 
@@ -318,6 +323,7 @@ public sealed class CategoryClassifier(
         d.Method = MatchApplier.ManualMethod;
         d.DecidedAt = Now;
         await db.SaveChangesAsync(ct);
+        telemetry.CategoriesDecided.Add(1, new KeyValuePair<string, object?>("outcome", "rejected-bulk"));
         return true;
     }
 }
@@ -325,16 +331,38 @@ public sealed class CategoryClassifier(
 /// <summary>Nightly, after matching: propose categories for uncategorised products. Skipped while off or degraded.</summary>
 [DisallowConcurrentExecution]
 public sealed class CategoryClassifierJob(
-    IOptions<ModelOptions> options, IServiceScopeFactory scopes, ILogger<CategoryClassifierJob> logger) : IJob
+    IOptions<ModelOptions> options, IServiceScopeFactory scopes, ModelTelemetry telemetry, ILogger<CategoryClassifierJob> logger) : IJob
 {
+    private const string JobName = "category-classifier";
+
     public async Task Execute(IJobExecutionContext context)
     {
         if (!options.Value.Enabled) return;
-        using var scope = scopes.CreateScope();
-        var r = await scope.ServiceProvider.GetRequiredService<CategoryClassifier>().RunAsync(context.CancellationToken);
-        logger.LogInformation(
-            "Category classifier: skipped={Skipped}, {Targets} uncategorised, {Assigned} assigned through accepted store categories, " +
-            "{Confident} confident suggestions, {Review} to review, {None} without suggestion, {Strings} store categories proposed, {Mixed} mixed.",
-            r.SkippedReason, r.Targets, r.AssignedByStoreCategory, r.Confident, r.ToReview, r.NoSuggestion, r.StringsProposed, r.StringsMixed);
+        using var activity = telemetry.StartRunActivity(JobName);
+        telemetry.RunsStarted.Add(1, new KeyValuePair<string, object?>("job.name", JobName));
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            using var scope = scopes.CreateScope();
+            var r = await scope.ServiceProvider.GetRequiredService<CategoryClassifier>().RunAsync(context.CancellationToken);
+            logger.LogInformation(
+                "Category classifier: skipped={Skipped}, {Targets} uncategorised, {Assigned} assigned through accepted store categories, " +
+                "{Confident} confident suggestions, {Review} to review, {None} without suggestion, {Strings} store categories proposed, {Mixed} mixed.",
+                r.SkippedReason, r.Targets, r.AssignedByStoreCategory, r.Confident, r.ToReview, r.NoSuggestion, r.StringsProposed, r.StringsMixed);
+            if (r.AssignedByStoreCategory > 0) telemetry.CategoriesDecided.Add(r.AssignedByStoreCategory, new KeyValuePair<string, object?>("outcome", "assigned"));
+            if (r.Confident > 0) telemetry.CategoriesDecided.Add(r.Confident, new KeyValuePair<string, object?>("outcome", "confident"));
+            if (r.ToReview > 0) telemetry.CategoriesDecided.Add(r.ToReview, new KeyValuePair<string, object?>("outcome", "review"));
+            if (r.NoSuggestion > 0) telemetry.CategoriesDecided.Add(r.NoSuggestion, new KeyValuePair<string, object?>("outcome", "none"));
+            telemetry.RunsCompleted.Add(1, new KeyValuePair<string, object?>("job.name", JobName));
+        }
+        catch
+        {
+            telemetry.RunsFailed.Add(1, new KeyValuePair<string, object?>("job.name", JobName));
+            throw;
+        }
+        finally
+        {
+            telemetry.RunDurationMs.Record(sw.Elapsed.TotalMilliseconds, new KeyValuePair<string, object?>("job.name", JobName));
+        }
     }
 }
