@@ -32,6 +32,54 @@ public class MatchingAdminController(
         });
     }
 
+    /// <summary>
+    /// GET /api/admin/matching/diagnostics/gap-words?minCosine=&amp;maxCosine=&amp;limit=2000 — for reviewing a cosine band
+    /// without reading full product names: for every NeedsReview pair in range that VariantGuard neither flags as a
+    /// conflict nor treats as identical (one side has a word the other lacks entirely — the "addition" pattern, the
+    /// one shape VariantGuard's marker list can miss), aggregates that leftover word by how often it appears, with a
+    /// couple of example pairs. A word with a high count and clearly food/flavour-shaped is a `Markers` candidate;
+    /// changes nothing.
+    /// </summary>
+    [HttpGet("diagnostics/gap-words")]
+    public async Task<IActionResult> GapWords(double minCosine = 0.80, double maxCosine = 0.90, int limit = 3000, CancellationToken ct = default)
+    {
+        var candidates = await db.MatchCandidates
+            .Where(c => c.Status == CandidateStatus.NeedsReview && c.Cosine >= minCosine && c.Cosine < maxCosine &&
+                        c.BrandCheck == CandidateBrandCheck.Ok)
+            .OrderByDescending(c => c.Cosine).Take(limit)
+            .Select(c => new { c.Id, c.Cosine, c.StoreProductAId, c.StoreProductBId }).ToListAsync(ct);
+
+        var ids = candidates.SelectMany(c => new[] { c.StoreProductAId, c.StoreProductBId }).Distinct().ToList();
+        var listings = new Dictionary<Guid, (string Name, string? Brand)>();
+        foreach (var chunk in ids.Chunk(500))
+            foreach (var p in await db.StoreProducts.AsNoTracking().Where(sp => chunk.Contains(sp.Id))
+                         .Select(sp => new { sp.Id, sp.Name, sp.Brand }).ToListAsync(ct))
+                listings[p.Id] = (p.Name, p.Brand);
+
+        var words = new Dictionary<string, (int Count, List<object> Examples)>();
+        foreach (var c in candidates)
+        {
+            if (!listings.TryGetValue(c.StoreProductAId, out var a) || !listings.TryGetValue(c.StoreProductBId, out var b)) continue;
+            var v = VariantGuard.Compare(a.Name, a.Brand, b.Name, b.Brand);
+            if (v.Conflict || v.Identical) continue; // already handled either way
+            var extra = (v.OnlyA?.Count > 0 ? v.OnlyA : v.OnlyB) ?? [];
+            if (extra.Count == 0) continue; // both sides had leftover words but neither is a marker - not this pattern
+            foreach (var w in extra)
+            {
+                if (!words.TryGetValue(w, out var entry)) entry = (0, []);
+                entry.Count++;
+                if (entry.Examples.Count < 3) entry.Examples.Add(new { c.Id, c.Cosine, NameA = a.Name, NameB = b.Name });
+                words[w] = entry;
+            }
+        }
+        return Ok(new
+        {
+            MinCosine = minCosine, MaxCosine = maxCosine, CandidatesScanned = candidates.Count,
+            Words = words.OrderByDescending(kv => kv.Value.Count)
+                .Select(kv => new { Word = kv.Key, kv.Value.Count, kv.Value.Examples })
+        });
+    }
+
     /// <summary>Canonical products that have active prices from at least two different chains.</summary>
     public static async Task<int> MultiChainCanonicalsAsync(SavvoriDbContext db, CancellationToken ct)
     {

@@ -70,13 +70,21 @@ public class CategorisationAdminController(
     {
         sample = Math.Clamp(sample, 1, 100);
         var eligible = bulk.Eligible(minConfidence);
+        var all = await eligible.Select(s => new { ProductName = s.Product.Name, Suggested = s.SuggestedCategory.Name }).ToListAsync(ct);
+        var suspicious = all.Where(s => CategoryGuard.Suspicious(s.ProductName, s.Suggested)).ToList();
         var items = await eligible.OrderBy(_ => EF.Functions.Random()).Take(sample)
             .Select(s => new
             {
                 s.Id, s.ProductId, ProductName = s.Product.Name, s.Product.Brand, s.Product.ImageUrl, RawCategory = s.Product.Category,
                 Suggested = s.SuggestedCategory.Name, s.Confidence, s.NeighbourCount
             }).ToListAsync(ct);
-        return Ok(new { MinConfidence = minConfidence, Eligible = await eligible.CountAsync(ct), Sample = items, Busy = runner.IsBusy });
+        return Ok(new
+        {
+            MinConfidence = minConfidence, Eligible = all.Count, Sample = items, Busy = runner.IsBusy,
+            // A bulk apply would hold these back instead of assigning them - see how many and why before running.
+            GuardWouldHoldBack = suspicious.Count,
+            GuardExamples = suspicious.Take(20).Select(s => new { s.ProductName, s.Suggested })
+        });
     }
 
     /// <summary>POST /api/admin/categorisation/bulk/apply?minConfidence=0.90 - assigns every eligible prediction as one undoable run (background).</summary>

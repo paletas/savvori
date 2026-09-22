@@ -8,7 +8,8 @@ namespace Savvori.WebApi.Modeling;
 /// cocoa percentage, "light" vs regular, ...). <see cref="Identical"/>: once brand, size and filler words are removed
 /// nothing is left over on either side, so the names say the same thing.
 /// </summary>
-public sealed record VariantVerdict(bool Conflict, bool Identical, string? Detail)
+public sealed record VariantVerdict(bool Conflict, bool Identical, string? Detail,
+    IReadOnlyList<string>? OnlyA = null, IReadOnlyList<string>? OnlyB = null)
 {
     public static readonly VariantVerdict Same = new(false, true, null);
 }
@@ -35,7 +36,7 @@ public static class VariantGuard
     // Words that make a different product when only one listing has them.
     private static readonly HashSet<string> Markers = new(
         ("light zero proteina integral descafeinado intenso mini max maxi xl xxl kids infantil junior barista crescimento " +
-         "stevia grosso branco negro picante suave forte").Split(' ').Select(Stem));
+         "stevia grosso branco negro picante suave forte amendoa avela coco chocolate pink pizza joy").Split(' ').Select(Stem));
 
     private static readonly Regex Sizes = new(@"\b\d+(?: \d+)?\s?(?:kg|g|gr|ml|cl|l|lt)\b|\b\d+\s?x\s?\d+(?: \d+)?\s?(?:kg|g|gr|ml|cl|l|lt)?\b",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -57,8 +58,8 @@ public static class VariantGuard
         if (onlyA.Count == 0 && onlyB.Count == 0) return VariantVerdict.Same;
         var marker = onlyA.Concat(onlyB).FirstOrDefault(Markers.Contains);
         if ((onlyA.Count > 0 && onlyB.Count > 0) || marker is not null)
-            return new(true, false, $"{string.Join(' ', onlyA)} vs {string.Join(' ', onlyB)}".Trim());
-        return new(false, false, null);
+            return new(true, false, $"{string.Join(' ', onlyA)} vs {string.Join(' ', onlyB)}".Trim(), onlyA, onlyB);
+        return new(false, false, null, onlyA, onlyB);
     }
 
     private static HashSet<string> BrandStems(string? brand) =>

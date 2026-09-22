@@ -188,15 +188,26 @@ public sealed class CategoryBulkService(SavvoriDbContext db, TimeProvider time, 
     public async Task RunApplyAsync(Guid batchId, CancellationToken ct = default)
     {
         var batch = await db.BulkBatches.FirstAsync(b => b.Id == batchId, ct);
-        var suggestions = await Eligible(batch.Threshold).OrderByDescending(s => s.Confidence).ToListAsync(ct);
-        foreach (var s in suggestions)
+        var suggestions = await Eligible(batch.Threshold)
+            .Select(s => new { Suggestion = s, ProductName = s.Product.Name, CategoryName = s.SuggestedCategory.Name })
+            .OrderByDescending(s => s.Suggestion.Confidence).ToListAsync(ct);
+        foreach (var row in suggestions)
         {
+            var s = row.Suggestion;
             var product = await db.Products.FirstOrDefaultAsync(p => p.Id == s.ProductId, ct);
             if (product is null || product.CategoryId is not null)
             {
                 // Categorised meanwhile: never overwrite. The suggestion is moot, so drop it; left in the queue it would be
                 // counted as eligible (and skipped again) by every later run.
                 db.CategorySuggestions.Remove(s);
+                batch.Blocked++;
+                continue;
+            }
+            if (CategoryGuard.Suspicious(row.ProductName, row.CategoryName))
+            {
+                // A likely literal-word collision (an object, not the ingredient the word suggests): stays in the
+                // queue with a note instead of being assigned, even at full confidence.
+                s.Note = "Held back: looks like a literal word match, not the product.";
                 batch.Blocked++;
                 continue;
             }

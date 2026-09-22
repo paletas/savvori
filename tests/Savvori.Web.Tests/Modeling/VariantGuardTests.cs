@@ -27,6 +27,14 @@ public sealed class VariantGuardTests
     [InlineData("Leite Meio Gordo UHT Infantil +3A Mimosa", "Mimosa", "Leite Mimosa UHT Meio Gordo 1L", "Mimosa")]
     [InlineData("Bebida Vegetal de Aveia Oatly", "Oatly", "BEBIDA AVEIA OATLY BARISTA BIO 1LT", "OATLY BARISTA")]   // the marker sits in the brand field
     [InlineData("Bolachas Crackers sem Sal na Superfície", "Gran Pavesi", "Bolachas Crackers com Sal na Superfície", "Gran Pavesi")]
+    // one side has an extra ingredient/flavour word the other lacks entirely (prod sample, 2026-09-23)
+    [InlineData("Bebida Vegetal de Aveia Alpro", "Alpro", "Bebida Vegetal de Aveia e Amêndoa", "Alpro")]
+    [InlineData("Bebida Vegetal de Arroz Alpro", "Alpro", "Bebida Vegetal de Arroz e Coco", "Alpro")]
+    [InlineData("Bebida Vegetal de Soja Proteína Alpro", "Alpro", "Bebida Vegetal de Soja", "Alpro")]
+    [InlineData("Bebida Vegetal de Soja Chocolate Alpro", "Alpro", "Bebida Vegetal de Soja", "Alpro")]
+    [InlineData("Água Tónica Pink Zero", "Schweppes", "Água Tónica Zero", "Schweppes")]
+    [InlineData("Queijo Fundido Palitos Pizza", "A Vaca que ri", "Queijo Fundido Palitos", "A Vaca que ri")]
+    [InlineData("Ovo Chocolate de Leite com Surpresa Joy Kinder", "Kinder", "Ovos de Chocolate de Leite Kinder Surpresa", "Kinder")]
     public void DifferentVariants_AreFlagged(string a, string? brandA, string b, string? brandB) =>
         Assert.True(VariantGuard.Compare(a, brandA, b, brandB).Conflict);
 
