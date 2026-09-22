@@ -21,6 +21,8 @@ public sealed class CategoryGuardTests
     [InlineData("CONJUNTO DE TÁBUA PARA QUEIJO ACÁCIA 28X15X1CM", "Queijos")]
     [InlineData("ALMOFADA COM QUEIJO A VACA QUE RI 100 G", "Queijos")]
     [InlineData("Yarrah Cao Pate Frango Algas Bio 150G", "Queijos")]
+    // found mining the 0.85-1.0 confidence band via the bulk/preview guard-impact report (prod, 2026-09-23)
+    [InlineData("Champô Urtiga Bio", "Chá e Infusões")]
     public void LiteralWordCollisions_AreFlagged(string name, string category) =>
         Assert.True(CategoryGuard.Suspicious(name, category));
 
@@ -38,6 +40,10 @@ public sealed class CategoryGuardTests
     [InlineData("COMIDA HÚMIDA MARTIN SELLIER CÃO PEIXE 400G", "Comida para Cães")]
     // a real baby-gear object, correctly filed under baby gear
     [InlineData("Espelho de Segurança Auto 360° Asalvo", "Puericultura e Mobiliário Bebé")]
+    // a real shampoo, correctly filed under hair care
+    [InlineData("Champô Alperce Criança Garnier Ultra Suave", "Cabelo")]
+    // a real children's book, correctly filed under books
+    [InlineData("100 Primeiros - Números, Cores e Formas de Roger Priddy", "Papelaria e Livros")]
     public void RealMatches_AreNeverFlagged(string name, string category) =>
         Assert.False(CategoryGuard.Suspicious(name, category));
 }

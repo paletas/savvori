@@ -36,7 +36,8 @@ public static class VariantGuard
     // Words that make a different product when only one listing has them.
     private static readonly HashSet<string> Markers = new(
         ("light zero proteina integral descafeinado intenso mini max maxi xl xxl kids infantil junior barista crescimento " +
-         "stevia grosso branco negro picante suave forte amendoa avela coco chocolate pink pizza joy").Split(' ').Select(Stem));
+         "stevia grosso branco negro picante suave forte amendoa avela coco chocolate pink pizza joy " +
+         "gas lima calcio curado oregao").Split(' ').Select(Stem));
 
     private static readonly Regex Sizes = new(@"\b\d+(?: \d+)?\s?(?:kg|g|gr|ml|cl|l|lt)\b|\b\d+\s?x\s?\d+(?: \d+)?\s?(?:kg|g|gr|ml|cl|l|lt)?\b",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);

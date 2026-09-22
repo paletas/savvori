@@ -17,14 +17,14 @@ public static class CategoryGuard
     // A product carrying one of these words is not naming an ingredient, whatever category it best matches by text.
     private static readonly HashSet<string> NonFoodObjects = new(
         ("maquina cortador colher tabua dispensador escova intercomunicador solucao banco mesa bau almofada " +
-         "espelho aquecedor moedor abridor raladeira polir").Split(' '));
+         "espelho aquecedor moedor abridor raladeira polir champo").Split(' '));
 
     // Categories where a non-food object word is expected and should not be flagged (kitchen tools, baby gear, ...).
     // Furniture and cushions are deliberately NOT here: "Limpeza do Lar" is cleaning products, not furniture, and a
     // real miss (children's furniture) was suggested there by the classifier.
     private static readonly HashSet<string> ObjectCategories = new(
         ["puericultura e mobiliario bebe", "cosmetica, rosto e corpo", "protecao solar",
-         "fraldas e higiene bebe", "papelaria e livros"]);
+         "fraldas e higiene bebe", "papelaria e livros", "cabelo"]);
 
     // A product naming another chain's pet food is never a human-food category.
     private static readonly HashSet<string> PetWords = new(["cao", "caes", "gato", "gatos", "racao"]);
