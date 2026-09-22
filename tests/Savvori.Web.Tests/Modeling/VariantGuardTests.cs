@@ -35,6 +35,12 @@ public sealed class VariantGuardTests
     [InlineData("Água Tónica Pink Zero", "Schweppes", "Água Tónica Zero", "Schweppes")]
     [InlineData("Queijo Fundido Palitos Pizza", "A Vaca que ri", "Queijo Fundido Palitos", "A Vaca que ri")]
     [InlineData("Ovo Chocolate de Leite com Surpresa Joy Kinder", "Kinder", "Ovos de Chocolate de Leite Kinder Surpresa", "Kinder")]
+    // same pattern, found mining the 0.80-0.90 cosine band via the gap-words diagnostic (prod, 2026-09-23)
+    [InlineData("Pedras Salgadas Água das Pedras", "Pedras Salgadas", "Água com Gás Pedras Salgadas", "Pedras Salgadas")]
+    [InlineData("Água Tónica Schweppes", "Schweppes", "Água Tónica Limão", "Schweppes")]
+    [InlineData("Leite UHT Meio Gordo Mimosa", "Mimosa", "LEITE MIMOSA UHT MEIO GORDO CÃLCIO 1L", "Mimosa")]
+    [InlineData("Queijo Curado Fatiado Castelões", "Castelões", "Queijo Fatiado", "Castelões")]
+    [InlineData("Passata de Tomate Guloso", "Guloso", "Passata de Tomate com Manjericão e Orégãos", "Guloso")]
     public void DifferentVariants_AreFlagged(string a, string? brandA, string b, string? brandB) =>
         Assert.True(VariantGuard.Compare(a, brandA, b, brandB).Conflict);
 
@@ -56,10 +62,14 @@ public sealed class VariantGuardTests
         Assert.True(v.Identical);
     }
 
-    [Fact]
-    public void AnExtraWordOnOneSide_IsNotAConflict_ButIsNotIdenticalEither()
+    [Theory]
+    [InlineData("Arroz Agulha Extra Longo Caçarola", "Cigala", "Arroz Agulha", "Cigala")]
+    // "de vaca" is a redundant descriptor on cow-milk cheese, not a variant - a plain cosine-threshold bulk apply
+    // (which only needs Conflict == false) still takes it; false-positive risk found via gap-words (prod, 2026-09-23)
+    [InlineData("Queijo de Vaca Amanteigado Paiva", "Paiva", "QUEIJO AMANTEIGADO PAIVA UN", "Paiva")]
+    public void AnExtraWordOnOneSide_IsNotAConflict_ButIsNotIdenticalEither(string a, string? brandA, string b, string? brandB)
     {
-        var v = VariantGuard.Compare("Arroz Agulha Extra Longo Caçarola", "Cigala", "Arroz Agulha", "Cigala");
+        var v = VariantGuard.Compare(a, brandA, b, brandB);
         Assert.False(v.Conflict);
         Assert.False(v.Identical);
     }
