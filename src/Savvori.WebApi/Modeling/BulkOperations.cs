@@ -163,7 +163,7 @@ public sealed class MatchBulkService(SavvoriDbContext db, MatchApplier applier, 
 }
 
 /// <summary>Bulk actions on the category review queue: apply every confident prediction, undo a whole run.</summary>
-public sealed class CategoryBulkService(SavvoriDbContext db, TimeProvider time)
+public sealed class CategoryBulkService(SavvoriDbContext db, TimeProvider time, ModelTelemetry telemetry)
 {
     public const string KnnMethod = "embedding-knn";
     private DateTime Now => time.GetUtcNow().UtcDateTime;
@@ -213,6 +213,7 @@ public sealed class CategoryBulkService(SavvoriDbContext db, TimeProvider time)
         batch.Status = BulkBatchStatus.Done;
         batch.FinishedAt = Now;
         await db.SaveChangesAsync(ct);
+        if (batch.Applied > 0) telemetry.CategoriesDecided.Add(batch.Applied, new KeyValuePair<string, object?>("outcome", "accepted-bulk"));
     }
 
     /// <summary>Removes the categories a run assigned (only where the product still has that category) and re-queues them.</summary>

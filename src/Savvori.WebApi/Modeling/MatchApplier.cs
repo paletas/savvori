@@ -37,7 +37,7 @@ public sealed record ApplyResult(ApplyOutcome Outcome, string? Reason = null)
 /// have active prices from the same chain (usually different packs) or carry different EANs unless forced by a
 /// human, never touches manually matched products on behalf of a model, and records everything needed to undo.
 /// </summary>
-public sealed class MatchApplier(SavvoriDbContext db, TimeProvider time)
+public sealed class MatchApplier(SavvoriDbContext db, TimeProvider time, ModelTelemetry telemetry)
 {
     public const string ManualMethod = "manual-review";
 
@@ -65,6 +65,7 @@ public sealed class MatchApplier(SavvoriDbContext db, TimeProvider time)
         if (a.CanonicalProductId is not null && a.CanonicalProductId == b.CanonicalProductId)
         {
             MarkApplied(c, method);
+            telemetry.MatchesDecided.Add(1, new KeyValuePair<string, object?>("outcome", "applied"));
             return new(ApplyOutcome.AlreadyTogether);
         }
         if (!manual && (a.MatchStatus == MatchStatus.ManualMatched || b.MatchStatus == MatchStatus.ManualMatched))
@@ -155,6 +156,7 @@ public sealed class MatchApplier(SavvoriDbContext db, TimeProvider time)
         }
         MarkApplied(c, method);
         await db.SaveChangesAsync(ct);
+        telemetry.MatchesDecided.Add(1, new KeyValuePair<string, object?>("outcome", "applied"));
         return new(ApplyOutcome.Applied);
     }
 
@@ -268,6 +270,7 @@ public sealed class MatchApplier(SavvoriDbContext db, TimeProvider time)
             candidate.Note = "Bulk run undone.";
         }
         await db.SaveChangesAsync(ct);
+        telemetry.MatchesDecided.Add(1, new KeyValuePair<string, object?>("outcome", "undone"));
         return new(ApplyOutcome.Applied);
     }
 }

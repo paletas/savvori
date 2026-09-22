@@ -49,6 +49,7 @@ public sealed class ModelTestHost : IDisposable
         services.AddSingleton<TimeProvider>(Time);
         services.AddSingleton(Microsoft.Extensions.Options.Options.Create(Options));
         services.AddSingleton<ModelCircuitBreaker>();
+        services.AddSingleton<ModelTelemetry>();
         services.AddSingleton(Faults);
         services.AddSingleton<IEmbeddingClient>(sp => new BreakerEmbeddingClient(
             new FlakyEmbeddingClient(new FakeEmbeddingClient(), sp.GetRequiredService<FaultPlan>()),
