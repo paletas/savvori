@@ -8,7 +8,8 @@ namespace Savvori.WebApi.Modeling;
 /// cocoa percentage, "light" vs regular, ...). <see cref="Identical"/>: once brand, size and filler words are removed
 /// nothing is left over on either side, so the names say the same thing.
 /// </summary>
-public sealed record VariantVerdict(bool Conflict, bool Identical, string? Detail)
+public sealed record VariantVerdict(bool Conflict, bool Identical, string? Detail,
+    IReadOnlyList<string>? OnlyA = null, IReadOnlyList<string>? OnlyB = null)
 {
     public static readonly VariantVerdict Same = new(false, true, null);
 }
@@ -57,8 +58,8 @@ public static class VariantGuard
         if (onlyA.Count == 0 && onlyB.Count == 0) return VariantVerdict.Same;
         var marker = onlyA.Concat(onlyB).FirstOrDefault(Markers.Contains);
         if ((onlyA.Count > 0 && onlyB.Count > 0) || marker is not null)
-            return new(true, false, $"{string.Join(' ', onlyA)} vs {string.Join(' ', onlyB)}".Trim());
-        return new(false, false, null);
+            return new(true, false, $"{string.Join(' ', onlyA)} vs {string.Join(' ', onlyB)}".Trim(), onlyA, onlyB);
+        return new(false, false, null, onlyA, onlyB);
     }
 
     private static HashSet<string> BrandStems(string? brand) =>
