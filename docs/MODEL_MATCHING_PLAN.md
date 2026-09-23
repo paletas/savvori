@@ -258,3 +258,41 @@ describe them are history. The model now only ever suggests:
 This keeps the brief's guarantee ("a dry run is used for the first run") by making the model permanently more
 conservative than a dry run, instead of a switch someone can turn on. On the beta sample the category classifier was about
 28% wrong even at confidence 1.00, which is why it is never given the authority to assign on its own.
+
+## Addendum: raw store category on StoreProduct, and a category judge (2026-09-23)
+
+**`StoreProduct.Category`.** The k-NN classifier only ever saw `"{brand} {name}"` as text, which produces
+confident-but-wrong suggestions when a product's name shares a word with an unrelated category (a rice cooker
+suggested into "Arroz", "congelado" confused with "Gelados"). The store's own raw category text for that listing
+(e.g. "Congelados") is a strong disambiguator but was never actually persisted per listing — a `StoreCategoryId`
+navigation looked like it should carry this but was dead code, unpopulated by anything outside migrations. Added a
+real `StoreProduct.Category` string, filled from the scraper's own category text on every scrape (create and
+update). It is **not** mixed into the shared embedding used for matching: matching's cosine thresholds were
+calibrated on name-only text, and each chain names categories differently, so doing that needs its own measured
+experiment first, not a hunch. It is available for the categorisation side, which is where it is used below.
+
+**Category judge.** A new `ICategoryJudge` (mirrors `IPairJudge`: same breaker wrapping, same Ollama chat
+transport, `qwen2.5:7b-instruct`) checks each category suggestion before `CategoryBulkService.RunApplyAsync`
+assigns it — after the deterministic `CategoryGuard` word-list filter (kept as a free first pass; the judge only
+runs on what the guard lets through). A verdict of anything other than "yes" holds the suggestion back with a
+note instead of assigning it, exactly like a `CategoryGuard` hit; a transport failure or malformed response does
+the same (judged per suggestion, not latched for the rest of a batch, so a transient blip only holds back the
+items it actually hit).
+
+The prompt is few-shot (12 hand-picked examples spanning literal-word collisions and legitimate variants/formats
+that must not be rejected). Measured against real prod `CategorySuggestions` with the exact production request
+shape (`/api/chat`, same system/user message split, same one-word parse), held out from the few-shot examples:
+
+- 27/27 (100%) of real suggestions rejected by hand at 100% confidence were correctly flagged "no".
+- 39/50 (78%) of a fresh random sample of already-accepted suggestions were correctly confirmed "yes"; several of
+  the "misses" turned out to be the judge catching suggestions that were wrong despite being accepted by a human
+  reviewer (e.g. "Caviar de Esturjão" suggested into "Queijos"), not the judge being wrong.
+- On 50 fresh, unlabeled, high-confidence pending suggestions: 29 "yes" (would auto-apply), 21 "no" (would go to
+  manual review). Hand-spot-checking all 29 "yes" verdicts found no apparent false accept. The "no" side leans
+  over-cautious on some legitimate cases (children's/parenting books in particular) — safe (extra manual review,
+  never a wrong assignment) but leaves some real wins on the table; a future prompt iteration could tighten this
+  without touching the "yes" side's precision, which is the one that actually matters for safety.
+
+This is deliberately additive to `CategoryGuard`, not a replacement: the guard is free and catches roughly half of
+real bad suggestions (anything with a literal non-food/pet/appliance word) before ever calling the model, so only
+the harder, guard-blind cases pay for an Ollama round trip.

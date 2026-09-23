@@ -50,6 +50,11 @@ public static class ModelServiceCollectionExtensions
                 sp.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName),
                 sp.GetRequiredService<IOptions<ModelOptions>>()),
             sp.GetRequiredService<ModelCircuitBreaker>()));
+        services.AddSingleton<ICategoryJudge>(sp => new BreakerCategoryJudge(
+            new OllamaCategoryJudge(
+                sp.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName),
+                sp.GetRequiredService<IOptions<ModelOptions>>()),
+            sp.GetRequiredService<ModelCircuitBreaker>()));
 
         services.AddScoped<ModelJobQueue>();
         services.AddSingleton<CurrentModelState>();

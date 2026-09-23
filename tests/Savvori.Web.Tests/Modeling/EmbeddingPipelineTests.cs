@@ -27,6 +27,7 @@ public sealed class PipelineHost : IDisposable
     public FaultPlan Faults { get; }
     public FakeEmbeddingClient Embedder { get; } = new() { Dimension = 16 };
     public FakePairJudge Judge { get; } = new();
+    public FakeCategoryJudge CategoryJudge { get; } = new();
     public CountingJudge JudgeCalls { get; }
     public ModelOptions Options { get; } = new()
     {
@@ -56,6 +57,8 @@ public sealed class PipelineHost : IDisposable
             new FlakyEmbeddingClient(Embedder, sp.GetRequiredService<FaultPlan>()), sp.GetRequiredService<ModelCircuitBreaker>()));
         s.AddSingleton<IPairJudge>(sp => new BreakerPairJudge(
             new FlakyPairJudge(JudgeCalls, sp.GetRequiredService<FaultPlan>()), sp.GetRequiredService<ModelCircuitBreaker>()));
+        s.AddSingleton<ICategoryJudge>(sp => new BreakerCategoryJudge(
+            new FlakyCategoryJudge(CategoryJudge, sp.GetRequiredService<FaultPlan>()), sp.GetRequiredService<ModelCircuitBreaker>()));
         s.AddDbContext<SavvoriDbContext>(o => o.UseInMemoryDatabase(dbName));
         s.AddScoped<ModelJobQueue>();
         s.AddSingleton<CurrentModelState>();

@@ -50,3 +50,10 @@ public sealed class BreakerPairJudge(IPairJudge inner, ModelCircuitBreaker break
     public Task<JudgeVerdict> JudgeAsync(JudgeItem a, JudgeItem b, CancellationToken ct = default) =>
         BreakerGuard.RunAsync(breaker, () => inner.JudgeAsync(a, b, ct));
 }
+
+/// <summary>The <see cref="ICategoryJudge"/> the rest of the app sees: every call goes through the breaker.</summary>
+public sealed class BreakerCategoryJudge(ICategoryJudge inner, ModelCircuitBreaker breaker) : ICategoryJudge
+{
+    public Task<JudgeVerdict> JudgeAsync(CategoryJudgeItem item, CancellationToken ct = default) =>
+        BreakerGuard.RunAsync(breaker, () => inner.JudgeAsync(item, ct));
+}

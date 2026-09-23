@@ -45,3 +45,15 @@ public interface IPairJudge
     /// </summary>
     Task<JudgeVerdict> JudgeAsync(JudgeItem a, JudgeItem b, CancellationToken ct = default);
 }
+
+/// <summary>Only product text (no user data) is ever sent to the judge.</summary>
+public sealed record CategoryJudgeItem(string Name, string? Brand, string? StoreCategory, string SuggestedCategory);
+
+public interface ICategoryJudge
+{
+    /// <summary>
+    /// Does this product genuinely belong in the suggested category (not just share a word with it)? A transport
+    /// failure throws <see cref="ModelUnavailableException"/>; it is never reported as <see cref="JudgeVerdict.No"/>.
+    /// </summary>
+    Task<JudgeVerdict> JudgeAsync(CategoryJudgeItem item, CancellationToken ct = default);
+}

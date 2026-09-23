@@ -219,6 +219,53 @@ public sealed class BulkCategoryTests : IDisposable
     }
 
     [Fact]
+    public async Task Apply_HoldsBack_WhenTheCategoryJudgeSaysNo()
+    {
+        var suggestion = Suggestion(0.95);
+        _h.CategoryJudge.Verdict = JudgeVerdict.No;
+
+        var batch = await ApplyAsync(0.90);
+
+        Assert.Equal(0, batch.Applied);
+        Assert.Equal(1, batch.Blocked);
+        Assert.Null(ProductOf(suggestion).CategoryId);
+        var held = _h.Query(db => db.CategorySuggestions.AsNoTracking().Single(s => s.Id == suggestion));
+        Assert.Equal(CategorySuggestionStatus.Suggested, held.Status);
+        Assert.Contains("does not think", held.Note);
+    }
+
+    [Fact]
+    public async Task Apply_HoldsBackEverythingRemaining_WhenTheCategoryJudgeIsUnavailable()
+    {
+        var first = Suggestion(0.99);
+        var second = Suggestion(0.95);
+        _h.Faults.GoDown();
+
+        var batch = await ApplyAsync(0.90);
+
+        Assert.Equal(0, batch.Applied);
+        Assert.Equal(2, batch.Blocked);
+        Assert.Null(ProductOf(first).CategoryId);
+        Assert.Null(ProductOf(second).CategoryId);
+        var notes = _h.Query(db => db.CategorySuggestions.AsNoTracking()
+            .Where(s => s.Id == first || s.Id == second).Select(s => s.Note).ToList());
+        Assert.All(notes, n => Assert.Contains("unavailable", n));
+    }
+
+    [Fact]
+    public async Task Apply_HoldsBack_WhenTheCategoryJudgeReturnsAMalformedResponse()
+    {
+        var suggestion = Suggestion(0.95);
+        _h.Faults.GoDown(FaultMode.BadResponse);
+
+        var batch = await ApplyAsync(0.90);
+
+        Assert.Equal(0, batch.Applied);
+        Assert.Equal(1, batch.Blocked);
+        Assert.Null(ProductOf(suggestion).CategoryId);
+    }
+
+    [Fact]
     public async Task Undo_RemovesTheRunsCategories_AndRequeuesTheSuggestions()
     {
         var a = Suggestion(0.95);

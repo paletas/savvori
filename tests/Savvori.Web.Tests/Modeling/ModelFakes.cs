@@ -49,6 +49,13 @@ public sealed class FakePairJudge(JudgeVerdict verdict = JudgeVerdict.Yes) : IPa
         Task.FromResult(Verdict);
 }
 
+public sealed class FakeCategoryJudge(JudgeVerdict verdict = JudgeVerdict.Yes) : ICategoryJudge
+{
+    public JudgeVerdict Verdict { get; set; } = verdict;
+    public Task<JudgeVerdict> JudgeAsync(CategoryJudgeItem item, CancellationToken ct = default) =>
+        Task.FromResult(Verdict);
+}
+
 public enum FaultMode { None, Timeout, ServerError, BadResponse }
 
 /// <summary>
@@ -113,6 +120,15 @@ public sealed class FlakyPairJudge(IPairJudge inner, FaultPlan plan) : IPairJudg
     {
         await plan.ApplyAsync(ct);
         return await inner.JudgeAsync(a, b, ct);
+    }
+}
+
+public sealed class FlakyCategoryJudge(ICategoryJudge inner, FaultPlan plan) : ICategoryJudge
+{
+    public async Task<JudgeVerdict> JudgeAsync(CategoryJudgeItem item, CancellationToken ct = default)
+    {
+        await plan.ApplyAsync(ct);
+        return await inner.JudgeAsync(item, ct);
     }
 }
 
