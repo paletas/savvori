@@ -14,11 +14,13 @@ public class ProductsController : ControllerBase
     private readonly SavvoriDbContext _db;
 
     private readonly Scraping.ICategoryLocalizer _localizer;
+    private readonly ProductMergeResolver _resolver;
 
-    public ProductsController(SavvoriDbContext db, Scraping.ICategoryLocalizer localizer)
+    public ProductsController(SavvoriDbContext db, Scraping.ICategoryLocalizer localizer, ProductMergeResolver resolver)
     {
         _db = db;
         _localizer = localizer;
+        _resolver = resolver;
     }
 
     /// <summary>
@@ -91,15 +93,13 @@ public class ProductsController : ControllerBase
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetProduct(Guid id, CancellationToken ct)
     {
-        var product = await _db.Products
-            .Include(p => p.ProductCategory)
-            .FirstOrDefaultAsync(p => p.Id == id, ct);
+        var (product, resolvedFrom) = await _resolver.ResolveAsync(id, ct);
 
         if (product is null) return NotFound();
 
         var storeProducts = await _db.StoreProducts
             .Include(sp => sp.StoreChain)
-            .Where(sp => sp.CanonicalProductId == id && sp.IsActive)
+            .Where(sp => sp.CanonicalProductId == product.Id && sp.IsActive)
             .ToListAsync(ct);
 
         var spIds = storeProducts.Select(sp => sp.Id).ToList();
@@ -145,6 +145,7 @@ public class ProductsController : ControllerBase
             product.SizeValue,
             product.ImageUrl,
             product.NormalizedName,
+            ResolvedFrom = resolvedFrom,
             Prices = prices
         });
     }
@@ -156,14 +157,14 @@ public class ProductsController : ControllerBase
     [HttpGet("{id:guid}/alternatives")]
     public async Task<IActionResult> GetAlternatives(Guid id, CancellationToken ct)
     {
-        var product = await _db.Products.FindAsync([id], ct);
+        var (product, resolvedFrom) = await _resolver.ResolveAsync(id, ct);
         if (product is null) return NotFound();
 
         if (product.CategoryId is null)
-            return Ok(new { Items = Array.Empty<object>() });
+            return Ok(new { ResolvedFrom = resolvedFrom, Items = Array.Empty<object>() });
 
         var alternatives = await _db.Products
-            .Where(p => p.CategoryId == product.CategoryId && p.Id != id)
+            .Where(p => p.CategoryId == product.CategoryId && p.Id != product.Id)
             .Select(p => new
             {
                 p.Id,
@@ -178,11 +179,15 @@ public class ProductsController : ControllerBase
                     .Select(spp => (decimal?)spp.Price)
                     .Min()
             })
-            .OrderBy(p => p.LowestPrice)
+            // SQLite (and this provider's translation of it) sorts NULL first in ascending order,
+            // so a plain OrderBy(LowestPrice) would let unpriced products crowd out priced ones —
+            // rank priced products first, then order those by price.
+            .OrderBy(p => p.LowestPrice == null ? 1 : 0)
+            .ThenBy(p => p.LowestPrice)
             .Take(10)
             .ToListAsync(ct);
 
-        return Ok(new { Items = alternatives });
+        return Ok(new { ResolvedFrom = resolvedFrom, Items = alternatives });
     }
 
     /// <summary>
@@ -196,13 +201,13 @@ public class ProductsController : ControllerBase
         [FromQuery] int days = 30,
         CancellationToken ct = default)
     {
-        if (!await _db.Products.AnyAsync(p => p.Id == id, ct))
-            return NotFound();
+        var (product, resolvedFrom) = await _resolver.ResolveAsync(id, ct);
+        if (product is null) return NotFound();
 
         var cutoff = DateTime.UtcNow.AddDays(-days);
 
         var storeProductQuery = _db.StoreProducts
-            .Where(sp => sp.CanonicalProductId == id);
+            .Where(sp => sp.CanonicalProductId == product.Id);
 
         if (!string.IsNullOrWhiteSpace(chainSlug))
         {
@@ -232,6 +237,6 @@ public class ProductsController : ControllerBase
             })
             .ToListAsync(ct);
 
-        return Ok(new { ProductId = id, ChainSlug = chainSlug, Days = days, History = history });
+        return Ok(new { ProductId = product.Id, ResolvedFrom = resolvedFrom, ChainSlug = chainSlug, Days = days, History = history });
     }
 }

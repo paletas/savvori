@@ -159,6 +159,54 @@ public class ProductsTests : IClassFixture<SavvoriWebApiFactory>
     }
 
     [Fact]
+    public async Task GetAlternatives_RanksPricedProductsBeforeUnpriced()
+    {
+        // Regression test: SQLite sorts NULL first in ascending order, so a plain
+        // OrderBy(LowestPrice) would let unpriced alternatives crowd out priced ones.
+        var catId = Guid.NewGuid();
+        var pricedId = Guid.NewGuid();
+        var unpricedId = Guid.NewGuid();
+        var anchorId = Guid.NewGuid();
+        var chainId = Guid.NewGuid();
+
+        _factory.SeedData(db =>
+        {
+            var cat = TestDataSeeder.CreateTestCategory("Ranking", $"ranking-{Guid.NewGuid():N}");
+            cat.Id = catId;
+            db.ProductCategories.Add(cat);
+
+            var chain = TestDataSeeder.CreateTestStoreChain("Ranking Chain", $"ranking-chain-{Guid.NewGuid():N}");
+            chain.Id = chainId;
+            db.StoreChains.Add(chain);
+
+            var anchor = TestDataSeeder.CreateTestProduct("Anchor", catId);
+            anchor.Id = anchorId;
+            db.Products.Add(anchor);
+
+            // Registered first, so it would sort before the priced one under a naive ASC ordering.
+            var unpriced = TestDataSeeder.CreateTestProduct("Unpriced Alternative", catId);
+            unpriced.Id = unpricedId;
+            db.Products.Add(unpriced);
+
+            var priced = TestDataSeeder.CreateTestProduct("Priced Alternative", catId);
+            priced.Id = pricedId;
+            db.Products.Add(priced);
+            var sp = TestDataSeeder.CreateTestStoreProduct(chainId, pricedId);
+            db.StoreProducts.Add(sp);
+            db.StoreProductPrices.Add(TestDataSeeder.CreateTestStoreProductPrice(sp.Id, 3.00m));
+        });
+
+        var response = await _client.GetAsync($"/api/products/{anchorId}/alternatives", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        var items = body.GetProperty("items");
+        Assert.Equal(2, items.GetArrayLength());
+        Assert.Equal(pricedId.ToString(), items[0].GetProperty("id").GetString());
+        Assert.Equal(unpricedId.ToString(), items[1].GetProperty("id").GetString());
+    }
+
+    [Fact]
     public async Task GetPriceHistory_ValidProduct_ReturnsHistory()
     {
         var response = await _client.GetAsync($"/api/products/{_productId}/pricehistory", TestContext.Current.CancellationToken);

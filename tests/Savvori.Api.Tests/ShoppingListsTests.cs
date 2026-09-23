@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Savvori.Api.Tests.Infrastructure;
+using Savvori.Shared;
 
 namespace Savvori.Api.Tests;
 
@@ -150,6 +151,84 @@ public class ShoppingListsTests : IClassFixture<SavvoriWebApiFactory>
         using var client = _factory.CreateClient();
         var response = await client.DeleteAsync(
             $"/api/shoppinglists/{_existingListId}/items/{Guid.NewGuid()}", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AddItem_DuplicateProduct_Returns409()
+    {
+        _factory.SeedData(db =>
+        {
+            db.ShoppingListItems.Add(TestDataSeeder.CreateTestShoppingListItem(_existingListId, _productId));
+        });
+
+        using var client = _factory.CreateClient();
+        var response = await client.PostAsJsonAsync(
+            $"/api/shoppinglists/{_existingListId}/items",
+            new { ProductId = _productId, Quantity = 1 }, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AddItem_MergedAwayProduct_ResolvesToSurvivorAndSucceeds()
+    {
+        // The retired id must NOT exist as an active Product row — that's what forces
+        // ProductMergeResolver to actually walk the MatchMerge chain instead of short-circuiting.
+        var retiredProductId = Guid.NewGuid();
+        _factory.SeedData(db =>
+        {
+            db.MatchMerges.Add(new MatchMerge
+            {
+                Id = Guid.NewGuid(),
+                CandidateId = Guid.NewGuid(),
+                SurvivorProductId = _productId,
+                RetiredProductId = retiredProductId,
+                Method = "test",
+                AppliedAt = DateTime.UtcNow
+            });
+        });
+
+        using var client = _factory.CreateClient();
+        var response = await client.PostAsJsonAsync(
+            $"/api/shoppinglists/{_existingListId}/items",
+            new { ProductId = retiredProductId, Quantity = 3 }, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        Assert.Equal(_productId.ToString(), body.GetProperty("productId").GetString());
+    }
+
+    [Fact]
+    public async Task UpsertItemQuantity_CreatesWhenMissing_ThenReplacesQuantityIdempotently()
+    {
+        using var client = _factory.CreateClient();
+
+        var first = await client.PutAsJsonAsync(
+            $"/api/shoppinglists/{_existingListId}/items/{_productId}",
+            new { Quantity = 2 }, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        var firstBody = await first.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        Assert.Equal(2, firstBody.GetProperty("quantity").GetInt32());
+        var itemId = firstBody.GetProperty("id").GetString();
+
+        var second = await client.PutAsJsonAsync(
+            $"/api/shoppinglists/{_existingListId}/items/{_productId}",
+            new { Quantity = 5 }, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        var secondBody = await second.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+
+        Assert.Equal(5, secondBody.GetProperty("quantity").GetInt32());
+        Assert.Equal(itemId, secondBody.GetProperty("id").GetString()); // same row, not a second one
+    }
+
+    [Fact]
+    public async Task UpsertItemQuantity_NonExistentProduct_Returns404()
+    {
+        using var client = _factory.CreateClient();
+        var response = await client.PutAsJsonAsync(
+            $"/api/shoppinglists/{_existingListId}/items/{Guid.NewGuid()}",
+            new { Quantity = 1 }, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 }
