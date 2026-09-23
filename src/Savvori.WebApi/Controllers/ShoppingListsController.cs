@@ -93,7 +93,7 @@ public class ShoppingListsController : ControllerBase
         };
         _db.ShoppingListItems.Add(item);
         await _db.SaveChangesAsync();
-        return Ok(item);
+        return Ok(ToDto(item));
     }
 
     /// <summary>
@@ -123,7 +123,7 @@ public class ShoppingListsController : ControllerBase
             item.Quantity = req.Quantity;
         }
         await _db.SaveChangesAsync();
-        return Ok(item);
+        return Ok(ToDto(item));
     }
 
     [HttpPut("{id}/items/{itemId:guid}/bought")]
@@ -133,7 +133,7 @@ public class ShoppingListsController : ControllerBase
         if (item == null) return NotFound();
         item.Bought = req.Bought;
         await _db.SaveChangesAsync();
-        return Ok(item);
+        return Ok(ToDto(item));
     }
 
     /// <summary>Deletes every item on the list currently marked Bought.</summary>
@@ -159,6 +159,17 @@ public class ShoppingListsController : ControllerBase
         return NoContent();
     }
 
+
+    // Projects to a plain DTO instead of returning the tracked entity directly. AddItem and
+    // UpsertItemQuantity both resolve the product through ProductMergeResolver first, which loads
+    // Product (with ProductCategory) into this same DbContext — EF's navigation fixup then wires
+    // item.Product, and ProductCategory.Products loops back to include that same product, so
+    // System.Text.Json throws "a possible object cycle was detected" serializing the raw entity
+    // for any product that actually has a category (i.e. almost every real one). Caught in
+    // production (2026-09-23): the write itself always succeeded, but the response came back 500,
+    // which callers correctly treated as a failure.
+    private static object ToDto(ShoppingListItem item) =>
+        new { item.Id, item.ProductId, item.Quantity, item.Bought };
 
     public class CreateListRequest { public string Name { get; set; } = string.Empty; }
     public class UpdateListRequest { public string Name { get; set; } = string.Empty; }
