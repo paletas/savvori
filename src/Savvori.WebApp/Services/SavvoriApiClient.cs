@@ -217,13 +217,21 @@ public class SavvoriApiClient(HttpClient http, ILogger<SavvoriApiClient> logger)
         }
     }
 
+    /// <summary>Adds <paramref name="quantity"/> more of a product to the list — increments if it's
+    /// already there, rather than the API's strict create-only POST (which now 409s on a duplicate
+    /// product; see ShoppingListsController.AddItem). Not atomic against a concurrent add of the
+    /// same product from another tab, same as before this method existed.</summary>
     public async Task<ShoppingListItemDto?> AddItemToListAsync(
         Guid listId, Guid productId, int quantity, CancellationToken ct = default)
     {
         try
         {
-            var resp = await http.PostAsJsonAsync($"/api/shoppinglists/{listId}/items",
-                new { productId, quantity }, ct);
+            var lists = await GetShoppingListsAsync(ct);
+            var existingQuantity = lists.FirstOrDefault(l => l.Id == listId)
+                ?.Items.FirstOrDefault(i => i.ProductId == productId)?.Quantity ?? 0;
+
+            var resp = await http.PutAsJsonAsync($"/api/shoppinglists/{listId}/items/{productId}",
+                new { quantity = existingQuantity + quantity }, ct);
             resp.EnsureSuccessStatusCode();
             return await resp.Content.ReadFromJsonAsync<ShoppingListItemDto>(JsonOptions, ct);
         }

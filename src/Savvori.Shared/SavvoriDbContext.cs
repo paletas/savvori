@@ -16,6 +16,7 @@ public class ShoppingListItem
     public Guid ProductId { get; set; }
     public Product Product { get; set; } = null!;
     public int Quantity { get; set; }
+    public bool Bought { get; set; }
 }
 
 public class Product
