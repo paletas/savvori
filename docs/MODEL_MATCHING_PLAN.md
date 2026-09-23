@@ -314,5 +314,17 @@ were the known over-cautious pattern on baby-related products confirmed here for
 suggestions rather than just spot-checks (two cots/beds and a playpen correctly belonging in "Puericultura e
 Mobiliário Bebé", baby wipes correctly belonging in "Fraldas e Higiene Bebé" — all wrongly held back). Batch
 undone afterward to leave beta's queue as found. No false accepts observed. Next: promote to prod through the
-normal pipeline (DB snapshot first), and consider a follow-up prompt iteration targeting the baby-product
-over-caution specifically, backed by a few-shot example or two once more real cases are seen.
+normal pipeline (DB snapshot first).
+
+**Follow-up: targeted fix for the baby-product/book over-caution (2026-09-23, same day).** Added 5 more few-shot
+examples (a children's bed, baby wipes, and three children's/parenting books) plus a guidance sentence calling
+out that baby gear and children's books are genuinely their own category even when they read unlike a plain adult
+product. Measured on a dedicated held-out sample of 17 real baby/book suggestions pulled from prod (cots, a
+playpen, a baby-safety mirror, a toy, and several parenting/children's books): went from 11/17 (65%) before the
+fix to 13/15 (87%, after excluding the 2 items now used as few-shot examples) after. Recall on the 27 known-bad
+suggestions held at 100% throughout both rounds. The fresh 50-item accepted-suggestions sample shifted a little
+in both directions between rounds (39-43 out of 50 depending on the exact prompt) — normal noise from a longer
+prompt nudging a handful of unrelated borderline calls, not a regression in the metric that actually matters
+(nothing in either round showed a false accept). Diminishing returns are visible at this point: further few-shot
+tuning trades a small number of items against each other rather than producing clean wins, so this is a
+reasonable stopping point for prompt-only tuning.

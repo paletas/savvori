@@ -191,8 +191,9 @@ public sealed class OllamaPairJudge(HttpClient http, IOptions<ModelOptions> opti
 /// <summary>
 /// Yes/no category-assignment judge over Ollama <c>/api/chat</c> (temperature 0, no JSON mode). Tuned by hand
 /// against real prod category decisions (2026-09-23): the few-shot examples below are load-bearing — removing
-/// or narrowing them measurably regressed accuracy in that experiment (71.7% -> 83.3% -> 88.5% held-out as
-/// examples were added and corrected; see docs/MODEL_MATCHING_PLAN.md). Don't trim them without re-measuring.
+/// or narrowing them measurably regressed accuracy in that experiment (71.7% -> 83.3% -> 88.5% held-out, then
+/// baby-gear/wipes/books examples added after a beta bulk-apply run showed those over-rejected; see
+/// docs/MODEL_MATCHING_PLAN.md). Don't trim them without re-measuring.
 /// </summary>
 public sealed class OllamaCategoryJudge(HttpClient http, IOptions<ModelOptions> options) : ICategoryJudge
 {
@@ -207,7 +208,10 @@ public sealed class OllamaCategoryJudge(HttpClient http, IOptions<ModelOptions> 
         product is not actually that kind of food/thing at all - an appliance, a tool, a cosmetic, a toy, a book,
         a medicine, another chain's pet food, or a different food entirely that just shares a word in its name
         (e.g. "leite" meaning sunscreen lotion, "queijo" meaning a cushion shaped like a cheese, "congelado"
-        meaning frozen but suggested into "Gelados"/ice cream).
+        meaning frozen but suggested into "Gelados"/ice cream). Baby and children's gear (cots, beds, playpens,
+        wipes, bottles) and children's books are genuinely their own category even when the name sounds playful,
+        uses a toy brand, or is unfamiliar - don't say no just because a product reads differently from a plain
+        adult one.
 
         Examples:
         Product: Leite Meio Gordo Bio Prado Verde | Brand: Prado Verde | Store category: (none) | Proposed: Leite
@@ -244,6 +248,21 @@ public sealed class OllamaCategoryJudge(HttpClient http, IOptions<ModelOptions> 
         Answer: yes
 
         Product: Noilly Vermute Prat Dry | Brand: Noilly | Store category: Aperitivos | Proposed: Vinho
+        Answer: yes
+
+        Product: Cama Júnior com Proteção e Gavetão Branco Timo Twinko | Brand: Twinko | Store category: Camas, Berços e Colchões | Proposed: Puericultura e Mobiliário Bebé
+        Answer: yes
+
+        Product: Lupilu Toalhitas para Bebé Comfort | Brand: Lupilu | Store category: (none) | Proposed: Fraldas e Higiene Bebé
+        Answer: yes
+
+        Product: Disney Baby - As Palavras Mágicas | Brand: (none) | Store category: Livros para Bebé | Proposed: Papelaria e Livros
+        Answer: yes
+
+        Product: O Coelho Que Queria Dormir de Carl-Johan Forssen Ehrlin | Brand: Carl-Johan Forssen Ehrlin | Store category: Gravidez e Puericultura | Proposed: Papelaria e Livros
+        Answer: yes
+
+        Product: Zoko Happy Bear - Ouriço Dorme com as Estrelas | Brand: Zoko Happy Bear | Store category: Brinquedos de Bebé | Proposed: Puericultura e Mobiliário Bebé
         Answer: yes
 
         Answer with exactly one word: yes or no.
