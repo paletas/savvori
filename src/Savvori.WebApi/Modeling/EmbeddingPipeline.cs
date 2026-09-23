@@ -27,7 +27,8 @@ public sealed class EmbeddingScanner(
     public async Task<Needs> FindNeedsAsync(ModelInfo? current, CancellationToken ct = default)
     {
         var products = await db.StoreProducts.AsNoTracking().Where(sp => sp.IsActive)
-            .Select(sp => new { sp.Id, sp.Name, sp.Brand }).ToListAsync(ct);
+            .Select(sp => new { sp.Id, sp.Name, sp.Brand })
+            .ToListAsync(ct);
         var embeddings = await db.StoreProductEmbeddings.AsNoTracking()
             .Select(e => new { e.StoreProductId, e.ModelName, e.ModelDigest, e.Dimension, e.InputTextHash })
             .ToDictionaryAsync(e => e.StoreProductId, ct);
@@ -37,6 +38,8 @@ public sealed class EmbeddingScanner(
         var stale = new List<(Guid, string)>();
         foreach (var p in products)
         {
+            // Matching's cosine thresholds were calibrated on name-only text; category text is not yet mixed in
+            // here (see docs/MODEL_MATCHING_PLAN.md) until its effect on match quality has been measured.
             var hash = EmbeddingFreshness.HashText(EmbeddingFreshness.BuildInputText(p.Brand, p.Name));
             if (!embeddings.TryGetValue(p.Id, out var e)) { missing.Add((p.Id, hash)); continue; }
 
@@ -74,7 +77,8 @@ public sealed class EmbedJobHandler(
     {
         var ids = jobs.Select(j => j.SubjectId).Distinct().ToList();
         var products = await db.StoreProducts.AsNoTracking().Where(sp => ids.Contains(sp.Id))
-            .Select(sp => new { sp.Id, sp.Name, sp.Brand }).ToDictionaryAsync(sp => sp.Id, ct);
+            .Select(sp => new { sp.Id, sp.Name, sp.Brand })
+            .ToDictionaryAsync(sp => sp.Id, ct);
 
         // A job whose product vanished, or whose text has changed since it was queued, is obsolete:
         // the scan queues a fresh job for the new text. Completing it without work is correct and idempotent.

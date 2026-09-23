@@ -8,14 +8,19 @@ public sealed record EmbeddingMetadata(string ModelName, string ModelDigest, int
 
 public static class EmbeddingFreshness
 {
-    /// <summary>The text embedded for a listing: <c>"{brand} {name}"</c> lower-cased, brand omitted if already in the name.</summary>
-    public static string BuildInputText(string? brand, string name)
+    /// <summary>
+    /// The text embedded for a listing: <c>"{brand} {name} {store category}"</c> lower-cased, brand omitted if
+    /// already in the name. The store's own raw category ("Congelados", "Comida para Cães", ...) disambiguates
+    /// products whose name alone reads as something else to the embedder (e.g. "Polvo Congelado" vs "Gelados").
+    /// </summary>
+    public static string BuildInputText(string? brand, string name, string? storeCategory = null)
     {
         name = name.Trim();
         var text = string.IsNullOrWhiteSpace(brand) ||
                    name.Contains(brand.Trim(), StringComparison.OrdinalIgnoreCase)
             ? name
             : $"{brand.Trim()} {name}";
+        if (!string.IsNullOrWhiteSpace(storeCategory)) text = $"{text} {storeCategory.Trim()}";
         return text.ToLowerInvariant();
     }
 
