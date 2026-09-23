@@ -21,6 +21,7 @@ public sealed class ModelOptions
     public CandidateOptions Candidates { get; set; } = new();
     public MatchingOptions Matching { get; set; } = new();
     public CategoryOptions Categories { get; set; } = new();
+    public AliasOptions Aliases { get; set; } = new();
 
     public sealed class BreakerOptions
     {
@@ -43,6 +44,16 @@ public sealed class ModelOptions
     {
         /// <summary>Quartz cron for finding products that need (re-)embedding.</summary>
         public string Cron { get; set; } = "0 15 * * * ?";
+    }
+
+    public sealed class AliasOptions
+    {
+        /// <summary>Quartz cron for finding products that need search aliases (needs no model call).</summary>
+        public string Cron { get; set; } = "0 40 * * * ?";
+        /// <summary>Products per translator request.</summary>
+        public int ProductsPerRequest { get; set; } = 8;
+        /// <summary>Cap on jobs queued per scan, so the first run over a big catalogue cannot flood the model.</summary>
+        public int MaxJobsPerScan { get; set; } = 500;
     }
 
     public sealed class CategoryOptions

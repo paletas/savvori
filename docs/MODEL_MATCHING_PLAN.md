@@ -329,6 +329,37 @@ prompt nudging a handful of unrelated borderline calls, not a regression in the 
 tuning trades a small number of items against each other rather than producing clean wins, so this is a
 reasonable stopping point for prompt-only tuning.
 
+## Addendum: multilingual search aliases (2026-09-23)
+
+Problem: search is substring-only over vendor names, so "rice" finds nothing when every vendor writes "arroz".
+
+**What shipped.** A new `ProductSearchAlias` table (one row per product and language: pt, en, es, fr) holds a
+generic name and up to 5 keywords, plus an accent-free `SearchText` that `GET /api/products?search=` matches
+against. A new `ModelJobType.Translate` job (appended to the enum, ints persist) is queued hourly by
+`AliasScanJob` (`Model:Aliases:Cron`, capped by `MaxJobsPerScan`) for products with an active listing whose
+`hash(name, brand, category, PromptVersion)` has no model row. `TranslateJobHandler` sends product text only,
+`ProductsPerRequest` (default 8) per Ollama chat request, with a JSON-schema `format` and temperature 0, using
+`Model:JudgeModel`. It goes through the same breaker and durable queue as everything else; a bad shape throws
+`ModelResponseException` (retried by the queue, not a breaker failure). Bump `AliasInputs.PromptVersion` when the
+prompt changes to regenerate everything.
+
+**Deliberate exception to "the model only suggests".** Aliases are applied without a person in the loop. This is
+acceptable because they are search-only: they can add a result to a search but never change what a product is,
+which listings are merged, or which category it is in, and the vendor name stays what is displayed. Every row records
+`Source` (`model`/`manual`), `ModelName` and `InputHash` so a person can review or override later; a `manual` row is
+never overwritten. People correct them on the product detail page ("Search names": edit the comma-separated words
+per language and Save, or Reset) or through `PUT/DELETE /api/products/{id}/aliases/{language}`. A correction becomes
+a `manual` row (empty keywords = deliberately none); Reset removes the row and marks the product's model rows out of
+date so the next scan regenerates them. A product corrected in all four languages is skipped by the scan.
+
+**Known false positives.** A name that shares a word with a food can pick up that food's aliases ("Leite Solar"
+may get "milk"), the same class as the category keyword collisions. For search that means an odd extra result, not
+a wrong identity; the prompt tells the model to use the store category to avoid it. Not measured yet: run the job
+on beta and review a sample before relying on it.
+
+**Merges.** `MatchApplier` deletes the retired canonical `Product`, so its aliases cascade away; the survivor's
+aliases are unaffected. Undo recreates the product and the next scan regenerates its aliases.
+
 ## Addendum: pair judge (matching) investigation, same day — no changes shipped
 
 Tried to carry the category judge's win (few-shot prompting) over to `OllamaPairJudge`. Result: **no code change**,

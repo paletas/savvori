@@ -295,3 +295,112 @@ public sealed class OllamaCategoryJudge(HttpClient http, IOptions<ModelOptions> 
     private sealed record ChatResponse([property: JsonPropertyName("message")] ChatMessage? Message);
     private sealed record ChatMessage([property: JsonPropertyName("content")] string? Content);
 }
+
+/// <summary>
+/// Generic product names and search keywords per language over Ollama <c>/api/chat</c> with a JSON-schema
+/// <c>format</c> (temperature 0). Several products go in one request; answers are matched back by index.
+/// </summary>
+public sealed class OllamaProductTranslator(HttpClient http, IOptions<ModelOptions> options) : IProductTranslator
+{
+    public static readonly string[] Languages = ["pt", "en", "es", "fr"];
+
+    private const string SystemPrompt =
+        """
+        You help a Portuguese supermarket price-comparison site find products across languages.
+        For each numbered product, give the generic name and up to 4 short search keywords a shopper might type,
+        in Portuguese (pt), English (en), Spanish (es) and French (fr). Put the most generic name first.
+
+        Rules:
+        - Describe what the product IS ("arroz agulha" -> en: "rice", "long grain rice"). Never translate brand names.
+        - Use the store category, when given, to tell what the product is. A word that only shares a name with a food
+          (sun lotion called "leite solar") is not that food.
+        - Keywords are nouns a shopper would search, not sentences. No sizes, no marketing words.
+        - If you are not sure what the product is, return empty lists for it rather than guessing.
+        - Answer with JSON only, one entry per product, using the given index.
+        """;
+
+    private static readonly object Schema = BuildSchema();
+
+    private static object BuildSchema()
+    {
+        var list = new { type = "array", items = new { type = "string" } };
+        return new
+        {
+            type = "object",
+            properties = new
+            {
+                products = new
+                {
+                    type = "array",
+                    items = new
+                    {
+                        type = "object",
+                        properties = new { index = new { type = "integer" }, pt = list, en = list, es = list, fr = list },
+                        required = new[] { "index", "pt", "en", "es", "fr" }
+                    }
+                }
+            },
+            required = new[] { "products" }
+        };
+    }
+
+    public async Task<IReadOnlyList<TranslateResult>> TranslateAsync(
+        IReadOnlyList<TranslateItem> items, CancellationToken ct = default)
+    {
+        if (items.Count == 0) return [];
+        var prompt = string.Join("\n", items.Select((it, i) =>
+            $"{i}: {it.Name} | Brand: {it.Brand ?? "(none)"} | Store category: {it.Category ?? "(none)"}"));
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "api/chat")
+        {
+            Content = JsonContent.Create(new
+            {
+                model = options.Value.JudgeModel,
+                stream = false,
+                format = Schema,
+                options = new { temperature = 0 },
+                messages = new object[]
+                {
+                    new { role = "system", content = SystemPrompt },
+                    new { role = "user", content = prompt }
+                }
+            })
+        };
+        var response = await OllamaHttp.SendAsync(http, request, ct);
+        var body = await OllamaHttp.ReadAsync<ChatResponse>(response, ct);
+        return Parse(body.Message?.Content, items.Count);
+    }
+
+    /// <summary>Strict parse: the answer must contain exactly one entry per input index, otherwise it is unusable.</summary>
+    public static IReadOnlyList<TranslateResult> Parse(string? content, int count)
+    {
+        if (string.IsNullOrWhiteSpace(content)) throw new ModelResponseException("Translator returned no content.");
+        Answer? answer;
+        try { answer = JsonSerializer.Deserialize<Answer>(content); }
+        catch (JsonException ex) { throw new ModelResponseException("Translator returned malformed JSON.", ex); }
+        if (answer?.Products is null || answer.Products.Count != count)
+            throw new ModelResponseException($"Expected {count} products, got {answer?.Products?.Count ?? 0}.");
+
+        var results = new TranslateResult?[count];
+        foreach (var p in answer.Products)
+        {
+            if (p.Index is not { } i || i < 0 || i >= count || results[i] is not null)
+                throw new ModelResponseException("Translator returned a missing or duplicate index.");
+            results[i] = new TranslateResult(new Dictionary<string, IReadOnlyList<string>>
+            {
+                ["pt"] = p.Pt ?? [], ["en"] = p.En ?? [], ["es"] = p.Es ?? [], ["fr"] = p.Fr ?? []
+            });
+        }
+        return results!;
+    }
+
+    private sealed record Answer([property: JsonPropertyName("products")] List<Entry>? Products);
+    private sealed record Entry(
+        [property: JsonPropertyName("index")] int? Index,
+        [property: JsonPropertyName("pt")] List<string>? Pt,
+        [property: JsonPropertyName("en")] List<string>? En,
+        [property: JsonPropertyName("es")] List<string>? Es,
+        [property: JsonPropertyName("fr")] List<string>? Fr);
+    private sealed record ChatResponse([property: JsonPropertyName("message")] ChatMessage? Message);
+    private sealed record ChatMessage([property: JsonPropertyName("content")] string? Content);
+}

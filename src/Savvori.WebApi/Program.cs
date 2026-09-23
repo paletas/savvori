@@ -130,6 +130,10 @@ builder.Services.AddQuartz(q =>
     q.AddTrigger(opts => opts.ForJob("model-matching").WithIdentity("model-matching-trigger")
         .WithCronSchedule(builder.Configuration.GetValue("Model:Matching:Cron", "0 45 3 * * ?")!));
 
+    q.AddJob<AliasScanJob>(opts => opts.WithIdentity("model-alias-scan"));
+    q.AddTrigger(opts => opts.ForJob("model-alias-scan").WithIdentity("model-alias-scan-trigger")
+        .WithCronSchedule(builder.Configuration.GetValue("Model:Aliases:Cron", "0 40 * * * ?")!));
+
     q.AddJob<CategoryClassifierJob>(opts => opts.WithIdentity("model-category-classifier"));
     q.AddTrigger(opts => opts.ForJob("model-category-classifier").WithIdentity("model-category-classifier-trigger")
         .WithCronSchedule(builder.Configuration.GetValue("Model:Categories:Cron", "0 0 4 * * ?")!));

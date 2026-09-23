@@ -28,6 +28,8 @@ public class Product
     public Guid? CategoryId { get; set; }
     public ProductCategory? ProductCategory { get; set; }
     public string? NormalizedName { get; set; }
+    /// <summary>Per-language generic names and search keywords (model-suggested, search-only); see <see cref="ProductSearchAlias"/>.</summary>
+    public List<ProductSearchAlias> SearchAliases { get; set; } = new();
     public string? EAN { get; set; }
     public ProductUnit Unit { get; set; } = ProductUnit.Unit;
     public decimal? SizeValue { get; set; }

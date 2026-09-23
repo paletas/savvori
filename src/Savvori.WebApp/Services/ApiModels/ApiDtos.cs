@@ -12,6 +12,9 @@ public record ProductSummaryDto(
     Guid Id, string Name, string? Brand, string? Category, Guid? CategoryId,
     string? EAN, int Unit, decimal? SizeValue, string? ImageUrl, decimal? LowestPrice);
 
+/// <summary>One language's search keywords for a product; Source is "model", "manual" or null when there is none yet.</summary>
+public record ProductAliasDto(string Language, string Keywords, string? Source);
+
 public record ProductsResponse(int Page, int PageSize, int Total, int TotalPages, List<ProductSummaryDto> Items);
 
 public record ProductDetailDto(

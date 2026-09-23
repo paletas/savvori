@@ -57,3 +57,19 @@ public interface ICategoryJudge
     /// </summary>
     Task<JudgeVerdict> JudgeAsync(CategoryJudgeItem item, CancellationToken ct = default);
 }
+
+/// <summary>Only product text (no user data) is ever sent to the translator.</summary>
+public sealed record TranslateItem(string Name, string? Brand, string? Category);
+
+/// <summary>Generic names/keywords per language (pt, en, es, fr) for one product; a language may be empty.</summary>
+public sealed record TranslateResult(IReadOnlyDictionary<string, IReadOnlyList<string>> Keywords);
+
+public interface IProductTranslator
+{
+    /// <summary>
+    /// Suggests generic names and search keywords per language for each product, in the same order as the input.
+    /// A transport failure throws <see cref="ModelUnavailableException"/>; an unusable answer (wrong count, bad shape)
+    /// throws <see cref="ModelResponseException"/>.
+    /// </summary>
+    Task<IReadOnlyList<TranslateResult>> TranslateAsync(IReadOnlyList<TranslateItem> items, CancellationToken ct = default);
+}

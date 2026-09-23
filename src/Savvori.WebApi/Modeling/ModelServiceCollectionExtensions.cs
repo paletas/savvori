@@ -56,6 +56,12 @@ public static class ModelServiceCollectionExtensions
                 sp.GetRequiredService<IOptions<ModelOptions>>()),
             sp.GetRequiredService<ModelCircuitBreaker>()));
 
+        services.AddSingleton<IProductTranslator>(sp => new BreakerProductTranslator(
+            new OllamaProductTranslator(
+                sp.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName),
+                sp.GetRequiredService<IOptions<ModelOptions>>()),
+            sp.GetRequiredService<ModelCircuitBreaker>()));
+
         services.AddScoped<ModelJobQueue>();
         services.AddSingleton<CurrentModelState>();
         services.AddSingleton<EmbeddingIndex>();

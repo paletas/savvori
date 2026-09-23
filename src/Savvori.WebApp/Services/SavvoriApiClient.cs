@@ -666,4 +666,47 @@ public class SavvoriApiClient(HttpClient http, ILogger<SavvoriApiClient> logger)
             return (false, "An error occurred.");
         }
     }
+
+    // ===== Search aliases (per-language names used by product search) =====
+
+    public async Task<List<ProductAliasDto>> GetProductAliasesAsync(Guid productId, CancellationToken ct = default)
+    {
+        try
+        {
+            return await http.GetFromJsonAsync<List<ProductAliasDto>>($"/api/products/{productId}/aliases", JsonOptions, ct) ?? [];
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to get search aliases for {ProductId}", productId);
+            return [];
+        }
+    }
+
+    public async Task<bool> SetProductAliasAsync(Guid productId, string language, string keywords, CancellationToken ct = default)
+    {
+        try
+        {
+            var resp = await http.PutAsJsonAsync($"/api/products/{productId}/aliases/{language}", new { keywords }, ct);
+            return resp.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to set {Language} alias for {ProductId}", language, productId);
+            return false;
+        }
+    }
+
+    public async Task<bool> ResetProductAliasAsync(Guid productId, string language, CancellationToken ct = default)
+    {
+        try
+        {
+            var resp = await http.DeleteAsync($"/api/products/{productId}/aliases/{language}", ct);
+            return resp.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to reset {Language} alias for {ProductId}", language, productId);
+            return false;
+        }
+    }
 }

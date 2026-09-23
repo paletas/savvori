@@ -57,3 +57,10 @@ public sealed class BreakerCategoryJudge(ICategoryJudge inner, ModelCircuitBreak
     public Task<JudgeVerdict> JudgeAsync(CategoryJudgeItem item, CancellationToken ct = default) =>
         BreakerGuard.RunAsync(breaker, () => inner.JudgeAsync(item, ct));
 }
+
+/// <summary>The <see cref="IProductTranslator"/> the rest of the app sees: every call goes through the breaker.</summary>
+public sealed class BreakerProductTranslator(IProductTranslator inner, ModelCircuitBreaker breaker) : IProductTranslator
+{
+    public Task<IReadOnlyList<TranslateResult>> TranslateAsync(IReadOnlyList<TranslateItem> items, CancellationToken ct = default) =>
+        BreakerGuard.RunAsync(breaker, () => inner.TranslateAsync(items, ct));
+}

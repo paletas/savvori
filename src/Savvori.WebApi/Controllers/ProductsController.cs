@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Savvori.Shared;
+using Savvori.WebApi.Modeling;
+using Savvori.WebApi.Scraping;
 
 namespace Savvori.WebApi.Controllers;
 
@@ -43,10 +45,14 @@ public class ProductsController : ControllerBase
         if (!string.IsNullOrWhiteSpace(search))
         {
             var term = search.Trim().ToLower();
+            // Model-suggested per-language names ("rice" for Arroz Agulha) widen the search; they are stored
+            // accent-free, so the term is folded the same way. Empty alias table = the old behaviour exactly.
+            var folded = ProductNormalizer.Normalize(search);
             query = query.Where(p =>
                 p.NormalizedName != null && p.NormalizedName.Contains(term) ||
                 p.Name.ToLower().Contains(term) ||
-                p.Brand != null && p.Brand.ToLower().Contains(term));
+                p.Brand != null && p.Brand.ToLower().Contains(term) ||
+                folded != "" && p.SearchAliases.Any(a => a.SearchText.Contains(folded)));
         }
 
         if (category.HasValue)
@@ -148,6 +154,82 @@ public class ProductsController : ControllerBase
             ResolvedFrom = resolvedFrom,
             Prices = prices
         });
+    }
+
+    /// <summary>
+    /// The per-language names and keywords search uses for this product (model-suggested or corrected by a person).
+    /// GET /api/products/{id}/aliases
+    /// </summary>
+    [HttpGet("{id:guid}/aliases")]
+    public async Task<IActionResult> GetAliases(Guid id, CancellationToken ct)
+    {
+        var (product, _) = await _resolver.ResolveAsync(id, ct);
+        if (product is null) return NotFound();
+
+        var rows = await _db.ProductSearchAliases.AsNoTracking().Where(a => a.ProductId == product.Id).ToListAsync(ct);
+        return Ok(OllamaProductTranslator.Languages.Select(l =>
+        {
+            var row = rows.FirstOrDefault(a => a.Language == l);
+            return new { Language = l, Keywords = row?.Keywords ?? string.Empty, Source = row?.Source };
+        }));
+    }
+
+    public sealed record SetAliasRequest(string? Keywords);
+
+    /// <summary>
+    /// Corrects one language: replaces the keywords (comma separated) with what a person wrote. The row becomes
+    /// <c>manual</c>, which the model never overwrites; empty keywords mean "no aliases in this language".
+    /// PUT /api/products/{id}/aliases/{language}
+    /// </summary>
+    [HttpPut("{id:guid}/aliases/{language}")]
+    public async Task<IActionResult> SetAlias(Guid id, string language, [FromBody] SetAliasRequest body, CancellationToken ct)
+    {
+        language = language.ToLowerInvariant();
+        if (!OllamaProductTranslator.Languages.Contains(language))
+            return BadRequest($"Language must be one of: {string.Join(", ", OllamaProductTranslator.Languages)}.");
+        var (product, _) = await _resolver.ResolveAsync(id, ct);
+        if (product is null) return NotFound();
+
+        var keywords = AliasInputs.Clean((body.Keywords ?? string.Empty).Split(',', ';', '\n'));
+        var row = await _db.ProductSearchAliases.FirstOrDefaultAsync(a => a.ProductId == product.Id && a.Language == language, ct);
+        if (row is null)
+        {
+            row = new ProductSearchAlias { ProductId = product.Id, Language = language };
+            _db.ProductSearchAliases.Add(row);
+        }
+        row.Name = keywords.FirstOrDefault() ?? string.Empty;
+        row.Keywords = string.Join(", ", keywords);
+        row.SearchText = ProductNormalizer.Normalize(string.Join(' ', keywords));
+        row.Source = AliasInputs.ManualSource;
+        row.ModelName = null;
+        row.InputHash = null;
+        row.CreatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { row.Language, row.Keywords, row.Source });
+    }
+
+    /// <summary>
+    /// Undoes a correction: removes this language's row and marks the product's model rows out of date, so the
+    /// next alias scan asks the model again (other manual corrections are kept).
+    /// DELETE /api/products/{id}/aliases/{language}
+    /// </summary>
+    [HttpDelete("{id:guid}/aliases/{language}")]
+    public async Task<IActionResult> ResetAlias(Guid id, string language, CancellationToken ct)
+    {
+        language = language.ToLowerInvariant();
+        if (!OllamaProductTranslator.Languages.Contains(language))
+            return BadRequest($"Language must be one of: {string.Join(", ", OllamaProductTranslator.Languages)}.");
+        var (product, _) = await _resolver.ResolveAsync(id, ct);
+        if (product is null) return NotFound();
+
+        var rows = await _db.ProductSearchAliases.Where(a => a.ProductId == product.Id).ToListAsync(ct);
+        foreach (var row in rows)
+        {
+            if (row.Language == language) _db.ProductSearchAliases.Remove(row);
+            else if (row.Source == AliasInputs.ModelSource) row.InputHash = null; // out of date: regenerated by the next scan
+        }
+        await _db.SaveChangesAsync(ct);
+        return NoContent();
     }
 
     /// <summary>

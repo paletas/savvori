@@ -119,8 +119,9 @@ Optional model-assisted matching/categorisation runs against a remote, unreliabl
 
 
 ### Products
-- `GET /api/products?search=&category=&page=` – Search/browse product catalog
+- `GET /api/products?search=&category=&page=` – Search/browse product catalog. Matches name, normalized name, brand and `ProductSearchAliases.SearchText` (accent-free per-language keywords; the term is folded with `ProductNormalizer.Normalize` for that comparison). No model call on the request path.
 - `GET /api/products/{id}` – Product details with prices across all stores
+- `GET /api/products/{id}/aliases` – Per-language search names (pt, en, es, fr) with source (`model`/`manual`); `PUT …/aliases/{language}` `{keywords}` stores a manual correction; `DELETE …/aliases/{language}` resets it (the model regenerates on the next scan)
 - `GET /api/products/{id}/alternatives` – Alternative product suggestions (up to 3, sorted by price ascending)
 - `GET /api/products/{id}/pricehistory` – Historical price data
 

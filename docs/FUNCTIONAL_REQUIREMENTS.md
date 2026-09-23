@@ -84,6 +84,8 @@ The `/api/shoppinglists/{id}/optimize` endpoint supports four modes via `?mode=`
 
 ### Acceptance Criteria
 - `GET /api/products?search=&category=&page=` supports free-text search and category filtering with pagination.
+- Search also matches per-language names and keywords (pt, en, es, fr) suggested by the model, so "rice" finds "Arroz Agulha". These are search-only: the vendor name is still what is shown, and they never affect matching, merging or categories. With the model off (or before aliases exist) search behaves as name/brand only.
+- A user can correct a product's search names per language on its detail page, or via `PUT /api/products/{id}/aliases/{language}` (`GET` lists them, `DELETE` resets). Corrections are never overwritten by the model.
 - `GET /api/products/{id}` returns full product details including the current price at every store that carries it.
 - `GET /api/products/{id}/alternatives` returns up to 3 cheaper or equivalent alternatives.
 - `GET /api/products/{id}/pricehistory` returns a time-series of recorded prices.
