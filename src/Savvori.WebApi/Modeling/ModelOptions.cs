@@ -53,7 +53,7 @@ public sealed class ModelOptions
         /// <summary>Products per translator request.</summary>
         public int ProductsPerRequest { get; set; } = 8;
         /// <summary>Cap on jobs queued per scan, so the first run over a big catalogue cannot flood the model.</summary>
-        public int MaxJobsPerScan { get; set; } = 500;
+        public int MaxJobsPerScan { get; set; } = 2000;
     }
 
     public sealed class CategoryOptions

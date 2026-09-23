@@ -363,6 +363,13 @@ only, no brands/flavours/ingredients) removed most of that noise. What remains: 
 class to watch, and the per-language correction on the product page exists for them. Further prompt tuning was not
 pursued (diminishing returns, as with the category judge); the next lever would be a larger model.
 
+**Measured on beta (2026-09-23).** After the first scan, 96 products were done within 2 minutes with 0 failures, 0
+dead letters, 0 empty results and every job succeeding on the first attempt: about 95 products per minute (roughly
+5,700 per hour) on the PC's GPU. The initial cap of 500 jobs per scan would have taken about 35 hours to cover the
+17k-product catalogue, so `MaxJobsPerScan` now defaults to 2000 (about 20 minutes of model time per hourly scan,
+whole catalogue in about 9 scans). End to end on beta: alias-only searches work ("lentils" finds "Lentilhas Verdes",
+"vinegar" finds "Vinagre ..."), and a save/reset on the product page round-trips through the API.
+
 **Known false positives.** A name that shares a word with a food can pick up that food's aliases ("Leite Solar"
 may get "milk"), the same class as the category keyword collisions. For search that means an odd extra result, not
 a wrong identity; the prompt tells the model to use the store category to avoid it. Not measured yet: run the job
