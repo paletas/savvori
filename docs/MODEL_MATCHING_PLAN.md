@@ -328,3 +328,46 @@ prompt nudging a handful of unrelated borderline calls, not a regression in the 
 (nothing in either round showed a false accept). Diminishing returns are visible at this point: further few-shot
 tuning trades a small number of items against each other rather than producing clean wins, so this is a
 reasonable stopping point for prompt-only tuning.
+
+## Addendum: pair judge (matching) investigation, same day — no changes shipped
+
+Tried to carry the category judge's win (few-shot prompting) over to `OllamaPairJudge`. Result: **no code change**,
+because nothing tested beat the existing bare 3-line prompt. Recorded here so this ground isn't retested blind.
+
+**First measurement was wrong, then corrected.** An initial test harness omitted the `Size` field from the pair
+description, unlike production's `Describe(JudgeItem)` which sends `Name | Brand | Size | Chain`. That made the
+judge look badly broken (42% recall on 60 real applied matches). Adding `Size` back and re-measuring on the same
+data gave the true baseline: **75% recall** (45/60) on real applied matches, **81% precision** (29/36) on real
+rejected/different-variant pairs — a solid, working judge, not a broken one. Lesson: always assemble the eval
+harness from the exact production request-building code, not a hand-rebuilt approximation of it.
+
+**Few-shot prompting was tried and measurably hurt matching**, unlike categories. Adding 6-7 hand-picked examples
+(mirroring the category judge's approach) dropped recall to 60% for a marginal precision gain (81%→83%). Not
+shipped. The category judge's problem was a genuinely under-specified prompt; the pair judge's apparent problem
+was the missing-Size measurement bug above, not the prompt itself.
+
+**`qwen3-vl:8b` as a stronger judge: ruled out.** It's a thinking model on this Ollama deployment, and neither
+`"think": false` at the request root nor a short `num_predict` suppresses its internal reasoning — the `content`
+field stays empty until the model finishes thinking (which routinely exceeds 400 tokens on this prompt), so short
+`num_predict` truncates before any answer and gets parsed as Unclear. Confirmed the model can eventually produce a
+clean one-word `content` (verified on a trivial arithmetic prompt at `num_predict: 300`), but at production prompt
+length the 93-pair eval took 4m41s (~3s/call) and still landed almost entirely on Unclear. Not practical as a
+per-pair judge without a template/API change on the Ollama side (check `/api/show` for template handling of
+`think` before revisiting).
+
+**Unit-price ratio: tested, does not cleanly separate matches from non-matches.** The hypothesis (own-brand vs.
+branded pairs should show a large €/kg gap) doesn't hold up on real data: positives (real matches) range up to
+2.31x (driven by promo pricing and pack-size/format differences, e.g. "Queijo de Ovelha Seia Amanteigado" at 22.18
+vs 9.59), while negatives (real rejects) only reach 1.59x. The distributions overlap heavily (p75 1.33x positives
+vs 1.49x negatives; p90 1.47x vs 1.59x). A ratio gate at any reasonable threshold would reject real matches at
+roughly the same rate it catches real non-matches. Not built.
+
+**Low-cosine review-queue band (0.70-0.85, ~80% of the 6,961-item NeedsReview backlog, never reaches the judge)
+spot-checked by eye, not a hidden recall goldmine.** The pairs here are overwhelmingly genuinely different
+products that share a brand or category word (e.g. "Azeite Virgem Extra Clássico" vs "...Seleção Azeitonas
+Maduras", "Fermento em Pó" vs "Gelatina em Pó de Morango", both Royal-branded). Sitting unjudged in NeedsReview is
+the correct outcome for most of this band, not a bug.
+
+**Net conclusion:** the current `OllamaPairJudge` prompt, as shipped before this investigation, is already solid
+(75%/81%) and nothing tested here beat it. No code changes were made to matching as a result of this session.
+
