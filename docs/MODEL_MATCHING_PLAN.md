@@ -352,6 +352,17 @@ per language and Save, or Reset) or through `PUT/DELETE /api/products/{id}/alias
 a `manual` row (empty keywords = deliberately none); Reset removes the row and marks the product's model rows out of
 date so the next scan regenerates them. A product corrected in all four languages is skipped by the scan.
 
+**Measured on real beta products (2026-09-23, `qwen2.5:7b-instruct`, exact production request shape, 45 products
+from searches for arroz, leite, queijo, atum, cerveja, fralda, gelado ...).** Response shape was valid for all 45
+(0 bad batches). pt/en generic terms were good (arroz->rice, atum->tuna, cerveja->beer, detergente de loiça->dish
+soap, "Leite Solar" -> sunscreen, not milk). The first prompt let brands, ingredients and mixed-language words into
+the lists and produced one wrong translation ("fraldas" -> fr "poussette"); prompt v2 (1-3 keywords, own language
+only, no brands/flavours/ingredients) removed most of that noise. What remains: es/fr are weaker (invented words like
+"diapèses", "almoedinha"), and ingredients still occasionally leak ("Champô Mel/Cerveja" -> "shampoo with beer",
+"Bolo de Arroz" -> "rice"). Invented words match nothing, so they are harmless; ingredient leaks are the false-positive
+class to watch, and the per-language correction on the product page exists for them. Further prompt tuning was not
+pursued (diminishing returns, as with the category judge); the next lever would be a larger model.
+
 **Known false positives.** A name that shares a word with a food can pick up that food's aliases ("Leite Solar"
 may get "milk"), the same class as the category keyword collisions. For search that means an odd extra result, not
 a wrong identity; the prompt tells the model to use the store category to avoid it. Not measured yet: run the job

@@ -307,14 +307,17 @@ public sealed class OllamaProductTranslator(HttpClient http, IOptions<ModelOptio
     private const string SystemPrompt =
         """
         You help a Portuguese supermarket price-comparison site find products across languages.
-        For each numbered product, give the generic name and up to 4 short search keywords a shopper might type,
-        in Portuguese (pt), English (en), Spanish (es) and French (fr). Put the most generic name first.
+        For each numbered product, give what the product IS as 1 to 3 short generic search keywords a shopper might
+        type, in Portuguese (pt), English (en), Spanish (es) and French (fr). Most generic name first.
 
         Rules:
-        - Describe what the product IS ("arroz agulha" -> en: "rice", "long grain rice"). Never translate brand names.
+        - Describe the product itself ("arroz agulha" -> en: "rice", "long grain rice"). Each list is in its own
+          language only: no Portuguese words in the English list, no English words in the Portuguese one.
+        - Never include brand names, flavours, ingredients, sizes or marketing words. A shampoo with beer in it is a
+          shampoo, peanuts in milk chocolate are peanuts or chocolate snacks, not milk, and a rice cake is a cake.
         - Use the store category, when given, to tell what the product is. A word that only shares a name with a food
           (sun lotion called "leite solar") is not that food.
-        - Keywords are nouns a shopper would search, not sentences. No sizes, no marketing words.
+        - Keywords are nouns a shopper would search, 1 to 3 words each, not sentences.
         - If you are not sure what the product is, return empty lists for it rather than guessing.
         - Answer with JSON only, one entry per product, using the given index.
         """;

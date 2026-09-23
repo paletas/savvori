@@ -10,7 +10,7 @@ namespace Savvori.WebApi.Modeling;
 public static class AliasInputs
 {
     /// <summary>Bump when the translator prompt changes materially, so every product is regenerated.</summary>
-    public const int PromptVersion = 1;
+    public const int PromptVersion = 2;
     public const string ModelSource = "model";
     public const string ManualSource = "manual";
     private const int MaxKeywords = 5;
