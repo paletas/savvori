@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Savvori.Shared;
 
 namespace Savvori.WebApi.Modeling;
@@ -164,7 +165,8 @@ public sealed class MatchBulkService(SavvoriDbContext db, MatchApplier applier, 
 
 /// <summary>Bulk actions on the category review queue: apply every confident prediction, undo a whole run.</summary>
 public sealed class CategoryBulkService(
-    SavvoriDbContext db, TimeProvider time, ModelTelemetry telemetry, ICategoryJudge judge, ILogger<CategoryBulkService> logger)
+    SavvoriDbContext db, TimeProvider time, ModelTelemetry telemetry, ICategoryJudge judge,
+    IOptions<ModelOptions> options, ILogger<CategoryBulkService> logger)
 {
     public const string KnnMethod = "embedding-knn";
     private DateTime Now => time.GetUtcNow().UtcDateTime;
@@ -213,27 +215,32 @@ public sealed class CategoryBulkService(
             }
             else
             {
-                JudgeVerdict verdict;
+                // Consistent with the rest of the model pipeline: with the feature off, nothing calls the model.
+                // The suggestions being bulk-applied here only exist because the model was on when they were
+                // generated, but it may have been switched off since, so this is checked per run, not assumed.
+                var verdict = JudgeVerdict.Yes;
                 string? unavailableNote = null;
-                try
+                if (options.Value.Enabled)
                 {
-                    verdict = await judge.JudgeAsync(
-                        new CategoryJudgeItem(row.ProductName, product.Brand, product.Category, row.CategoryName), ct);
-                }
-                catch (ModelUnavailableException ex)
-                {
-                    // Consistent with the rest of the model pipeline: when the model is down, nothing auto-applies.
-                    // The shared circuit breaker fails fast on repeated failures and recovers after its cooldown,
-                    // so this is retried per item rather than latched off for the rest of the run.
-                    logger.LogWarning("Category judge unavailable for '{Product}': {Error}", row.ProductName, ex.Message);
-                    verdict = JudgeVerdict.Unclear;
-                    unavailableNote = "Held back: category judge was unavailable.";
-                }
-                catch (ModelResponseException ex)
-                {
-                    logger.LogWarning("Category judge gave a bad response for '{Product}': {Error}", row.ProductName, ex.Message);
-                    verdict = JudgeVerdict.Unclear;
-                    unavailableNote = "Held back: category judge was unavailable.";
+                    try
+                    {
+                        verdict = await judge.JudgeAsync(
+                            new CategoryJudgeItem(row.ProductName, product.Brand, product.Category, row.CategoryName), ct);
+                    }
+                    catch (ModelUnavailableException ex)
+                    {
+                        // The shared circuit breaker fails fast on repeated failures and recovers after its
+                        // cooldown, so this is retried per item rather than latched off for the rest of the run.
+                        logger.LogWarning("Category judge unavailable for '{Product}': {Error}", row.ProductName, ex.Message);
+                        verdict = JudgeVerdict.Unclear;
+                        unavailableNote = "Held back: category judge was unavailable.";
+                    }
+                    catch (ModelResponseException ex)
+                    {
+                        logger.LogWarning("Category judge gave a bad response for '{Product}': {Error}", row.ProductName, ex.Message);
+                        verdict = JudgeVerdict.Unclear;
+                        unavailableNote = "Held back: category judge was unavailable.";
+                    }
                 }
 
                 if (verdict != JudgeVerdict.Yes)
