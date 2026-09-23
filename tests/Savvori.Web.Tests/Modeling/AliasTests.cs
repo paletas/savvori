@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Savvori.Shared;
+using Savvori.WebApi;
 using Savvori.WebApi.Modeling;
 
 namespace Savvori.Web.Tests.Modeling;
@@ -178,6 +180,24 @@ public sealed class AliasTests : IDisposable
         Assert.Empty(Aliases(id));
         Assert.True(_h.Breaker.IsClosed); // reachable but bad is not an outage
         Assert.Contains(_h.Query(db => db.ModelJobs.ToList()), j => j.Status != ModelJobStatus.Done);
+    }
+
+    [Fact]
+    public void RealModelServiceRegistration_ResolvesTheAliasScannerAndTranslateHandler()
+    {
+        // The other tests build their own container; this one uses the registration the app really runs,
+        // because a missing line there only shows up as a Quartz job failing in production.
+        var config = new ConfigurationBuilder().Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddDbContext<SavvoriDbContext>(o => o.UseInMemoryDatabase($"Reg_{Guid.NewGuid()}"));
+        services.AddModelServices(config);
+        using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = false });
+        using var scope = provider.CreateScope();
+
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<AliasScanner>());
+        Assert.Contains(scope.ServiceProvider.GetServices<IModelJobHandler>(), h => h.Type == ModelJobType.Translate);
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<IProductTranslator>());
     }
 
     [Fact]

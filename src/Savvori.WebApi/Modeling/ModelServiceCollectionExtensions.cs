@@ -69,6 +69,8 @@ public static class ModelServiceCollectionExtensions
         services.AddScoped<CandidateGenerator>();
         services.AddScoped<IModelJobHandler, EmbedJobHandler>();
         services.AddScoped<IModelJobHandler, JudgeJobHandler>();
+        services.AddScoped<AliasScanner>();
+        services.AddScoped<IModelJobHandler, TranslateJobHandler>();
         services.AddScoped<MatchApplier>();
         services.AddScoped<MatchingService>();
         services.AddScoped<CategoryClassifier>();
