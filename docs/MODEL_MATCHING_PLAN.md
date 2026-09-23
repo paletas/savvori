@@ -296,3 +296,23 @@ shape (`/api/chat`, same system/user message split, same one-word parse), held o
 This is deliberately additive to `CategoryGuard`, not a replacement: the guard is free and catches roughly half of
 real bad suggestions (anything with a literal non-food/pet/appliance word) before ever calling the model, so only
 the harder, guard-blind cases pay for an Ollama round trip.
+
+**Bug caught by CI before this reached beta.** `CategoryBulkService` initially called the judge unconditionally,
+so bulk apply made a live model call even with `Model:Enabled` off — inconsistent with every other model consumer
+in the pipeline. The `Testing` environment has no `Model` section (`Enabled` defaults to false), so
+`Savvori.Api.Tests`' end-to-end bulk-apply test should never have touched the network at all; it happened to pass
+locally because the dev machine has a route to the real Ollama host and got a real "yes", but failed on GitHub's
+runner (no route) with `ModelUnavailableException`, correctly held back, and broke the test's old assumption of
+guard-only apply. Fixed by gating the judge call behind `options.Value.Enabled`, matching every other consumer.
+
+**Validated on beta (2026-09-23).** Ran a real bulk apply at 0.95 confidence against beta's live queue (16
+eligible): 5 applied, 11 held back (1 by `CategoryGuard`, 10 by the judge). All 5 applied suggestions were
+correct on inspection. Of the 10 judge holds, about 6 were clear correct catches (two "Bebida Alpro Soja..."
+suggested into "Sumos e Néctares", a Twix chocolate snack into "Bolachas Maria e Simples", a coffee drink into
+"Leite", a biscuit brand into "Bolachas Maria e Simples" and another into "Manteiga e Margarinas"), and about 4
+were the known over-cautious pattern on baby-related products confirmed here for the first time on real
+suggestions rather than just spot-checks (two cots/beds and a playpen correctly belonging in "Puericultura e
+Mobiliário Bebé", baby wipes correctly belonging in "Fraldas e Higiene Bebé" — all wrongly held back). Batch
+undone afterward to leave beta's queue as found. No false accepts observed. Next: promote to prod through the
+normal pipeline (DB snapshot first), and consider a follow-up prompt iteration targeting the baby-product
+over-caution specifically, backed by a few-shot example or two once more real cases are seen.
