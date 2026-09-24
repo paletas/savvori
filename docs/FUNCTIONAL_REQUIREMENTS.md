@@ -84,6 +84,7 @@ The `/api/shoppinglists/{id}/optimize` endpoint supports four modes via `?mode=`
 
 ### Acceptance Criteria
 - `GET /api/products?search=&category=&page=` supports free-text search and category filtering with pagination.
+- Search is language-agnostic for English and Portuguese: every word is matched together with its equivalents from a curated grocery glossary (`Services/SearchGlossary.cs`), so "rice" and "arroz" (and "olive oil"/"azeite", "egg"/"ovos") return the same products. Words are ANDed ("carolino rice" finds "Arroz Carolino"), matching ignores case and accents, glossary words match as whole words ("ovo" does not hit "novo"), and words outside the glossary still match as substrings so partial typing works. Results are ordered by relevance: names that start with a searched word, then names containing it as a word, then everything else, ties by name.
 - Search also matches per-language names and keywords (pt, en, es, fr) suggested by the model, so "rice" finds "Arroz Agulha". These are search-only: the vendor name is still what is shown, and they never affect matching, merging or categories. With the model off (or before aliases exist) search behaves as name/brand only.
 - A user can correct a product's search names per language on its detail page, or via `PUT /api/products/{id}/aliases/{language}` (`GET` lists them, `DELETE` resets). Corrections are never overwritten by the model.
 - `GET /api/products/{id}` returns full product details including the current price at every store that carries it.

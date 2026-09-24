@@ -119,7 +119,7 @@ Optional model-assisted matching/categorisation runs against a remote, unreliabl
 
 
 ### Products
-- `GET /api/products?search=&category=&page=` – Search/browse product catalog. Matches name, normalized name, brand and `ProductSearchAliases.SearchText` (accent-free per-language keywords; the term is folded with `ProductNormalizer.Normalize` for that comparison). No model call on the request path.
+- `GET /api/products?search=&category=&page=` – Search/browse product catalog. Language-agnostic and relevance-ordered (`Services/ProductSearchQuery.cs`, `Services/SearchGlossary.cs`): the folded query is split into words (longest glossary phrase first), words are ANDed, and each glossary word is ORed with its EN/PT equivalents ("rice" = "arroz"), matched as whole words on the name and alias text; other words match as substrings. Order is name-starts-with, then word match, then the rest, then name and id (stable paging); it is all in SQL. Also matches brand and `ProductSearchAliases.SearchText` (accent-free per-language keywords; the term is folded with `ProductNormalizer.Normalize` for that comparison). No model call on the request path.
 - `GET /api/products/{id}` – Product details with prices across all stores
 - `GET /api/products/{id}/aliases` – Per-language search names (pt, en, es, fr) with source (`model`/`manual`); `PUT …/aliases/{language}` `{keywords}` stores a manual correction; `DELETE …/aliases/{language}` resets it (the model regenerates on the next scan)
 - `GET /api/products/{id}/alternatives` – Alternative product suggestions (up to 3, sorted by price ascending)

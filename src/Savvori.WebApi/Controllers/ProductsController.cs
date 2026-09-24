@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Savvori.Shared;
 using Savvori.WebApi.Modeling;
 using Savvori.WebApi.Scraping;
+using Savvori.WebApi.Services;
 
 namespace Savvori.WebApi.Controllers;
 
@@ -42,25 +43,17 @@ public class ProductsController : ControllerBase
 
         var query = _db.Products.AsQueryable();
 
-        if (!string.IsNullOrWhiteSpace(search))
-        {
-            var term = search.Trim().ToLower();
-            // Model-suggested per-language names ("rice" for Arroz Agulha) widen the search; they are stored
-            // accent-free, so the term is folded the same way. Empty alias table = the old behaviour exactly.
-            var folded = ProductNormalizer.Normalize(search);
-            query = query.Where(p =>
-                p.NormalizedName != null && p.NormalizedName.Contains(term) ||
-                p.Name.ToLower().Contains(term) ||
-                p.Brand != null && p.Brand.ToLower().Contains(term) ||
-                folded != "" && p.SearchAliases.Any(a => a.SearchText.Contains(folded)));
-        }
-
         if (category.HasValue)
             query = query.Where(p => p.CategoryId == category.Value);
 
-        var total = await query.CountAsync(ct);
-        var products = await query
-            .OrderBy(p => p.Name)
+        // A search is language-agnostic ("rice" and "arroz" find the same products, see ProductSearchQuery) and
+        // ordered by relevance; browsing without a search is alphabetical.
+        var ordered = !string.IsNullOrWhiteSpace(search)
+            ? ProductSearchQuery.Apply(query, search)
+            : query.OrderBy(p => p.Name).ThenBy(p => p.Id);
+
+        var total = await ordered.CountAsync(ct);
+        var products = await ordered
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(p => new
