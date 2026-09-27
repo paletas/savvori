@@ -3,7 +3,6 @@
 These instructions help AI coding agents work productively in this codebase. Keep edits concise and verify assumptions against the workspace before proceeding.
 
 ## Repo snapshot
-- Root: `s:\Savvori`
 - Solution: `Savvori.sln`
 - SDK: .NET 10.0.200 (pinned via `global.json`, rolls forward to latest patch)
 - Projects:
