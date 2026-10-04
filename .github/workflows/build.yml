@@ -75,3 +75,35 @@ jobs:
           tags: ${{ steps.tags.outputs.tags }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+
+  # Gate for every PR and push: build both production images, start the API and the web app together (empty
+  # /data, no scraping, no model) and require real answers. `test` + `smoke` are the required checks.
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build the production images
+        run: |
+          docker build -f Dockerfile.webapi -t savvori-api:smoke .
+          docker build -f Dockerfile.webapp -t savvori-web:smoke .
+      - name: Start both and probe
+        run: |
+          docker network create smoke
+          docker run -d --name api --network smoke -p 8091:8080 -e ASPNETCORE_ENVIRONMENT=Production \
+            -e Model__Enabled=false savvori-api:smoke
+          docker run -d --name web --network smoke -p 8081:8080 -e ASPNETCORE_ENVIRONMENT=Production \
+            -e services__webapi__http__0=http://api:8080 savvori-web:smoke
+          for i in $(seq 1 40); do curl -fs -o /dev/null http://localhost:8091/api/stores && curl -fs -o /dev/null http://localhost:8081/ && break; sleep 2; done
+          fail=0
+          for u in 8091/api/stores 8091/api/products 8081/ 8081/Products 8081/Stores 8081/Categories 8081/ShoppingLists; do
+            code=$(curl -s -o /tmp/body -w '%{http_code}' "http://localhost:$u" || true)
+            echo "GET $u -> $code ($(wc -c < /tmp/body) bytes)"
+            [ "$code" = 200 ] || fail=1
+          done
+          [ "$(curl -s http://localhost:8081/Products | wc -c)" -gt 5000 ] || { echo "Products page suspiciously small"; fail=1; }
+          exit $fail
+      - name: Container logs
+        if: failure()
+        run: docker logs api || true; docker logs web || true
