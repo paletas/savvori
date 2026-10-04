@@ -35,11 +35,16 @@ public static class CategoryGuard
     /// <summary>True if the suggestion looks like a literal-word collision rather than a real match.</summary>
     public static bool Suspicious(string productName, string categoryName)
     {
-        var words = Word.Matches(ProductNormalizer.Normalize(productName)).Select(m => m.Value).ToHashSet();
+        var text = ProductNormalizer.Normalize(productName);
+        var words = Word.Matches(text).Select(m => m.Value).ToHashSet();
         var category = ProductNormalizer.Normalize(categoryName);
 
         if (words.Overlaps(PetWords) && !PetCategories.Contains(category)) return true;
         if (words.Overlaps(NonFoodObjects) && !ObjectCategories.Contains(category)) return true;
+        // "Congelado" (frozen) and "Gelado" (ice cream) share almost the same letters, and embeddings confuse
+        // them: frozen fish/octopus/vegetables kept landing under Gelados. A frozen product is essentially never
+        // really ice cream, so this one word pair gets a dedicated check instead of a general word list.
+        if (text.Contains("congelad") && category == "gelados") return true;
         return false;
     }
 }

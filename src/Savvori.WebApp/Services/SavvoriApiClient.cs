@@ -217,13 +217,21 @@ public class SavvoriApiClient(HttpClient http, ILogger<SavvoriApiClient> logger)
         }
     }
 
+    /// <summary>Adds <paramref name="quantity"/> more of a product to the list — increments if it's
+    /// already there, rather than the API's strict create-only POST (which now 409s on a duplicate
+    /// product; see ShoppingListsController.AddItem). Not atomic against a concurrent add of the
+    /// same product from another tab, same as before this method existed.</summary>
     public async Task<ShoppingListItemDto?> AddItemToListAsync(
         Guid listId, Guid productId, int quantity, CancellationToken ct = default)
     {
         try
         {
-            var resp = await http.PostAsJsonAsync($"/api/shoppinglists/{listId}/items",
-                new { productId, quantity }, ct);
+            var lists = await GetShoppingListsAsync(ct);
+            var existingQuantity = lists.FirstOrDefault(l => l.Id == listId)
+                ?.Items.FirstOrDefault(i => i.ProductId == productId)?.Quantity ?? 0;
+
+            var resp = await http.PutAsJsonAsync($"/api/shoppinglists/{listId}/items/{productId}",
+                new { quantity = existingQuantity + quantity }, ct);
             resp.EnsureSuccessStatusCode();
             return await resp.Content.ReadFromJsonAsync<ShoppingListItemDto>(JsonOptions, ct);
         }
@@ -656,6 +664,49 @@ public class SavvoriApiClient(HttpClient http, ILogger<SavvoriApiClient> logger)
         {
             logger.LogError(ex, "Failed to assign canonical product to store product {Id}", storeProductId);
             return (false, "An error occurred.");
+        }
+    }
+
+    // ===== Search aliases (per-language names used by product search) =====
+
+    public async Task<List<ProductAliasDto>> GetProductAliasesAsync(Guid productId, CancellationToken ct = default)
+    {
+        try
+        {
+            return await http.GetFromJsonAsync<List<ProductAliasDto>>($"/api/products/{productId}/aliases", JsonOptions, ct) ?? [];
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to get search aliases for {ProductId}", productId);
+            return [];
+        }
+    }
+
+    public async Task<bool> SetProductAliasAsync(Guid productId, string language, string keywords, CancellationToken ct = default)
+    {
+        try
+        {
+            var resp = await http.PutAsJsonAsync($"/api/products/{productId}/aliases/{language}", new { keywords }, ct);
+            return resp.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to set {Language} alias for {ProductId}", language, productId);
+            return false;
+        }
+    }
+
+    public async Task<bool> ResetProductAliasAsync(Guid productId, string language, CancellationToken ct = default)
+    {
+        try
+        {
+            var resp = await http.DeleteAsync($"/api/products/{productId}/aliases/{language}", ct);
+            return resp.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to reset {Language} alias for {ProductId}", language, productId);
+            return false;
         }
     }
 }

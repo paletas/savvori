@@ -187,3 +187,223 @@ public sealed class OllamaPairJudge(HttpClient http, IOptions<ModelOptions> opti
     private sealed record ChatResponse([property: JsonPropertyName("message")] ChatMessage? Message);
     private sealed record ChatMessage([property: JsonPropertyName("content")] string? Content);
 }
+
+/// <summary>
+/// Yes/no category-assignment judge over Ollama <c>/api/chat</c> (temperature 0, no JSON mode). Tuned by hand
+/// against real prod category decisions (2026-09-23): the few-shot examples below are load-bearing — removing
+/// or narrowing them measurably regressed accuracy in that experiment (71.7% -> 83.3% -> 88.5% held-out, then
+/// baby-gear/wipes/books examples added after a beta bulk-apply run showed those over-rejected; see
+/// docs/MODEL_MATCHING_PLAN.md). Don't trim them without re-measuring.
+/// </summary>
+public sealed class OllamaCategoryJudge(HttpClient http, IOptions<ModelOptions> options) : ICategoryJudge
+{
+    private const string SystemPrompt =
+        """
+        You are checking a product-category assignment for a Portuguese grocery price-comparison catalog.
+
+        Judge whether the product genuinely IS the kind of thing the category names - not whether its name merely
+        shares a word with the category. A product that is really a variant, flavor, format, or dietary version of
+        the category (sem lactose, light, UHT, biologico, fundido, para barrar, infantil, sem gluten, congelado
+        version of a frozen-food category, etc.) still belongs in that category: say yes. Say no only when the
+        product is not actually that kind of food/thing at all - an appliance, a tool, a cosmetic, a toy, a book,
+        a medicine, another chain's pet food, or a different food entirely that just shares a word in its name
+        (e.g. "leite" meaning sunscreen lotion, "queijo" meaning a cushion shaped like a cheese, "congelado"
+        meaning frozen but suggested into "Gelados"/ice cream). Baby and children's gear (cots, beds, playpens,
+        wipes, bottles) and children's books are genuinely their own category even when the name sounds playful,
+        uses a toy brand, or is unfamiliar - don't say no just because a product reads differently from a plain
+        adult one.
+
+        Examples:
+        Product: Leite Meio Gordo Bio Prado Verde | Brand: Prado Verde | Store category: (none) | Proposed: Leite
+        Answer: yes
+
+        Product: MASSAS HELICES MILANEZA TRICOLORES ESPECIAL SALADA 500G | Brand: Milaneza | Store category: (none) | Proposed: Massas
+        Answer: yes
+
+        Product: RAÇÃO PARA GATINHOS PRO PLAN COM FRANGO E ARROZ 400G | Brand: Pro Plan | Store category: (none) | Proposed: Comida para Gatos
+        Answer: yes
+
+        Product: Gelado Cornetto Mini Clássico | Brand: Cornetto | Store category: (none) | Proposed: Gelados
+        Answer: yes
+
+        Product: MÁQUINA DE COZER ARROZ QILIVE Q.5130 3.7 L 700 W COM CESTO VAPORIZADOR | Brand: QILIVE | Store category: (none) | Proposed: Arroz
+        Answer: no
+
+        Product: SOLUÇÃO MAGNESIA PHILIPS LEITE 83MG/ML 200ML | Brand: Philips | Store category: (none) | Proposed: Leite
+        Answer: no
+
+        Product: Yarrah Cao Pate Frango Algas Bio 150G | Brand: Yarrah | Store category: (none) | Proposed: Queijos
+        Answer: no
+
+        Product: Tentáculos de Polvo Congelados Continente | Brand: Continente | Store category: Congelado | Proposed: Gelados
+        Answer: no
+
+        Product: Miolo de Camarão Selvagem 30/50 Congelado Continente | Brand: Continente | Store category: Congelado | Proposed: Marisco
+        Answer: yes
+
+        Product: LEITE SOLAR MUSTELA ROSTO SPF50+ 40ML | Brand: Mustela | Store category: (none) | Proposed: Proteção Solar
+        Answer: yes
+
+        Product: Puré De Maçã, Banana E Alperce Biológico 6M | Brand: Holle | Store category: (none) | Proposed: Frutas
+        Answer: yes
+
+        Product: Noilly Vermute Prat Dry | Brand: Noilly | Store category: Aperitivos | Proposed: Vinho
+        Answer: yes
+
+        Product: Cama Júnior com Proteção e Gavetão Branco Timo Twinko | Brand: Twinko | Store category: Camas, Berços e Colchões | Proposed: Puericultura e Mobiliário Bebé
+        Answer: yes
+
+        Product: Lupilu Toalhitas para Bebé Comfort | Brand: Lupilu | Store category: (none) | Proposed: Fraldas e Higiene Bebé
+        Answer: yes
+
+        Product: Disney Baby - As Palavras Mágicas | Brand: (none) | Store category: Livros para Bebé | Proposed: Papelaria e Livros
+        Answer: yes
+
+        Product: O Coelho Que Queria Dormir de Carl-Johan Forssen Ehrlin | Brand: Carl-Johan Forssen Ehrlin | Store category: Gravidez e Puericultura | Proposed: Papelaria e Livros
+        Answer: yes
+
+        Product: Zoko Happy Bear - Ouriço Dorme com as Estrelas | Brand: Zoko Happy Bear | Store category: Brinquedos de Bebé | Proposed: Puericultura e Mobiliário Bebé
+        Answer: yes
+
+        Answer with exactly one word: yes or no.
+        """;
+
+    public async Task<JudgeVerdict> JudgeAsync(CategoryJudgeItem item, CancellationToken ct = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "api/chat")
+        {
+            Content = JsonContent.Create(new
+            {
+                model = options.Value.JudgeModel,
+                stream = false,
+                options = new { temperature = 0, num_predict = 8 },
+                messages = new object[]
+                {
+                    new { role = "system", content = SystemPrompt },
+                    new { role = "user", content = $"Product: {Describe(item)}\nAnswer:" }
+                }
+            })
+        };
+        var response = await OllamaHttp.SendAsync(http, request, ct);
+        var body = await OllamaHttp.ReadAsync<ChatResponse>(response, ct);
+        return OllamaPairJudge.ParseVerdict(body.Message?.Content);
+    }
+
+    private static string Describe(CategoryJudgeItem i) =>
+        $"{i.Name} | Brand: {i.Brand ?? "(none)"} | Store category: {i.StoreCategory ?? "(none)"} | Proposed: {i.SuggestedCategory}";
+
+    private sealed record ChatResponse([property: JsonPropertyName("message")] ChatMessage? Message);
+    private sealed record ChatMessage([property: JsonPropertyName("content")] string? Content);
+}
+
+/// <summary>
+/// Generic product names and search keywords per language over Ollama <c>/api/chat</c> with a JSON-schema
+/// <c>format</c> (temperature 0). Several products go in one request; answers are matched back by index.
+/// </summary>
+public sealed class OllamaProductTranslator(HttpClient http, IOptions<ModelOptions> options) : IProductTranslator
+{
+    public static readonly string[] Languages = ["pt", "en", "es", "fr"];
+
+    private const string SystemPrompt =
+        """
+        You help a Portuguese supermarket price-comparison site find products across languages.
+        For each numbered product, give what the product IS as 1 to 3 short generic search keywords a shopper might
+        type, in Portuguese (pt), English (en), Spanish (es) and French (fr). Most generic name first.
+
+        Rules:
+        - Describe the product itself ("arroz agulha" -> en: "rice", "long grain rice"). Each list is in its own
+          language only: no Portuguese words in the English list, no English words in the Portuguese one.
+        - Never include brand names, flavours, ingredients, sizes or marketing words. A shampoo with beer in it is a
+          shampoo, peanuts in milk chocolate are peanuts or chocolate snacks, not milk, and a rice cake is a cake.
+        - Use the store category, when given, to tell what the product is. A word that only shares a name with a food
+          (sun lotion called "leite solar") is not that food.
+        - Keywords are nouns a shopper would search, 1 to 3 words each, not sentences.
+        - If you are not sure what the product is, return empty lists for it rather than guessing.
+        - Answer with JSON only, one entry per product, using the given index.
+        """;
+
+    private static readonly object Schema = BuildSchema();
+
+    private static object BuildSchema()
+    {
+        var list = new { type = "array", items = new { type = "string" } };
+        return new
+        {
+            type = "object",
+            properties = new
+            {
+                products = new
+                {
+                    type = "array",
+                    items = new
+                    {
+                        type = "object",
+                        properties = new { index = new { type = "integer" }, pt = list, en = list, es = list, fr = list },
+                        required = new[] { "index", "pt", "en", "es", "fr" }
+                    }
+                }
+            },
+            required = new[] { "products" }
+        };
+    }
+
+    public async Task<IReadOnlyList<TranslateResult>> TranslateAsync(
+        IReadOnlyList<TranslateItem> items, CancellationToken ct = default)
+    {
+        if (items.Count == 0) return [];
+        var prompt = string.Join("\n", items.Select((it, i) =>
+            $"{i}: {it.Name} | Brand: {it.Brand ?? "(none)"} | Store category: {it.Category ?? "(none)"}"));
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "api/chat")
+        {
+            Content = JsonContent.Create(new
+            {
+                model = options.Value.JudgeModel,
+                stream = false,
+                format = Schema,
+                options = new { temperature = 0 },
+                messages = new object[]
+                {
+                    new { role = "system", content = SystemPrompt },
+                    new { role = "user", content = prompt }
+                }
+            })
+        };
+        var response = await OllamaHttp.SendAsync(http, request, ct);
+        var body = await OllamaHttp.ReadAsync<ChatResponse>(response, ct);
+        return Parse(body.Message?.Content, items.Count);
+    }
+
+    /// <summary>Strict parse: the answer must contain exactly one entry per input index, otherwise it is unusable.</summary>
+    public static IReadOnlyList<TranslateResult> Parse(string? content, int count)
+    {
+        if (string.IsNullOrWhiteSpace(content)) throw new ModelResponseException("Translator returned no content.");
+        Answer? answer;
+        try { answer = JsonSerializer.Deserialize<Answer>(content); }
+        catch (JsonException ex) { throw new ModelResponseException("Translator returned malformed JSON.", ex); }
+        if (answer?.Products is null || answer.Products.Count != count)
+            throw new ModelResponseException($"Expected {count} products, got {answer?.Products?.Count ?? 0}.");
+
+        var results = new TranslateResult?[count];
+        foreach (var p in answer.Products)
+        {
+            if (p.Index is not { } i || i < 0 || i >= count || results[i] is not null)
+                throw new ModelResponseException("Translator returned a missing or duplicate index.");
+            results[i] = new TranslateResult(new Dictionary<string, IReadOnlyList<string>>
+            {
+                ["pt"] = p.Pt ?? [], ["en"] = p.En ?? [], ["es"] = p.Es ?? [], ["fr"] = p.Fr ?? []
+            });
+        }
+        return results!;
+    }
+
+    private sealed record Answer([property: JsonPropertyName("products")] List<Entry>? Products);
+    private sealed record Entry(
+        [property: JsonPropertyName("index")] int? Index,
+        [property: JsonPropertyName("pt")] List<string>? Pt,
+        [property: JsonPropertyName("en")] List<string>? En,
+        [property: JsonPropertyName("es")] List<string>? Es,
+        [property: JsonPropertyName("fr")] List<string>? Fr);
+    private sealed record ChatResponse([property: JsonPropertyName("message")] ChatMessage? Message);
+    private sealed record ChatMessage([property: JsonPropertyName("content")] string? Content);
+}

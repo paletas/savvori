@@ -171,4 +171,44 @@ public class OptimizeTests : IClassFixture<SavvoriWebApiFactory>
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.Equal(0, body.GetProperty("items").GetArrayLength());
     }
+
+    [Fact]
+    public async Task Optimize_ExcludesBoughtItems()
+    {
+        var chainId = Guid.NewGuid();
+        var productId = Guid.NewGuid();
+        var listId = Guid.NewGuid();
+
+        _factory.SeedData(db =>
+        {
+            var chain = TestDataSeeder.CreateTestStoreChain("Store C", $"store-c-{Guid.NewGuid():N}");
+            chain.Id = chainId;
+            db.StoreChains.Add(chain);
+
+            var product = TestDataSeeder.CreateTestProduct("Milk");
+            product.Id = productId;
+            db.Products.Add(product);
+
+            var sp = TestDataSeeder.CreateTestStoreProduct(chainId, productId);
+            db.StoreProducts.Add(sp);
+            db.StoreProductPrices.Add(TestDataSeeder.CreateTestStoreProductPrice(sp.Id, 2.00m));
+
+            var list = TestDataSeeder.CreateTestShoppingList("Bought Exclusion List");
+            list.Id = listId;
+            db.ShoppingLists.Add(list);
+
+            // Already bought — must not factor into the optimized total or item list.
+            var boughtItem = TestDataSeeder.CreateTestShoppingListItem(listId, productId);
+            boughtItem.Bought = true;
+            db.ShoppingListItems.Add(boughtItem);
+        });
+
+        using var client = _factory.CreateClient();
+        var response = await client.GetAsync($"/api/shoppinglists/{listId}/optimize?mode=cheapest-total", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        Assert.Equal(0, body.GetProperty("items").GetArrayLength());
+        Assert.Equal(0m, body.GetProperty("totalCost").GetDecimal());
+    }
 }

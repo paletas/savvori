@@ -45,3 +45,31 @@ public interface IPairJudge
     /// </summary>
     Task<JudgeVerdict> JudgeAsync(JudgeItem a, JudgeItem b, CancellationToken ct = default);
 }
+
+/// <summary>Only product text (no user data) is ever sent to the judge.</summary>
+public sealed record CategoryJudgeItem(string Name, string? Brand, string? StoreCategory, string SuggestedCategory);
+
+public interface ICategoryJudge
+{
+    /// <summary>
+    /// Does this product genuinely belong in the suggested category (not just share a word with it)? A transport
+    /// failure throws <see cref="ModelUnavailableException"/>; it is never reported as <see cref="JudgeVerdict.No"/>.
+    /// </summary>
+    Task<JudgeVerdict> JudgeAsync(CategoryJudgeItem item, CancellationToken ct = default);
+}
+
+/// <summary>Only product text (no user data) is ever sent to the translator.</summary>
+public sealed record TranslateItem(string Name, string? Brand, string? Category);
+
+/// <summary>Generic names/keywords per language (pt, en, es, fr) for one product; a language may be empty.</summary>
+public sealed record TranslateResult(IReadOnlyDictionary<string, IReadOnlyList<string>> Keywords);
+
+public interface IProductTranslator
+{
+    /// <summary>
+    /// Suggests generic names and search keywords per language for each product, in the same order as the input.
+    /// A transport failure throws <see cref="ModelUnavailableException"/>; an unusable answer (wrong count, bad shape)
+    /// throws <see cref="ModelResponseException"/>.
+    /// </summary>
+    Task<IReadOnlyList<TranslateResult>> TranslateAsync(IReadOnlyList<TranslateItem> items, CancellationToken ct = default);
+}

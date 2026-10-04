@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Savvori.WebApi;
 
@@ -10,9 +11,11 @@ using Savvori.WebApi;
 namespace Savvori.WebApi.Migrations
 {
     [DbContext(typeof(SavvoriDbContext))]
-    partial class SavvoriDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260922212349_AddShoppingListItemBought")]
+    partial class AddShoppingListItemBought
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.11");
@@ -445,44 +448,6 @@ namespace Savvori.WebApi.Migrations
                     b.ToTable("ProductCategoryTranslations");
                 });
 
-            modelBuilder.Entity("Savvori.Shared.ProductSearchAlias", b =>
-                {
-                    b.Property<Guid>("ProductId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Language")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("InputHash")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Keywords")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("ModelName")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("SearchText")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Source")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("ProductId", "Language");
-
-                    b.ToTable("ProductSearchAliases");
-                });
-
             modelBuilder.Entity("Savvori.Shared.ProductTag", b =>
                 {
                     b.Property<Guid>("ProductId")
@@ -746,9 +711,6 @@ namespace Savvori.WebApi.Migrations
                     b.Property<Guid?>("CanonicalProductId")
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("Category")
-                        .HasColumnType("TEXT");
-
                     b.Property<string>("EAN")
                         .HasColumnType("TEXT");
 
@@ -998,17 +960,6 @@ namespace Savvori.WebApi.Migrations
                     b.Navigation("ProductCategory");
                 });
 
-            modelBuilder.Entity("Savvori.Shared.ProductSearchAlias", b =>
-                {
-                    b.HasOne("Savvori.Shared.Product", "Product")
-                        .WithMany("SearchAliases")
-                        .HasForeignKey("ProductId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Product");
-                });
-
             modelBuilder.Entity("Savvori.Shared.ProductTag", b =>
                 {
                     b.HasOne("Savvori.Shared.Product", "Product")
@@ -1155,8 +1106,6 @@ namespace Savvori.WebApi.Migrations
 
             modelBuilder.Entity("Savvori.Shared.Product", b =>
                 {
-                    b.Navigation("SearchAliases");
-
                     b.Navigation("StoreProducts");
                 });
 

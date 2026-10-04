@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Tailwind/DaisyUI CSS build (Tailwind v4 needs Node 20+; scans the Razor pages for class names).
-FROM node:22-slim AS css
+FROM node:26-slim AS css
 WORKDIR /src/src/Savvori.WebApp
 COPY src/Savvori.WebApp/package*.json ./
 RUN npm ci

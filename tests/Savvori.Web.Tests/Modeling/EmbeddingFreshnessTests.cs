@@ -42,4 +42,12 @@ public sealed class EmbeddingFreshnessTests
     [InlineData("  ", "Leite Meio Gordo", "leite meio gordo")]
     public void BuildInputText_LowerCasesAndOmitsBrandAlreadyInName(string? brand, string name, string expected) =>
         Assert.Equal(expected, EmbeddingFreshness.BuildInputText(brand, name));
+
+    [Theory]
+    // the store category is appended so the embedder gets the disambiguating signal the name alone lacks
+    [InlineData("Continente", "Tentáculos de Polvo Congelados", "Congelados", "continente tentáculos de polvo congelados congelados")]
+    [InlineData(null, "Leite Meio Gordo", null, "leite meio gordo")]
+    [InlineData(null, "Leite Meio Gordo", "  ", "leite meio gordo")]
+    public void BuildInputText_AppendsStoreCategoryWhenPresent(string? brand, string name, string? category, string expected) =>
+        Assert.Equal(expected, EmbeddingFreshness.BuildInputText(brand, name, category));
 }

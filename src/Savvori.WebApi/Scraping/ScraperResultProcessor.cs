@@ -212,6 +212,7 @@ public sealed class ScraperResultProcessor
                 Name = scraped.Name,
                 NormalizedName = normalized,
                 Brand = scraped.Brand,
+                Category = scraped.Category,
                 EAN = scraped.EAN,
                 ImageUrl = scraped.ImageUrl,
                 SourceUrl = scraped.SourceUrl,
@@ -229,6 +230,7 @@ public sealed class ScraperResultProcessor
             storeProduct.Name = scraped.Name;
             storeProduct.NormalizedName = normalized;
             storeProduct.Brand = scraped.Brand;
+            storeProduct.Category = scraped.Category;
             if (!string.IsNullOrEmpty(scraped.EAN))
                 storeProduct.EAN = scraped.EAN;
             storeProduct.ImageUrl = scraped.ImageUrl;

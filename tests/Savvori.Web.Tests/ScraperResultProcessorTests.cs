@@ -131,6 +131,29 @@ public class ScraperResultProcessorTests : IAsyncLifetime
         Assert.Equal(1, count);
     }
 
+    [Fact]
+    public async Task ProcessProductsAsync_StoresRawStoreCategory_OnCreation()
+    {
+        var scraped = MakeScraped(category: "congelados");
+        await _processor.ProcessProductsAsync("continente", [scraped], TestContext.Current.CancellationToken);
+
+        var sp = await _db.StoreProducts.SingleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal("congelados", sp.Category);
+    }
+
+    [Fact]
+    public async Task ProcessProductsAsync_UpdatesRawStoreCategory_WhenItChangesOnReScrape()
+    {
+        var externalId = "ext-cat-001";
+        await _processor.ProcessProductsAsync(
+            "continente", [MakeScraped(externalId: externalId, category: "congelados")], TestContext.Current.CancellationToken);
+        await _processor.ProcessProductsAsync(
+            "continente", [MakeScraped(externalId: externalId, category: "gelados")], TestContext.Current.CancellationToken);
+
+        var sp = await _db.StoreProducts.SingleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal("gelados", sp.Category);
+    }
+
     // ─── Canonical product matching ────────────────────────────────────────────
 
     [Fact]

@@ -50,6 +50,17 @@ public static class ModelServiceCollectionExtensions
                 sp.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName),
                 sp.GetRequiredService<IOptions<ModelOptions>>()),
             sp.GetRequiredService<ModelCircuitBreaker>()));
+        services.AddSingleton<ICategoryJudge>(sp => new BreakerCategoryJudge(
+            new OllamaCategoryJudge(
+                sp.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName),
+                sp.GetRequiredService<IOptions<ModelOptions>>()),
+            sp.GetRequiredService<ModelCircuitBreaker>()));
+
+        services.AddSingleton<IProductTranslator>(sp => new BreakerProductTranslator(
+            new OllamaProductTranslator(
+                sp.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName),
+                sp.GetRequiredService<IOptions<ModelOptions>>()),
+            sp.GetRequiredService<ModelCircuitBreaker>()));
 
         services.AddScoped<ModelJobQueue>();
         services.AddSingleton<CurrentModelState>();
@@ -58,6 +69,8 @@ public static class ModelServiceCollectionExtensions
         services.AddScoped<CandidateGenerator>();
         services.AddScoped<IModelJobHandler, EmbedJobHandler>();
         services.AddScoped<IModelJobHandler, JudgeJobHandler>();
+        services.AddScoped<AliasScanner>();
+        services.AddScoped<IModelJobHandler, TranslateJobHandler>();
         services.AddScoped<MatchApplier>();
         services.AddScoped<MatchingService>();
         services.AddScoped<CategoryClassifier>();

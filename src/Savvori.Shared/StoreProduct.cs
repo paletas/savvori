@@ -19,6 +19,8 @@ public class StoreProduct
     public string Name { get; set; } = string.Empty;
     public string? NormalizedName { get; set; }
     public string? Brand { get; set; }
+    /// <summary>The store's own raw category text for this listing, as scraped (e.g. "Congelados"). Not a taxonomy id.</summary>
+    public string? Category { get; set; }
     public string? EAN { get; set; }
     public string? ImageUrl { get; set; }
     public string? SourceUrl { get; set; }

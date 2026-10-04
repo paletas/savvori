@@ -23,6 +23,10 @@ public sealed class CategoryGuardTests
     [InlineData("Yarrah Cao Pate Frango Algas Bio 150G", "Queijos")]
     // found mining the 0.85-1.0 confidence band via the bulk/preview guard-impact report (prod, 2026-09-23)
     [InlineData("Champô Urtiga Bio", "Chá e Infusões")]
+    // "congelado" (frozen) vs "gelado" (ice cream): a very common miss across today's whole review (prod, 2026-09-23)
+    [InlineData("Tentáculos de Polvo Congelados Continente", "Gelados")]
+    [InlineData("Polvo Limpo Nacional Ultracongelado", "Gelados")]
+    [InlineData("Chocos Pequenos com Tinta Congelados", "Gelados")]
     public void LiteralWordCollisions_AreFlagged(string name, string category) =>
         Assert.True(CategoryGuard.Suspicious(name, category));
 
@@ -44,6 +48,9 @@ public sealed class CategoryGuardTests
     [InlineData("Champô Alperce Criança Garnier Ultra Suave", "Cabelo")]
     // a real children's book, correctly filed under books
     [InlineData("100 Primeiros - Números, Cores e Formas de Roger Priddy", "Papelaria e Livros")]
+    // a real ice cream, correctly filed under Gelados; a real frozen vegetable, correctly filed under its own frozen category
+    [InlineData("Gelado Cornetto Mini Clássico", "Gelados")]
+    [InlineData("Ervilhas Ultracongeladas Bio", "Legumes Congelados")]
     public void RealMatches_AreNeverFlagged(string name, string category) =>
         Assert.False(CategoryGuard.Suspicious(name, category));
 }

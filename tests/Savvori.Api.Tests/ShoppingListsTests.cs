@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Savvori.Api.Tests.Infrastructure;
+using Savvori.Shared;
 
 namespace Savvori.Api.Tests;
 
@@ -151,5 +152,172 @@ public class ShoppingListsTests : IClassFixture<SavvoriWebApiFactory>
         var response = await client.DeleteAsync(
             $"/api/shoppinglists/{_existingListId}/items/{Guid.NewGuid()}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AddItem_DuplicateProduct_Returns409()
+    {
+        _factory.SeedData(db =>
+        {
+            db.ShoppingListItems.Add(TestDataSeeder.CreateTestShoppingListItem(_existingListId, _productId));
+        });
+
+        using var client = _factory.CreateClient();
+        var response = await client.PostAsJsonAsync(
+            $"/api/shoppinglists/{_existingListId}/items",
+            new { ProductId = _productId, Quantity = 1 }, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AddItem_MergedAwayProduct_ResolvesToSurvivorAndSucceeds()
+    {
+        // The retired id must NOT exist as an active Product row — that's what forces
+        // ProductMergeResolver to actually walk the MatchMerge chain instead of short-circuiting.
+        var retiredProductId = Guid.NewGuid();
+        _factory.SeedData(db =>
+        {
+            db.MatchMerges.Add(new MatchMerge
+            {
+                Id = Guid.NewGuid(),
+                CandidateId = Guid.NewGuid(),
+                SurvivorProductId = _productId,
+                RetiredProductId = retiredProductId,
+                Method = "test",
+                AppliedAt = DateTime.UtcNow
+            });
+        });
+
+        using var client = _factory.CreateClient();
+        var response = await client.PostAsJsonAsync(
+            $"/api/shoppinglists/{_existingListId}/items",
+            new { ProductId = retiredProductId, Quantity = 3 }, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        Assert.Equal(_productId.ToString(), body.GetProperty("productId").GetString());
+    }
+
+    [Fact]
+    public async Task UpsertItemQuantity_CreatesWhenMissing_ThenReplacesQuantityIdempotently()
+    {
+        using var client = _factory.CreateClient();
+
+        var first = await client.PutAsJsonAsync(
+            $"/api/shoppinglists/{_existingListId}/items/{_productId}",
+            new { Quantity = 2 }, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        var firstBody = await first.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        Assert.Equal(2, firstBody.GetProperty("quantity").GetInt32());
+        var itemId = firstBody.GetProperty("id").GetString();
+
+        var second = await client.PutAsJsonAsync(
+            $"/api/shoppinglists/{_existingListId}/items/{_productId}",
+            new { Quantity = 5 }, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        var secondBody = await second.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+
+        Assert.Equal(5, secondBody.GetProperty("quantity").GetInt32());
+        Assert.Equal(itemId, secondBody.GetProperty("id").GetString()); // same row, not a second one
+    }
+
+    [Fact]
+    public async Task UpsertItemQuantity_NonExistentProduct_Returns404()
+    {
+        using var client = _factory.CreateClient();
+        var response = await client.PutAsJsonAsync(
+            $"/api/shoppinglists/{_existingListId}/items/{Guid.NewGuid()}",
+            new { Quantity = 1 }, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    // Regression (2026-09-23): AddItem/UpsertItemQuantity/SetItemBought all resolve the product
+    // through ProductMergeResolver first, which loads Product.ProductCategory into the request's
+    // DbContext. Returning the raw tracked ShoppingListItem entity then triggered EF's navigation
+    // fixup (item.Product -> ProductCategory -> Products -> back to the same product), and
+    // System.Text.Json threw "a possible object cycle was detected" serializing it — but only for
+    // a product that actually has a category, which every uncategorized TestDataSeeder product in
+    // the tests above doesn't. These three tests use a categorized product specifically to pin
+    // against that class of bug recurring.
+    [Fact]
+    public async Task AddItem_ForACategorizedProduct_DoesNotThrowOnSerialization()
+    {
+        var catId = Guid.NewGuid();
+        var categorizedProductId = Guid.NewGuid();
+        _factory.SeedData(db =>
+        {
+            var category = TestDataSeeder.CreateTestCategory("Snacks", $"snacks-{Guid.NewGuid():N}");
+            category.Id = catId;
+            db.ProductCategories.Add(category);
+
+            var product = TestDataSeeder.CreateTestProduct("Categorized Product", catId);
+            product.Id = categorizedProductId;
+            db.Products.Add(product);
+        });
+
+        using var client = _factory.CreateClient();
+        var response = await client.PostAsJsonAsync(
+            $"/api/shoppinglists/{_existingListId}/items",
+            new { ProductId = categorizedProductId, Quantity = 1 }, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        Assert.Equal(categorizedProductId.ToString(), body.GetProperty("productId").GetString());
+    }
+
+    [Fact]
+    public async Task UpsertItemQuantity_ForACategorizedProduct_DoesNotThrowOnSerialization()
+    {
+        var catId = Guid.NewGuid();
+        var categorizedProductId = Guid.NewGuid();
+        _factory.SeedData(db =>
+        {
+            var category = TestDataSeeder.CreateTestCategory("Snacks", $"snacks-{Guid.NewGuid():N}");
+            category.Id = catId;
+            db.ProductCategories.Add(category);
+
+            var product = TestDataSeeder.CreateTestProduct("Categorized Upsert Product", catId);
+            product.Id = categorizedProductId;
+            db.Products.Add(product);
+        });
+
+        using var client = _factory.CreateClient();
+        var response = await client.PutAsJsonAsync(
+            $"/api/shoppinglists/{_existingListId}/items/{categorizedProductId}",
+            new { Quantity = 3 }, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        Assert.Equal(3, body.GetProperty("quantity").GetInt32());
+    }
+
+    [Fact]
+    public async Task SetItemBought_ForACategorizedProduct_DoesNotThrowOnSerialization()
+    {
+        var catId = Guid.NewGuid();
+        var categorizedProductId = Guid.NewGuid();
+        var itemId = Guid.NewGuid();
+        _factory.SeedData(db =>
+        {
+            var category = TestDataSeeder.CreateTestCategory("Snacks", $"snacks-{Guid.NewGuid():N}");
+            category.Id = catId;
+            db.ProductCategories.Add(category);
+
+            var product = TestDataSeeder.CreateTestProduct("Categorized Bought Product", catId);
+            product.Id = categorizedProductId;
+            db.Products.Add(product);
+
+            var item = TestDataSeeder.CreateTestShoppingListItem(_existingListId, categorizedProductId);
+            item.Id = itemId;
+            db.ShoppingListItems.Add(item);
+        });
+
+        using var client = _factory.CreateClient();
+        var response = await client.PutAsJsonAsync(
+            $"/api/shoppinglists/{_existingListId}/items/{itemId}/bought",
+            new { Bought = true }, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 }

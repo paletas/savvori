@@ -298,10 +298,12 @@ public sealed class ShoppingOptimizer : IShoppingOptimizer
         Dictionary<Guid, List<AltProductEntry>> AltsByCategory)>
         LoadData(Guid shoppingListId, OptimizationContext context, CancellationToken ct)
     {
-        // 1. Load shopping list items with products
+        // 1. Load shopping list items with products — already-bought items are excluded, since
+        // they're done being shopped for and shouldn't factor into which store(s) are still worth
+        // visiting or count toward the projected total.
         var listItems = await _db.ShoppingListItems
             .Include(i => i.Product)
-            .Where(i => i.ShoppingListId == shoppingListId)
+            .Where(i => i.ShoppingListId == shoppingListId && !i.Bought)
             .ToListAsync(ct);
 
         if (listItems.Count == 0)

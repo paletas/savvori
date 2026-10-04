@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Savvori.Shared;
 
 namespace Savvori.WebApi.Modeling;
@@ -163,7 +164,9 @@ public sealed class MatchBulkService(SavvoriDbContext db, MatchApplier applier, 
 }
 
 /// <summary>Bulk actions on the category review queue: apply every confident prediction, undo a whole run.</summary>
-public sealed class CategoryBulkService(SavvoriDbContext db, TimeProvider time, ModelTelemetry telemetry)
+public sealed class CategoryBulkService(
+    SavvoriDbContext db, TimeProvider time, ModelTelemetry telemetry, ICategoryJudge judge,
+    IOptions<ModelOptions> options, ILogger<CategoryBulkService> logger)
 {
     public const string KnnMethod = "embedding-knn";
     private DateTime Now => time.GetUtcNow().UtcDateTime;
@@ -191,6 +194,7 @@ public sealed class CategoryBulkService(SavvoriDbContext db, TimeProvider time, 
         var suggestions = await Eligible(batch.Threshold)
             .Select(s => new { Suggestion = s, ProductName = s.Product.Name, CategoryName = s.SuggestedCategory.Name })
             .OrderByDescending(s => s.Suggestion.Confidence).ToListAsync(ct);
+        var processed = 0;
         foreach (var row in suggestions)
         {
             var s = row.Suggestion;
@@ -201,25 +205,63 @@ public sealed class CategoryBulkService(SavvoriDbContext db, TimeProvider time, 
                 // counted as eligible (and skipped again) by every later run.
                 db.CategorySuggestions.Remove(s);
                 batch.Blocked++;
-                continue;
             }
-            if (CategoryGuard.Suspicious(row.ProductName, row.CategoryName))
+            else if (CategoryGuard.Suspicious(row.ProductName, row.CategoryName))
             {
                 // A likely literal-word collision (an object, not the ingredient the word suggests): stays in the
                 // queue with a note instead of being assigned, even at full confidence.
                 s.Note = "Held back: looks like a literal word match, not the product.";
                 batch.Blocked++;
-                continue;
             }
+            else
+            {
+                // Consistent with the rest of the model pipeline: with the feature off, nothing calls the model.
+                // The suggestions being bulk-applied here only exist because the model was on when they were
+                // generated, but it may have been switched off since, so this is checked per run, not assumed.
+                var verdict = JudgeVerdict.Yes;
+                string? unavailableNote = null;
+                if (options.Value.Enabled)
+                {
+                    try
+                    {
+                        verdict = await judge.JudgeAsync(
+                            new CategoryJudgeItem(row.ProductName, product.Brand, product.Category, row.CategoryName), ct);
+                    }
+                    catch (ModelUnavailableException ex)
+                    {
+                        // The shared circuit breaker fails fast on repeated failures and recovers after its
+                        // cooldown, so this is retried per item rather than latched off for the rest of the run.
+                        logger.LogWarning("Category judge unavailable for '{Product}': {Error}", row.ProductName, ex.Message);
+                        verdict = JudgeVerdict.Unclear;
+                        unavailableNote = "Held back: category judge was unavailable.";
+                    }
+                    catch (ModelResponseException ex)
+                    {
+                        logger.LogWarning("Category judge gave a bad response for '{Product}': {Error}", row.ProductName, ex.Message);
+                        verdict = JudgeVerdict.Unclear;
+                        unavailableNote = "Held back: category judge was unavailable.";
+                    }
+                }
 
-            s.PreviousCategoryId = product.CategoryId;
-            product.CategoryId = s.SuggestedCategoryId;
-            product.CategorySource = null;
-            s.Status = CategorySuggestionStatus.Applied;
-            s.BatchId = batch.Id;
-            s.DecidedAt = Now;
-            batch.Applied++;
-            if (batch.Applied % 100 == 0) await db.SaveChangesAsync(ct);
+                if (verdict != JudgeVerdict.Yes)
+                {
+                    s.Note = unavailableNote ??
+                             "Held back: model judge does not think this product belongs in the suggested category.";
+                    batch.Blocked++;
+                }
+                else
+                {
+                    s.PreviousCategoryId = product.CategoryId;
+                    product.CategoryId = s.SuggestedCategoryId;
+                    product.CategorySource = null;
+                    s.Status = CategorySuggestionStatus.Applied;
+                    s.BatchId = batch.Id;
+                    s.DecidedAt = Now;
+                    batch.Applied++;
+                }
+            }
+            processed++;
+            if (processed % 100 == 0) await db.SaveChangesAsync(ct);
         }
         batch.Status = BulkBatchStatus.Done;
         batch.FinishedAt = Now;

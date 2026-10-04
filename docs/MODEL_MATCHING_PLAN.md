@@ -258,3 +258,165 @@ describe them are history. The model now only ever suggests:
 This keeps the brief's guarantee ("a dry run is used for the first run") by making the model permanently more
 conservative than a dry run, instead of a switch someone can turn on. On the beta sample the category classifier was about
 28% wrong even at confidence 1.00, which is why it is never given the authority to assign on its own.
+
+## Addendum: raw store category on StoreProduct, and a category judge (2026-09-23)
+
+**`StoreProduct.Category`.** The k-NN classifier only ever saw `"{brand} {name}"` as text, which produces
+confident-but-wrong suggestions when a product's name shares a word with an unrelated category (a rice cooker
+suggested into "Arroz", "congelado" confused with "Gelados"). The store's own raw category text for that listing
+(e.g. "Congelados") is a strong disambiguator but was never actually persisted per listing — a `StoreCategoryId`
+navigation looked like it should carry this but was dead code, unpopulated by anything outside migrations. Added a
+real `StoreProduct.Category` string, filled from the scraper's own category text on every scrape (create and
+update). It is **not** mixed into the shared embedding used for matching: matching's cosine thresholds were
+calibrated on name-only text, and each chain names categories differently, so doing that needs its own measured
+experiment first, not a hunch. It is available for the categorisation side, which is where it is used below.
+
+**Category judge.** A new `ICategoryJudge` (mirrors `IPairJudge`: same breaker wrapping, same Ollama chat
+transport, `qwen2.5:7b-instruct`) checks each category suggestion before `CategoryBulkService.RunApplyAsync`
+assigns it — after the deterministic `CategoryGuard` word-list filter (kept as a free first pass; the judge only
+runs on what the guard lets through). A verdict of anything other than "yes" holds the suggestion back with a
+note instead of assigning it, exactly like a `CategoryGuard` hit; a transport failure or malformed response does
+the same (judged per suggestion, not latched for the rest of a batch, so a transient blip only holds back the
+items it actually hit).
+
+The prompt is few-shot (12 hand-picked examples spanning literal-word collisions and legitimate variants/formats
+that must not be rejected). Measured against real prod `CategorySuggestions` with the exact production request
+shape (`/api/chat`, same system/user message split, same one-word parse), held out from the few-shot examples:
+
+- 27/27 (100%) of real suggestions rejected by hand at 100% confidence were correctly flagged "no".
+- 39/50 (78%) of a fresh random sample of already-accepted suggestions were correctly confirmed "yes"; several of
+  the "misses" turned out to be the judge catching suggestions that were wrong despite being accepted by a human
+  reviewer (e.g. "Caviar de Esturjão" suggested into "Queijos"), not the judge being wrong.
+- On 50 fresh, unlabeled, high-confidence pending suggestions: 29 "yes" (would auto-apply), 21 "no" (would go to
+  manual review). Hand-spot-checking all 29 "yes" verdicts found no apparent false accept. The "no" side leans
+  over-cautious on some legitimate cases (children's/parenting books in particular) — safe (extra manual review,
+  never a wrong assignment) but leaves some real wins on the table; a future prompt iteration could tighten this
+  without touching the "yes" side's precision, which is the one that actually matters for safety.
+
+This is deliberately additive to `CategoryGuard`, not a replacement: the guard is free and catches roughly half of
+real bad suggestions (anything with a literal non-food/pet/appliance word) before ever calling the model, so only
+the harder, guard-blind cases pay for an Ollama round trip.
+
+**Bug caught by CI before this reached beta.** `CategoryBulkService` initially called the judge unconditionally,
+so bulk apply made a live model call even with `Model:Enabled` off — inconsistent with every other model consumer
+in the pipeline. The `Testing` environment has no `Model` section (`Enabled` defaults to false), so
+`Savvori.Api.Tests`' end-to-end bulk-apply test should never have touched the network at all; it happened to pass
+locally because the dev machine has a route to the real Ollama host and got a real "yes", but failed on GitHub's
+runner (no route) with `ModelUnavailableException`, correctly held back, and broke the test's old assumption of
+guard-only apply. Fixed by gating the judge call behind `options.Value.Enabled`, matching every other consumer.
+
+**Validated on beta (2026-09-23).** Ran a real bulk apply at 0.95 confidence against beta's live queue (16
+eligible): 5 applied, 11 held back (1 by `CategoryGuard`, 10 by the judge). All 5 applied suggestions were
+correct on inspection. Of the 10 judge holds, about 6 were clear correct catches (two "Bebida Alpro Soja..."
+suggested into "Sumos e Néctares", a Twix chocolate snack into "Bolachas Maria e Simples", a coffee drink into
+"Leite", a biscuit brand into "Bolachas Maria e Simples" and another into "Manteiga e Margarinas"), and about 4
+were the known over-cautious pattern on baby-related products confirmed here for the first time on real
+suggestions rather than just spot-checks (two cots/beds and a playpen correctly belonging in "Puericultura e
+Mobiliário Bebé", baby wipes correctly belonging in "Fraldas e Higiene Bebé" — all wrongly held back). Batch
+undone afterward to leave beta's queue as found. No false accepts observed. Next: promote to prod through the
+normal pipeline (DB snapshot first).
+
+**Follow-up: targeted fix for the baby-product/book over-caution (2026-09-23, same day).** Added 5 more few-shot
+examples (a children's bed, baby wipes, and three children's/parenting books) plus a guidance sentence calling
+out that baby gear and children's books are genuinely their own category even when they read unlike a plain adult
+product. Measured on a dedicated held-out sample of 17 real baby/book suggestions pulled from prod (cots, a
+playpen, a baby-safety mirror, a toy, and several parenting/children's books): went from 11/17 (65%) before the
+fix to 13/15 (87%, after excluding the 2 items now used as few-shot examples) after. Recall on the 27 known-bad
+suggestions held at 100% throughout both rounds. The fresh 50-item accepted-suggestions sample shifted a little
+in both directions between rounds (39-43 out of 50 depending on the exact prompt) — normal noise from a longer
+prompt nudging a handful of unrelated borderline calls, not a regression in the metric that actually matters
+(nothing in either round showed a false accept). Diminishing returns are visible at this point: further few-shot
+tuning trades a small number of items against each other rather than producing clean wins, so this is a
+reasonable stopping point for prompt-only tuning.
+
+## Addendum: multilingual search aliases (2026-09-23)
+
+Problem: search is substring-only over vendor names, so "rice" finds nothing when every vendor writes "arroz".
+
+**What shipped.** A new `ProductSearchAlias` table (one row per product and language: pt, en, es, fr) holds a
+generic name and up to 5 keywords, plus an accent-free `SearchText` that `GET /api/products?search=` matches
+against. A new `ModelJobType.Translate` job (appended to the enum, ints persist) is queued hourly by
+`AliasScanJob` (`Model:Aliases:Cron`, capped by `MaxJobsPerScan`) for products with an active listing whose
+`hash(name, brand, category, PromptVersion)` has no model row. `TranslateJobHandler` sends product text only,
+`ProductsPerRequest` (default 8) per Ollama chat request, with a JSON-schema `format` and temperature 0, using
+`Model:JudgeModel`. It goes through the same breaker and durable queue as everything else; a bad shape throws
+`ModelResponseException` (retried by the queue, not a breaker failure). Bump `AliasInputs.PromptVersion` when the
+prompt changes to regenerate everything.
+
+**Deliberate exception to "the model only suggests".** Aliases are applied without a person in the loop. This is
+acceptable because they are search-only: they can add a result to a search but never change what a product is,
+which listings are merged, or which category it is in, and the vendor name stays what is displayed. Every row records
+`Source` (`model`/`manual`), `ModelName` and `InputHash` so a person can review or override later; a `manual` row is
+never overwritten. People correct them on the product detail page ("Search names": edit the comma-separated words
+per language and Save, or Reset) or through `PUT/DELETE /api/products/{id}/aliases/{language}`. A correction becomes
+a `manual` row (empty keywords = deliberately none); Reset removes the row and marks the product's model rows out of
+date so the next scan regenerates them. A product corrected in all four languages is skipped by the scan.
+
+**Measured on real beta products (2026-09-23, `qwen2.5:7b-instruct`, exact production request shape, 45 products
+from searches for arroz, leite, queijo, atum, cerveja, fralda, gelado ...).** Response shape was valid for all 45
+(0 bad batches). pt/en generic terms were good (arroz->rice, atum->tuna, cerveja->beer, detergente de loiça->dish
+soap, "Leite Solar" -> sunscreen, not milk). The first prompt let brands, ingredients and mixed-language words into
+the lists and produced one wrong translation ("fraldas" -> fr "poussette"); prompt v2 (1-3 keywords, own language
+only, no brands/flavours/ingredients) removed most of that noise. What remains: es/fr are weaker (invented words like
+"diapèses", "almoedinha"), and ingredients still occasionally leak ("Champô Mel/Cerveja" -> "shampoo with beer",
+"Bolo de Arroz" -> "rice"). Invented words match nothing, so they are harmless; ingredient leaks are the false-positive
+class to watch, and the per-language correction on the product page exists for them. Further prompt tuning was not
+pursued (diminishing returns, as with the category judge); the next lever would be a larger model.
+
+**Measured on beta (2026-09-23).** After the first scan, 96 products were done within 2 minutes with 0 failures, 0
+dead letters, 0 empty results and every job succeeding on the first attempt: about 95 products per minute (roughly
+5,700 per hour) on the PC's GPU. The initial cap of 500 jobs per scan would have taken about 35 hours to cover the
+17k-product catalogue, so `MaxJobsPerScan` now defaults to 2000 (about 20 minutes of model time per hourly scan,
+whole catalogue in about 9 scans). End to end on beta: alias-only searches work ("lentils" finds "Lentilhas Verdes",
+"vinegar" finds "Vinagre ..."), and a save/reset on the product page round-trips through the API.
+
+**Known false positives.** A name that shares a word with a food can pick up that food's aliases ("Leite Solar"
+may get "milk"), the same class as the category keyword collisions. For search that means an odd extra result, not
+a wrong identity; the prompt tells the model to use the store category to avoid it. Not measured yet: run the job
+on beta and review a sample before relying on it.
+
+**Merges.** `MatchApplier` deletes the retired canonical `Product`, so its aliases cascade away; the survivor's
+aliases are unaffected. Undo recreates the product and the next scan regenerates its aliases.
+
+## Addendum: pair judge (matching) investigation, same day — no changes shipped
+
+Tried to carry the category judge's win (few-shot prompting) over to `OllamaPairJudge`. Result: **no code change**,
+because nothing tested beat the existing bare 3-line prompt. Recorded here so this ground isn't retested blind.
+
+**First measurement was wrong, then corrected.** An initial test harness omitted the `Size` field from the pair
+description, unlike production's `Describe(JudgeItem)` which sends `Name | Brand | Size | Chain`. That made the
+judge look badly broken (42% recall on 60 real applied matches). Adding `Size` back and re-measuring on the same
+data gave the true baseline: **75% recall** (45/60) on real applied matches, **81% precision** (29/36) on real
+rejected/different-variant pairs — a solid, working judge, not a broken one. Lesson: always assemble the eval
+harness from the exact production request-building code, not a hand-rebuilt approximation of it.
+
+**Few-shot prompting was tried and measurably hurt matching**, unlike categories. Adding 6-7 hand-picked examples
+(mirroring the category judge's approach) dropped recall to 60% for a marginal precision gain (81%→83%). Not
+shipped. The category judge's problem was a genuinely under-specified prompt; the pair judge's apparent problem
+was the missing-Size measurement bug above, not the prompt itself.
+
+**`qwen3-vl:8b` as a stronger judge: ruled out.** It's a thinking model on this Ollama deployment, and neither
+`"think": false` at the request root nor a short `num_predict` suppresses its internal reasoning — the `content`
+field stays empty until the model finishes thinking (which routinely exceeds 400 tokens on this prompt), so short
+`num_predict` truncates before any answer and gets parsed as Unclear. Confirmed the model can eventually produce a
+clean one-word `content` (verified on a trivial arithmetic prompt at `num_predict: 300`), but at production prompt
+length the 93-pair eval took 4m41s (~3s/call) and still landed almost entirely on Unclear. Not practical as a
+per-pair judge without a template/API change on the Ollama side (check `/api/show` for template handling of
+`think` before revisiting).
+
+**Unit-price ratio: tested, does not cleanly separate matches from non-matches.** The hypothesis (own-brand vs.
+branded pairs should show a large €/kg gap) doesn't hold up on real data: positives (real matches) range up to
+2.31x (driven by promo pricing and pack-size/format differences, e.g. "Queijo de Ovelha Seia Amanteigado" at 22.18
+vs 9.59), while negatives (real rejects) only reach 1.59x. The distributions overlap heavily (p75 1.33x positives
+vs 1.49x negatives; p90 1.47x vs 1.59x). A ratio gate at any reasonable threshold would reject real matches at
+roughly the same rate it catches real non-matches. Not built.
+
+**Low-cosine review-queue band (0.70-0.85, ~80% of the 6,961-item NeedsReview backlog, never reaches the judge)
+spot-checked by eye, not a hidden recall goldmine.** The pairs here are overwhelmingly genuinely different
+products that share a brand or category word (e.g. "Azeite Virgem Extra Clássico" vs "...Seleção Azeitonas
+Maduras", "Fermento em Pó" vs "Gelatina em Pó de Morango", both Royal-branded). Sitting unjudged in NeedsReview is
+the correct outcome for most of this band, not a bug.
+
+**Net conclusion:** the current `OllamaPairJudge` prompt, as shipped before this investigation, is already solid
+(75%/81%) and nothing tested here beat it. No code changes were made to matching as a result of this session.
+

@@ -27,6 +27,7 @@ public class SavvoriDbContext : DbContext
     public DbSet<ProductTag> ProductTags { get; set; } = default!;
     public DbSet<BulkBatch> BulkBatches { get; set; } = default!;
     public DbSet<ProductCategoryTranslation> ProductCategoryTranslations { get; set; } = default!;
+    public DbSet<ProductSearchAlias> ProductSearchAliases { get; set; } = default!;
     public DbSet<TaxonomyMigration> TaxonomyMigrations { get; set; } = default!;
     public DbSet<CategoryStringDecision> CategoryStringDecisions { get; set; } = default!;
 
@@ -195,6 +196,11 @@ public class SavvoriDbContext : DbContext
         modelBuilder.Entity<ProductCategoryTranslation>().HasKey(t => new { t.ProductCategoryId, t.Language });
         modelBuilder.Entity<ProductCategoryTranslation>()
             .HasOne(t => t.ProductCategory).WithMany().HasForeignKey(t => t.ProductCategoryId).OnDelete(DeleteBehavior.Cascade);
+
+        // Search aliases: one row per (product, language), removed with the product (a merge retires the loser's row)
+        modelBuilder.Entity<ProductSearchAlias>().HasKey(a => new { a.ProductId, a.Language });
+        modelBuilder.Entity<ProductSearchAlias>()
+            .HasOne(a => a.Product).WithMany(p => p.SearchAliases).HasForeignKey(a => a.ProductId).OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<BulkBatch>().HasIndex(b => new { b.Kind, b.CreatedAt });
         modelBuilder.Entity<MatchMerge>().HasIndex(m => m.BatchId);

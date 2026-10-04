@@ -141,6 +141,40 @@
     </div>
 }
 
+<!-- Search names: what people can type to find this product, in each language -->
+@if (Model.Aliases.Count > 0)
+{
+    <div class="collapse collapse-arrow bg-base-100 shadow mb-8">
+        <input type="checkbox" />
+        <div class="collapse-title font-semibold">Search names</div>
+        <div class="collapse-content">
+            <p class="text-sm text-base-content/60 mb-3">
+                Words that find this product in search, suggested automatically. Correct any that are wrong
+                (comma separated); a corrected language is never overwritten.
+            </p>
+            @foreach (var alias in Model.Aliases)
+            {
+                <form method="post" class="flex flex-wrap items-center gap-2 mb-2">
+                    <input type="hidden" name="productId" value="@Model.Product.Id" />
+                    <input type="hidden" name="language" value="@alias.Language" />
+                    <span class="badge badge-outline w-10 justify-center uppercase">@alias.Language</span>
+                    <input type="text" name="keywords" value="@alias.Keywords" maxlength="200"
+                           class="input input-bordered input-sm flex-1 min-w-48" aria-label="Search names in @alias.Language" />
+                    @if (alias.Source == "manual")
+                    {
+                        <span class="badge badge-info badge-sm">corrected</span>
+                    }
+                    <button type="submit" asp-page-handler="SaveAlias" class="btn btn-sm btn-primary">Save</button>
+                    @if (alias.Source is not null)
+                    {
+                        <button type="submit" asp-page-handler="ResetAlias" class="btn btn-sm btn-ghost">Reset</button>
+                    }
+                </form>
+            }
+        </div>
+    </div>
+}
+
 <!-- Alternatives -->
 @if (Model.Alternatives.Any())
 {

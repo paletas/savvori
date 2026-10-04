@@ -27,6 +27,8 @@ public sealed class PipelineHost : IDisposable
     public FaultPlan Faults { get; }
     public FakeEmbeddingClient Embedder { get; } = new() { Dimension = 16 };
     public FakePairJudge Judge { get; } = new();
+    public FakeCategoryJudge CategoryJudge { get; } = new();
+    public FakeProductTranslator Translator { get; } = new();
     public CountingJudge JudgeCalls { get; }
     public ModelOptions Options { get; } = new()
     {
@@ -56,7 +58,13 @@ public sealed class PipelineHost : IDisposable
             new FlakyEmbeddingClient(Embedder, sp.GetRequiredService<FaultPlan>()), sp.GetRequiredService<ModelCircuitBreaker>()));
         s.AddSingleton<IPairJudge>(sp => new BreakerPairJudge(
             new FlakyPairJudge(JudgeCalls, sp.GetRequiredService<FaultPlan>()), sp.GetRequiredService<ModelCircuitBreaker>()));
+        s.AddSingleton<ICategoryJudge>(sp => new BreakerCategoryJudge(
+            new FlakyCategoryJudge(CategoryJudge, sp.GetRequiredService<FaultPlan>()), sp.GetRequiredService<ModelCircuitBreaker>()));
+        s.AddSingleton<IProductTranslator>(sp => new BreakerProductTranslator(
+            new FlakyProductTranslator(Translator, sp.GetRequiredService<FaultPlan>()), sp.GetRequiredService<ModelCircuitBreaker>()));
         s.AddDbContext<SavvoriDbContext>(o => o.UseInMemoryDatabase(dbName));
+        s.AddScoped<AliasScanner>();
+        s.AddScoped<IModelJobHandler, TranslateJobHandler>();
         s.AddScoped<ModelJobQueue>();
         s.AddSingleton<CurrentModelState>();
         s.AddSingleton<EmbeddingIndex>();
@@ -95,13 +103,13 @@ public sealed class PipelineHost : IDisposable
     }
 
     public Guid AddProduct(Guid chain, string name, string? brand = null, decimal? size = null,
-        ProductUnit unit = ProductUnit.Unit, Guid? canonical = null, bool active = true)
+        ProductUnit unit = ProductUnit.Unit, Guid? canonical = null, bool active = true, string? category = null)
     {
         var id = Guid.NewGuid();
         With(db => db.StoreProducts.Add(new StoreProduct
         {
             Id = id, StoreChainId = chain, ExternalId = id.ToString("N"), Name = name, Brand = brand,
-            SizeValue = size, Unit = unit, CanonicalProductId = canonical, IsActive = active,
+            Category = category, SizeValue = size, Unit = unit, CanonicalProductId = canonical, IsActive = active,
             FirstSeen = Time.GetUtcNow().UtcDateTime, LastScraped = Time.GetUtcNow().UtcDateTime
         }));
         return id;
@@ -280,6 +288,21 @@ public sealed class EmbeddingPipelineTests : IDisposable
         Assert.NotEqual(before.InputTextHash, after.InputTextHash);
         Assert.NotEqual(before.EmbeddedAt, after.EmbeddedAt);
         Assert.Equal(EmbeddingFreshness.HashText("mimosa leite magro"), after.InputTextHash);
+    }
+
+    [Fact]
+    public async Task Embed_DoesNotIncludeStoreCategory_MatchingTextStaysNameAndBrandOnly()
+    {
+        // StoreProduct.Category exists (for a future categorization-side use) but is deliberately NOT mixed into
+        // the matching embedding yet: matching's cosine thresholds were calibrated on name-only text, and category
+        // text differs per chain, so it needs its own validated experiment before touching this vector.
+        _h.AddProduct(_h.ChainA, "Tentaculos de Polvo Congelados", "Continente", category: "Congelados");
+        await _h.ScanAsync();
+        await _h.DrainAsync();
+        var row = _h.Query(db => db.StoreProductEmbeddings.AsNoTracking().Single());
+        Assert.Equal(
+            EmbeddingFreshness.HashText("continente tentaculos de polvo congelados"),
+            row.InputTextHash);
     }
 
     [Fact]

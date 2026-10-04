@@ -1,6 +1,6 @@
 namespace Savvori.Shared;
 
-public enum ModelJobType { Embed, Judge }
+public enum ModelJobType { Embed, Judge, Translate }
 
 public enum ModelJobStatus
 {
