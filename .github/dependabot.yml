@@ -11,6 +11,10 @@ updates:
       time: "06:00"
       timezone: Europe/Lisbon
     open-pull-requests-limit: 5
+    ignore:
+      # Quartz 4 fails the gate (needs a migration); revisit deliberately.
+      - dependency-name: "Quartz*"
+        update-types: ["version-update:semver-major"]
     groups:
       nuget-minor-patch:
         update-types: [minor, patch]
