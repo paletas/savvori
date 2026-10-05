@@ -219,7 +219,7 @@ public sealed class PipelineHost : IDisposable
     {
         var context = Substitute.For<IJobExecutionContext>();
         context.CancellationToken.Returns(TestContext.Current.CancellationToken);
-        return Services.GetRequiredService<ModelQueueDrainJob>().Execute(context);
+        return Services.GetRequiredService<ModelQueueDrainJob>().Execute(context, CancellationToken.None).AsTask();
     }
 
     public void Dispose() => Services.Dispose();

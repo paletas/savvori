@@ -76,7 +76,7 @@ public class SavvoriWebApiFactory : WebApplicationFactory<Program>
 
             // Register a mock ISchedulerFactory so ScrapingAdminController can be resolved
             var schedulerMock = Substitute.For<IScheduler>();
-            schedulerMock.CheckExists(Arg.Any<JobKey>(), Arg.Any<CancellationToken>()).Returns(false);
+            schedulerMock.Exists(Arg.Any<JobKey>(), Arg.Any<CancellationToken>()).Returns(false);
             var schedulerFactoryMock = Substitute.For<ISchedulerFactory>();
             schedulerFactoryMock.GetScheduler(Arg.Any<CancellationToken>()).Returns(schedulerMock);
             services.AddSingleton<ISchedulerFactory>(schedulerFactoryMock);

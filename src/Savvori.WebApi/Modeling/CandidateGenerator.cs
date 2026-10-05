@@ -105,7 +105,7 @@ public sealed class CandidateGenerationJob(
 {
     private const string JobName = "candidate-generation";
 
-    public async Task Execute(IJobExecutionContext context)
+    public async ValueTask Execute(IJobExecutionContext context, CancellationToken cancellationToken)
     {
         if (!options.Value.Enabled) return;
         using var activity = telemetry.StartRunActivity(JobName);

@@ -36,7 +36,7 @@ public sealed class StoreScrapeJob : IJob
         _logger = logger;
     }
 
-    public async Task Execute(IJobExecutionContext context)
+    public async ValueTask Execute(IJobExecutionContext context, CancellationToken cancellationToken)
     {
         var slug = context.MergedJobDataMap.GetString(StoreChainSlugKey);
         if (string.IsNullOrEmpty(slug))
