@@ -18,6 +18,7 @@ COPY src/Savvori.WebApp/Savvori.WebApp.csproj src/Savvori.WebApp/
 RUN dotnet restore src/Savvori.WebApp/Savvori.WebApp.csproj
 COPY src/ src/
 COPY --from=css /src/src/Savvori.WebApp/wwwroot/css/site.css src/Savvori.WebApp/wwwroot/css/site.css
+COPY --from=css /src/src/Savvori.WebApp/wwwroot/lib/htmx.min.js src/Savvori.WebApp/wwwroot/lib/htmx.min.js
 RUN dotnet publish src/Savvori.WebApp/Savvori.WebApp.csproj -c Release -o /app --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final

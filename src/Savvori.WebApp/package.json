@@ -2,8 +2,12 @@
   "name": "savvori-webapp",
   "private": true,
   "scripts": {
-    "build:css": "tailwindcss -i ./wwwroot/css/input.css -o ./wwwroot/css/site.css --minify",
+    "build:css": "tailwindcss -i ./wwwroot/css/input.css -o ./wwwroot/css/site.css --minify && npm run vendor:htmx",
+    "vendor:htmx": "node -e \"const fs=require('fs');fs.mkdirSync('wwwroot/lib',{recursive:true});fs.copyFileSync('node_modules/htmx.org/dist/htmx.min.js','wwwroot/lib/htmx.min.js')\"",
     "watch:css": "tailwindcss -i ./wwwroot/css/input.css -o ./wwwroot/css/site.css --watch"
+  },
+  "dependencies": {
+    "htmx.org": "^2.0.4"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.3",
