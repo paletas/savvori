@@ -50,11 +50,11 @@ public class ScrapingAdminController : ControllerBase
         foreach (var chain in chains)
         {
             var jobKey = new JobKey($"scrape-{chain.Slug}");
-            if (await scheduler.CheckExists(jobKey, ct))
+            if (await scheduler.Exists(jobKey, ct))
             {
                 var triggers = await scheduler.GetTriggersOfJob(jobKey, ct);
                 var nextTimes = triggers
-                    .Select(t => t.GetNextFireTimeUtc())
+                    .Select(t => t.NextFireTimeUtc)
                     .Where(t => t.HasValue)
                     .Select(t => t!.Value.UtcDateTime);
                 nextFireTimes[chain.Slug] = nextTimes.Any() ? nextTimes.Min() : null;
@@ -148,7 +148,7 @@ public class ScrapingAdminController : ControllerBase
             var scheduler = await _schedulerFactory.GetScheduler(ct);
             var jobKey = new JobKey($"scrape-{chainSlug}");
 
-            if (!await scheduler.CheckExists(jobKey, ct))
+            if (!await scheduler.Exists(jobKey, ct))
                 return BadRequest($"No scheduled job found for '{chainSlug}'. Ensure it is enabled in Scraping:Chains config.");
 
             var dataMap = new JobDataMap
