@@ -65,7 +65,7 @@ public sealed class StoreScrapeJobTests : IAsyncLifetime
         });
         context.CancellationToken.Returns(ct);
 
-        await _job.Execute(context);
+        await _job.Execute(context, CancellationToken.None);
 
         var savedJob = await _db.ScrapingJobs.SingleAsync(ct);
         Assert.Equal(ScrapingJobStatus.Completed, savedJob.Status);

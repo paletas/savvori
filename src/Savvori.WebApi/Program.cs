@@ -114,7 +114,7 @@ builder.Services.AddQuartz(q =>
     q.AddTrigger(opts => opts
         .ForJob("model-queue-drain")
         .WithIdentity("model-queue-drain-trigger")
-        .WithSimpleSchedule(s => s.WithIntervalInSeconds(modelPollSeconds).RepeatForever()));
+        .WithSimpleSchedule(s => s.WithInterval(TimeSpan.FromSeconds(modelPollSeconds)).RepeatForever()));
 
     // Jobs are registered per StoreChain slug.
     // Each active store chain gets two daily trigger: 06:00 and 18:00 UTC.

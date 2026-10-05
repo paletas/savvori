@@ -77,7 +77,7 @@ public sealed class ModelTestHost : IDisposable
     {
         var context = Substitute.For<IJobExecutionContext>();
         context.CancellationToken.Returns(ct);
-        return Services.GetRequiredService<ModelQueueDrainJob>().Execute(context);
+        return Services.GetRequiredService<ModelQueueDrainJob>().Execute(context, CancellationToken.None).AsTask();
     }
 
     public void Dispose() => Services.Dispose();
@@ -336,7 +336,7 @@ public sealed class ScrapingWithModelDownTests : IDisposable
         });
         context.CancellationToken.Returns(ct);
 
-        await job.Execute(context);
+        await job.Execute(context, CancellationToken.None).AsTask();
 
         var scrape = await db.ScrapingJobs.SingleAsync(ct);
         Assert.Equal(ScrapingJobStatus.Completed, scrape.Status);

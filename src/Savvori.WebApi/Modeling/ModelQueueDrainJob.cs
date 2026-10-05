@@ -18,7 +18,7 @@ public sealed class ModelQueueDrainJob(
     ModelTelemetry telemetry,
     ILogger<ModelQueueDrainJob> logger) : IJob
 {
-    public async Task Execute(IJobExecutionContext context)
+    public async ValueTask Execute(IJobExecutionContext context, CancellationToken cancellationToken)
     {
         var opts = options.Value;
         if (!opts.Enabled) return;

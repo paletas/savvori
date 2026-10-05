@@ -128,7 +128,7 @@ public sealed class EmbeddingScanJob(
 {
     private const string JobName = "embedding-scan";
 
-    public async Task Execute(IJobExecutionContext context)
+    public async ValueTask Execute(IJobExecutionContext context, CancellationToken cancellationToken)
     {
         if (!options.Value.Enabled) return;
         var ct = context.CancellationToken;
