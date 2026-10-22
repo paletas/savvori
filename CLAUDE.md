@@ -12,10 +12,10 @@ ASP.NET Core / .NET 10, orchestrated locally with .NET Aspire, SQLite via EF Cor
 
 Use Windows PowerShell syntax (this is a Windows dev environment).
 
-- **Run everything (recommended)**: `aspire run` from repo root — starts the Aspire dashboard (http://localhost:15888), the Web API, and the Web App. If `aspire` isn't on PATH, use `& "$env:USERPROFILE\.dotnet\tools\aspire.exe" run`.
+- **Run everything (recommended)**: `aspire run` from repo root — starts the Aspire dashboard (http://localhost:15217), the Web API, and the Web App. If `aspire` isn't on PATH, use `& "$env:USERPROFILE\.dotnet\tools\aspire.exe" run`.
 - **Build**: `dotnet build Savvori.sln`
 - **Run Web API directly** (creates the SQLite file at `ConnectionStrings:savvori`, default `data/savvori.db`): `dotnet run --project src/Savvori.WebApi/Savvori.WebApi.csproj`
-  - OpenAPI (dev): `http://localhost:5000/openapi/v1.json`, Health: `/health`
+  - OpenAPI (dev): `http://localhost:5242/openapi/v1.json`, Health: `/health`
 - **Test all**: `dotnet test Savvori.sln` (runs in Microsoft.Testing.Platform mode via `global.json` `test.runner`; `LiveScraperTests` hit the live network and are a known flake)
 - **Test a single project**: `dotnet test tests/Savvori.Api.Tests/Savvori.Api.Tests.csproj` (same for `Savvori.Web.Tests`, `Savvori.E2E.Tests`)
 - **Test a single test**: `dotnet test tests/Savvori.Web.Tests/Savvori.Web.Tests.csproj --filter "FullyQualifiedName~ClassName.MethodName"`
