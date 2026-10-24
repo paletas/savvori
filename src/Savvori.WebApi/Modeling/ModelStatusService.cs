@@ -53,6 +53,6 @@ public sealed class ModelStatusService(
             await db.StoreProducts.CountAsync(sp => sp.IsActive, ct),
             await db.StoreProductEmbeddings.CountAsync(e => e.ModelName == options.Value.EmbeddingModel, ct),
             await db.MatchCandidates.CountAsync(ct),
-            options.Value.EmbeddingModel, options.Value.JudgeModel);
+            options.Value.EmbeddingModel, options.Value.PairJudgeModel);
     }
 }

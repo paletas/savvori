@@ -160,7 +160,7 @@ public class ProductsController : ControllerBase
         if (product is null) return NotFound();
 
         var rows = await _db.ProductSearchAliases.AsNoTracking().Where(a => a.ProductId == product.Id).ToListAsync(ct);
-        return Ok(OllamaProductTranslator.Languages.Select(l =>
+        return Ok(ProductTranslation.Languages.Select(l =>
         {
             var row = rows.FirstOrDefault(a => a.Language == l);
             return new { Language = l, Keywords = row?.Keywords ?? string.Empty, Source = row?.Source };
@@ -178,8 +178,8 @@ public class ProductsController : ControllerBase
     public async Task<IActionResult> SetAlias(Guid id, string language, [FromBody] SetAliasRequest body, CancellationToken ct)
     {
         language = language.ToLowerInvariant();
-        if (!OllamaProductTranslator.Languages.Contains(language))
-            return BadRequest($"Language must be one of: {string.Join(", ", OllamaProductTranslator.Languages)}.");
+        if (!ProductTranslation.Languages.Contains(language))
+            return BadRequest($"Language must be one of: {string.Join(", ", ProductTranslation.Languages)}.");
         var (product, _) = await _resolver.ResolveAsync(id, ct);
         if (product is null) return NotFound();
 
@@ -210,8 +210,8 @@ public class ProductsController : ControllerBase
     public async Task<IActionResult> ResetAlias(Guid id, string language, CancellationToken ct)
     {
         language = language.ToLowerInvariant();
-        if (!OllamaProductTranslator.Languages.Contains(language))
-            return BadRequest($"Language must be one of: {string.Join(", ", OllamaProductTranslator.Languages)}.");
+        if (!ProductTranslation.Languages.Contains(language))
+            return BadRequest($"Language must be one of: {string.Join(", ", ProductTranslation.Languages)}.");
         var (product, _) = await _resolver.ResolveAsync(id, ct);
         if (product is null) return NotFound();
 

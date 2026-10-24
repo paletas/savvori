@@ -75,7 +75,7 @@ public sealed class MatchingService(
         }
         await db.SaveChangesAsync(ct);
 
-        var queued = await QueueJudgeJobsAsync(toJudge, opts.JudgeModel, ct);
+        var queued = await QueueJudgeJobsAsync(toJudge, opts.PairJudgeModel, ct);
         return new(null, eligible.Count, suggested, queued, review, left);
     }
 
@@ -124,12 +124,12 @@ public sealed class JudgeJobHandler(
             var b = await db.StoreProducts.Include(sp => sp.StoreChain).FirstOrDefaultAsync(sp => sp.Id == c.StoreProductBId, ct);
             if (a is null || b is null) return;
             var opts = options.Value;
-            var (ia, ib, hash) = JudgeInputs.Build(a, b, opts.JudgeModel);
+            var (ia, ib, hash) = JudgeInputs.Build(a, b, opts.PairJudgeModel);
             if (hash != job.PayloadHash) return; // the listings changed since queueing; the next matching run re-queues
 
             var verdict = await judge.JudgeAsync(ia, ib, ct); // throws on failure: no decision, retried
             c.JudgeVerdict = verdict;
-            c.JudgeModel = opts.JudgeModel;
+            c.JudgeModel = opts.PairJudgeModel;
 
             // Whatever the answer, a human decides: a "yes" is shown as a suggestion, "no" and "unclear" as a hint.
             c.Status = CandidateStatus.NeedsReview;

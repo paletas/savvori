@@ -32,7 +32,7 @@ public sealed class PipelineHost : IDisposable
     public CountingJudge JudgeCalls { get; }
     public ModelOptions Options { get; } = new()
     {
-        Enabled = true, EmbeddingModel = "fake-embed", JudgeModel = "fake-judge", BatchSize = 4, MaxConcurrency = 1,
+        Enabled = true, EmbeddingModel = "fake-embed", PairJudgeModel = "fake-judge", TranslatorModel = "fake-translator", BatchSize = 4, MaxConcurrency = 1,
         Breaker = { FailureThreshold = 3, CooldownSeconds = 60 },
         Queue = { MaxAttempts = 3, BaseDelaySeconds = 10, MaxDelaySeconds = 100, LeaseSeconds = 120, MaxBatchesPerRun = 50 }
     };

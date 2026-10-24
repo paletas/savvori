@@ -13,6 +13,19 @@ public sealed class ModelUnavailableException(string message, Exception? inner =
 public sealed class ModelResponseException(string message, Exception? inner = null)
     : Exception(message, inner);
 
+public enum ThrottleKind { Proxy, Routing, Quota }
+
+/// <summary>
+/// The backend is alive but throttling us. NOT a breaker failure and NOT a judge "no". <see cref="RetryAfter"/> is a
+/// lower bound; the job queue defers the job without spending an attempt.
+/// </summary>
+public sealed class ModelThrottledException(TimeSpan retryAfter, ThrottleKind kind, string message, Exception? inner = null)
+    : Exception(message, inner)
+{
+    public TimeSpan RetryAfter { get; } = retryAfter;
+    public ThrottleKind Kind { get; } = kind;
+}
+
 /// <param name="ModelName">Model that produced the vectors.</param>
 /// <param name="ModelDigest">Version fingerprint of that model; vectors from different digests must never be compared.</param>
 public sealed record EmbeddingResult(

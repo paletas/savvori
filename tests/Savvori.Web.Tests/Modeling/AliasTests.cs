@@ -50,7 +50,7 @@ public sealed class AliasTests : IDisposable
         Assert.All(rows.Values, r =>
         {
             Assert.Equal("model", r.Source);
-            Assert.Equal("fake-judge", r.ModelName);
+            Assert.Equal("fake-translator", r.ModelName);
             Assert.False(string.IsNullOrEmpty(r.InputHash));
         });
     }
@@ -118,7 +118,7 @@ public sealed class AliasTests : IDisposable
         var id = AddProduct("Arroz Agulha Cigala");
         _h.With(db =>
         {
-            foreach (var lang in OllamaProductTranslator.Languages)
+            foreach (var lang in ProductTranslation.Languages)
                 db.ProductSearchAliases.Add(new ProductSearchAlias
                     { ProductId = id, Language = lang, Source = "manual", CreatedAt = DateTime.UtcNow });
         });
@@ -210,14 +210,14 @@ public sealed class AliasTests : IDisposable
     [Fact]
     public void Parse_RequiresOneEntryPerIndex()
     {
-        var ok = OllamaProductTranslator.Parse(
+        var ok = ProductTranslation.Parse(
             """{"products":[{"index":1,"pt":[],"en":["milk"],"es":[],"fr":[]},{"index":0,"pt":["arroz"],"en":[],"es":[],"fr":[]}]}""", 2);
         Assert.Equal(["arroz"], ok[0].Keywords["pt"]);
         Assert.Equal(["milk"], ok[1].Keywords["en"]);
 
-        Assert.Throws<ModelResponseException>(() => OllamaProductTranslator.Parse("""{"products":[]}""", 1));
-        Assert.Throws<ModelResponseException>(() => OllamaProductTranslator.Parse("not json", 1));
-        Assert.Throws<ModelResponseException>(() => OllamaProductTranslator.Parse(
+        Assert.Throws<ModelResponseException>(() => ProductTranslation.Parse("""{"products":[]}""", 1));
+        Assert.Throws<ModelResponseException>(() => ProductTranslation.Parse("not json", 1));
+        Assert.Throws<ModelResponseException>(() => ProductTranslation.Parse(
             """{"products":[{"index":0,"pt":[]},{"index":0,"pt":[]}]}""", 2)); // duplicate index
     }
 }

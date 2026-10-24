@@ -1,15 +1,24 @@
 namespace Savvori.WebApi.Modeling;
 
-/// <summary>Configuration for the remote model backend ("Model" section). Everything defaults to off/safe.</summary>
+/// <summary>Configuration for the remote model backends (gateway + OpenRouter, "Model" section). Everything defaults to off/safe.</summary>
 public sealed class ModelOptions
 {
     public const string SectionName = "Model";
 
     /// <summary>Master feature flag. When false no model call is ever made and the drain job does nothing.</summary>
     public bool Enabled { get; set; }
-    public string BaseUrl { get; set; } = string.Empty;
-    public string EmbeddingModel { get; set; } = string.Empty;
-    public string JudgeModel { get; set; } = string.Empty;
+    /// <summary>The FreeLLMAPI gateway: embeddings, category judge, translator.</summary>
+    public GatewayOptions Gateway { get; set; } = new();
+    /// <summary>OpenRouter: the pair judge.</summary>
+    public OpenRouterOptions OpenRouter { get; set; } = new();
+    /// <summary>Embedding model id on the gateway.</summary>
+    public string EmbeddingModel { get; set; } = "bge-m3";
+    /// <summary>Category-judge model id on the gateway.</summary>
+    public string CategoryModel { get; set; } = "mistral-small-3.1-24b";
+    /// <summary>Translator model id on the gateway.</summary>
+    public string TranslatorModel { get; set; } = "mistral-small-3.1-24b";
+    /// <summary>Pair-judge model id on OpenRouter.</summary>
+    public string PairJudgeModel { get; set; } = "typesafe/jev-1.13";
     public int ConnectTimeoutSeconds { get; set; } = 5;
     public int RequestTimeoutSeconds { get; set; } = 60;
     /// <summary>Texts per embedding request, and jobs claimed per drain run.</summary>
@@ -87,6 +96,8 @@ public sealed class ModelOptions
         public bool AutoAcceptRequiresBrandOk { get; set; } = true;
         /// <summary>Cap on judge requests queued per matching run, so the first run cannot flood the model.</summary>
         public int MaxJudgeJobsPerRun { get; set; } = 1000;
+        /// <summary>Jev "same" score (noul) at or above this counts as a yes.</summary>
+        public double PairJudgeThreshold { get; set; } = 0.5;
     }
 
     public sealed class CandidateOptions
