@@ -420,3 +420,47 @@ the correct outcome for most of this band, not a bug.
 **Net conclusion:** the current `OllamaPairJudge` prompt, as shipped before this investigation, is already solid
 (75%/81%) and nothing tested here beat it. No code changes were made to matching as a result of this session.
 
+## Addendum: Gateway trials 2026-10 (FreeLLMAPI vs Ollama)
+
+Question: can the FreeLLMAPI gateway replace or back up Ollama for Savvori's four model uses? Embeddings: yes,
+replace. Pair judge: no. Category judge and translator: usable as a fallback, not a replacement. The trials ran on
+eval sets rebuilt from a read-only copy of the prod DB, with the Ollama `qwen2.5:7b-instruct` re-run on the same
+sets as the baseline. **No Savvori code or config changed**; this section only records the results.
+
+| use | verdict | model(s) | key numbers |
+|---|---|---|---|
+| embeddings | replace | `bge-m3` (also `@cf/baai/bge-m3`, `BAAI/bge-m3`) | median cosine ~1.0, min 0.9999, top-8 overlap 0.9971 (300 texts) and 0.9911 (all 20,883); 0 of 195 threshold-band crossings; backfill 20,883/20,883, 0x 429, 0x 502, ~1,859 texts/min |
+| pair judge | no | `llama-3.3-70b-fp8-fast` (best gateway candidate) | recall 0.733 vs Ollama 0.833; precision 0.880 vs 0.833; determinism 1.0000 |
+| category judge | fallback | `llama-3.3-70b-fp8-fast`, `mistral-small-3.1-24b` | known-bad rejected 0.967 vs Ollama 0.933; accepted yes 0.96 vs 0.86; baby/books yes 0.941 vs 0.765 (llama) |
+| translator | fallback | `mistral-small-3.1-24b` | strict json_schema 45/45, equal to Ollama; llama-3.3-70b 21/45; `auto:context-1m` 0/45 |
+
+Rules applied literally: Replace = at least the Ollama re-run on every metric, determinism >= 98%, and for
+embeddings the backfill finished. Fallback = within 5 percentage points, or for embeddings the equivalence trial
+passed. Otherwise no. Caveats: the embeddings 98% clause rests on indirect evidence (no repeat-run determinism
+trial was kept); category and translator determinism were not run, so neither is granted Replace. Never use `auto`
+for embeddings (3072-d vectors) and never use `auto:context-1m` as a judge (pair determinism 0.2396).
+
+**Saved eval sets** (seed 20261023; ids are GUID strings). The id lists live in the dev hub workspace
+`savvori-gateway-trials` under `trials/sets/`, not in this repo, and the prod export is not kept.
+
+- `embed300`: 300
+- `pair_pos`: 60
+- `pair_neg`: 36 (MatchCandidates Status 5, the only rejected status in prod)
+- `cat_known_bad`: 30
+- `cat_accepted`: 50
+- `cat_babybooks`: 17
+- `translator45`: 45
+
+**Trial 7 proposal (ops), nothing changed on the gateway or in Savvori:**
+
+- Give Savvori its own gateway key with caps, separate from the shared one (120 requests per window): about 60 per
+  window for embeddings (the backfill ran ~58 requests/min at batch 32) and a small separate cap of about 20 for chat.
+- Pin `bge-m3` for embeddings (or an explicit provider id), never `auto`. For chat pin an explicit model (e.g.
+  `mistral-small-3.1-24b` for the translator), never `auto:context-1m`.
+- Today the breaker opens after 5 failures with a 300 s cooldown and `Queue.MaxAttempts` is 8. 5xx and 404 map to
+  `ModelUnavailableException` (breaker failure); 429 maps to `ModelResponseException`, which resets the breaker
+  counter and spends one of the job's 8 attempts. `Retry-After` is not read anywhere.
+- Read `Retry-After` on 429 and defer the job without spending an attempt and without opening the breaker; keep 502,
+  timeouts and 404 as breaker failures.
+- With free-tier models that return 429 for hours, use a capped fallback (Ollama first, gateway when the PC is off)
+  to avoid burning attempts.
