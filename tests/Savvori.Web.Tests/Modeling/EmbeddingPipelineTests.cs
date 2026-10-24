@@ -13,7 +13,7 @@ namespace Savvori.Web.Tests.Modeling;
 public sealed class CountingJudge(IPairJudge inner) : IPairJudge
 {
     public int Calls { get; private set; }
-    public async Task<JudgeVerdict> JudgeAsync(JudgeItem a, JudgeItem b, CancellationToken ct = default)
+    public async Task<PairJudgement> JudgeAsync(JudgeItem a, JudgeItem b, CancellationToken ct = default)
     {
         Calls++;
         return await inner.JudgeAsync(a, b, ct);

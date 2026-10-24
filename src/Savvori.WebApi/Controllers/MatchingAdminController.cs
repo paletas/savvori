@@ -89,12 +89,13 @@ public class MatchingAdminController(
     }
 
     /// <summary>
-    /// GET /api/admin/matching/review?filter=all|suggested|blocked|judge&amp;page=1&amp;pageSize=10
+    /// GET /api/admin/matching/review?filter=all|suggested|blocked|judge&amp;sort=default|score&amp;page=1&amp;pageSize=10
     /// Candidates needing a human, best first: suggestions from a dry run and judge "yes" first.
+    /// sort=score lists the judge's score first, highest first, unscored last.
     /// </summary>
     [HttpGet("review")]
     public async Task<IActionResult> Review(
-        string filter = "all", int page = 1, int pageSize = 10, CancellationToken ct = default)
+        string filter = "all", int page = 1, int pageSize = 10, string sort = "default", CancellationToken ct = default)
     {
         if (page < 1) page = 1;
         if (pageSize is < 1 or > 50) pageSize = 10;
@@ -105,17 +106,19 @@ public class MatchingAdminController(
         {
             "suggested" => q.Where(c => c.Suggestion != null),
             "blocked" => q.Where(c => c.Note != null),
-            "judge" => q.Where(c => c.JudgeVerdict != null),
+            "judge" => q.Where(c => c.JudgeVerdict != null || c.JudgeScore != null),
             _ => q
         };
         var total = await q.CountAsync(ct);
-        var rows = await q
-            .OrderByDescending(c => c.DecidedAt).ThenByDescending(c => c.Suggestion != null).ThenByDescending(c => c.Cosine)
+        var ordered = sort == "score"
+            ? q.OrderByDescending(c => c.JudgeScore != null).ThenByDescending(c => c.JudgeScore).ThenByDescending(c => c.Cosine)
+            : q.OrderByDescending(c => c.DecidedAt).ThenByDescending(c => c.Suggestion != null).ThenByDescending(c => c.Cosine);
+        var rows = await ordered
             .Skip((page - 1) * pageSize).Take(pageSize)
             .Select(c => new
             {
                 c.Id, c.Cosine, c.SizeKnown, BrandCheck = c.BrandCheck.ToString(), Status = c.Status.ToString(),
-                c.Suggestion, Verdict = c.JudgeVerdict == null ? null : c.JudgeVerdict.ToString(), c.Note, c.Method,
+                c.Suggestion, Verdict = c.JudgeVerdict == null ? null : c.JudgeVerdict.ToString(), c.JudgeScore, c.Note, c.Method,
                 A = c.StoreProductAId, B = c.StoreProductBId
             }).ToListAsync(ct);
 
@@ -124,7 +127,7 @@ public class MatchingAdminController(
         {
             items.Add(new
             {
-                r.Id, r.Cosine, r.SizeKnown, r.BrandCheck, r.Status, r.Suggestion, r.Verdict, r.Note, r.Method,
+                r.Id, r.Cosine, r.SizeKnown, r.BrandCheck, r.Status, r.Suggestion, r.Verdict, r.JudgeScore, r.Note, r.Method,
                 Warning = await applier.PreviewConflictAsync(r.A, r.B, ct),
                 A = await ListingAsync(r.A, ct),
                 B = await ListingAsync(r.B, ct)

@@ -47,7 +47,7 @@ public sealed class BreakerEmbeddingClient(IEmbeddingClient inner, ModelCircuitB
 /// <summary>The <see cref="IPairJudge"/> the rest of the app sees: every call goes through the breaker.</summary>
 public sealed class BreakerPairJudge(IPairJudge inner, ModelCircuitBreaker breaker) : IPairJudge
 {
-    public Task<JudgeVerdict> JudgeAsync(JudgeItem a, JudgeItem b, CancellationToken ct = default) =>
+    public Task<PairJudgement> JudgeAsync(JudgeItem a, JudgeItem b, CancellationToken ct = default) =>
         BreakerGuard.RunAsync(breaker, () => inner.JudgeAsync(a, b, ct));
 }
 

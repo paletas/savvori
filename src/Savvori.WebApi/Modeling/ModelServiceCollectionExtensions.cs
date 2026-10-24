@@ -39,11 +39,11 @@ public static class ModelServiceCollectionExtensions
                 sp.GetRequiredService<GatewayThrottle>(),
                 sp.GetRequiredService<TimeProvider>()),
             sp.GetRequiredService<ModelCircuitBreaker>()));
-        // Placeholder on the OpenRouter client until Batch 3 replaces it with the Jev pair judge.
         services.AddSingleton<IPairJudge>(sp => new BreakerPairJudge(
-            new OllamaPairJudge(
+            new JevPairJudge(
                 sp.GetRequiredService<IHttpClientFactory>().CreateClient(OpenRouterHttpClientName),
-                sp.GetRequiredService<IOptions<ModelOptions>>()),
+                sp.GetRequiredService<IOptions<ModelOptions>>(),
+                sp.GetRequiredService<TimeProvider>()),
             sp.GetRequiredService<ModelCircuitBreaker>()));
         services.AddSingleton<ICategoryJudge>(sp => new BreakerCategoryJudge(
             new GatewayCategoryJudge(

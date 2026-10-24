@@ -42,11 +42,12 @@ public sealed class FakeEmbeddingClient : IEmbeddingClient
     }
 }
 
-public sealed class FakePairJudge(JudgeVerdict verdict = JudgeVerdict.Yes) : IPairJudge
+public sealed class FakePairJudge(JudgeVerdict verdict = JudgeVerdict.Yes, double? score = null) : IPairJudge
 {
     public JudgeVerdict Verdict { get; set; } = verdict;
-    public Task<JudgeVerdict> JudgeAsync(JudgeItem a, JudgeItem b, CancellationToken ct = default) =>
-        Task.FromResult(Verdict);
+    public double? Score { get; set; } = score;
+    public Task<PairJudgement> JudgeAsync(JudgeItem a, JudgeItem b, CancellationToken ct = default) =>
+        Task.FromResult(new PairJudgement(Verdict, Score));
 }
 
 public sealed class FakeCategoryJudge(JudgeVerdict verdict = JudgeVerdict.Yes) : ICategoryJudge
@@ -116,7 +117,7 @@ public sealed class FlakyEmbeddingClient(IEmbeddingClient inner, FaultPlan plan)
 
 public sealed class FlakyPairJudge(IPairJudge inner, FaultPlan plan) : IPairJudge
 {
-    public async Task<JudgeVerdict> JudgeAsync(JudgeItem a, JudgeItem b, CancellationToken ct = default)
+    public async Task<PairJudgement> JudgeAsync(JudgeItem a, JudgeItem b, CancellationToken ct = default)
     {
         await plan.ApplyAsync(ct);
         return await inner.JudgeAsync(a, b, ct);

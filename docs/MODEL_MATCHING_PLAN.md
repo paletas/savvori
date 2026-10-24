@@ -464,3 +464,7 @@ for embeddings (3072-d vectors) and never use `auto:context-1m` as a judge (pair
   timeouts and 404 as breaker failures.
 - With free-tier models that return 429 for hours, use a capped fallback (Ollama first, gateway when the PC is off)
   to avoid burning attempts.
+
+## Addendum: Jev pair judge, score and dead-letter review (2026-10-24)
+
+The pair judge is now Jev (`typesafe/jev-1.13`) on OpenRouter, `POST api/alpha/decisions`, replacing the Ollama `/api/chat` judge (`OllamaClients.cs` is deleted). A "noul" question returns a probability in 0..1; at or above `Matching:PairJudgeThreshold` (default 0.5) is a yes, otherwise a no; Jev never answers "unclear". `IPairJudge.JudgeAsync` returns a `PairJudgement` (verdict, raw score, usage) and the raw score is stored in `MatchCandidates.JudgeScore` (migration `AddJudgeScore`). The review list returns it and can be sorted by it (`sort=score`). A judge job that dead-letters moves its pair to the review list with no verdict and no score (`Note` says the judge failed), instead of leaving it pending. `PairJudgement.Usage` (tokens, cost, resolved model, request id) is captured but not stored yet; it is the hook for the ModelCalls table.

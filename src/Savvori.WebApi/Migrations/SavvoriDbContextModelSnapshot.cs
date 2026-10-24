@@ -15,7 +15,7 @@ namespace Savvori.WebApi.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.11");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
 
             modelBuilder.Entity("Savvori.Shared.BulkBatch", b =>
                 {
@@ -203,6 +203,9 @@ namespace Savvori.WebApi.Migrations
 
                     b.Property<string>("JudgeModel")
                         .HasColumnType("TEXT");
+
+                    b.Property<double?>("JudgeScore")
+                        .HasColumnType("REAL");
 
                     b.Property<int?>("JudgeVerdict")
                         .HasColumnType("INTEGER");

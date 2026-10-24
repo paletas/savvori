@@ -181,7 +181,7 @@ public record ReviewListingDto(
     string Chain, Guid? CanonicalProductId, decimal? Price);
 
 public record ReviewItemDto(
-    Guid Id, double Cosine, bool SizeKnown, string BrandCheck, string Status, string? Suggestion, string? Verdict,
+    Guid Id, double Cosine, bool SizeKnown, string BrandCheck, string Status, string? Suggestion, string? Verdict, double? JudgeScore,
     string? Note, string? Method, string? Warning, ReviewListingDto A, ReviewListingDto B);
 
 public record ReviewPageDto(int Page, int PageSize, int Total, int TotalPages, List<ReviewItemDto> Items);

@@ -127,8 +127,11 @@ public sealed class JudgeJobHandler(
             var (ia, ib, hash) = JudgeInputs.Build(a, b, opts.PairJudgeModel);
             if (hash != job.PayloadHash) return; // the listings changed since queueing; the next matching run re-queues
 
-            var verdict = await judge.JudgeAsync(ia, ib, ct); // throws on failure: no decision, retried
+            var judgement = await judge.JudgeAsync(ia, ib, ct); // throws on failure: no decision, retried
+            // Batch 5: judgement.Usage goes to ModelCalls here
+            var verdict = judgement.Verdict;
             c.JudgeVerdict = verdict;
+            c.JudgeScore = judgement.Score;
             c.JudgeModel = opts.PairJudgeModel;
 
             // Whatever the answer, a human decides: a "yes" is shown as a suggestion, "no" and "unclear" as a hint.

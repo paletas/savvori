@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Quartz;
 using Savvori.Shared;
@@ -88,8 +89,8 @@ public sealed class ModelQueueDrainJob(
             telemetry.RunsStarted.Add(1, new KeyValuePair<string, object?>("job.name", jobName));
             var sw = System.Diagnostics.Stopwatch.StartNew();
             var ok = handler is IBatchModelJobHandler batch
-                ? await RunAsync(queue, list, () => batch.HandleBatchAsync(list, ct), ct)
-                : await RunManyAsync(queue, list, job => handler.HandleAsync(job, ct), ct);
+                ? await RunAsync(scope.ServiceProvider, queue, list, () => batch.HandleBatchAsync(list, ct), ct)
+                : await RunManyAsync(scope.ServiceProvider, queue, list, job => handler.HandleAsync(job, ct), ct);
             telemetry.RunDurationMs.Record(sw.Elapsed.TotalMilliseconds, new KeyValuePair<string, object?>("job.name", jobName));
             (ok ? telemetry.RunsCompleted : telemetry.RunsFailed).Add(1, new KeyValuePair<string, object?>("job.name", jobName));
         }
@@ -97,12 +98,12 @@ public sealed class ModelQueueDrainJob(
 
     /// <summary>Runs one job at a time (non-batch handlers) so one bad job doesn't fail its siblings; the group's
     /// telemetry outcome is "ok" only if every job in it succeeded.</summary>
-    private async Task<bool> RunManyAsync(ModelJobQueue queue, List<ModelJob> jobs, Func<ModelJob, Task> work, CancellationToken ct)
+    private async Task<bool> RunManyAsync(IServiceProvider sp, ModelJobQueue queue, List<ModelJob> jobs, Func<ModelJob, Task> work, CancellationToken ct)
     {
         var allOk = true;
         foreach (var job in jobs)
         {
-            var ok = await RunAsync(queue, [job], () => work(job), ct);
+            var ok = await RunAsync(sp, queue, [job], () => work(job), ct);
             allOk = allOk && ok;
         }
         return allOk;
@@ -113,7 +114,7 @@ public sealed class ModelQueueDrainJob(
     /// failure - errors are recorded on the queue row and swallowed, exactly as before this method returned a bool
     /// instead of void, so one failing chunk does not stop the other chunks in this run's Parallel.ForEachAsync.
     /// </summary>
-    private async Task<bool> RunAsync(ModelJobQueue queue, List<ModelJob> jobs, Func<Task> work, CancellationToken ct)
+    private async Task<bool> RunAsync(IServiceProvider sp, ModelJobQueue queue, List<ModelJob> jobs, Func<Task> work, CancellationToken ct)
     {
         try
         {
@@ -136,6 +137,7 @@ public sealed class ModelQueueDrainJob(
             foreach (var job in jobs)
                 await queue.FailAsync(job.Id, ex.Message, countAttempt: !systemWide,
                     systemWide ? breaker.Snapshot().RetryAt : null, CancellationToken.None);
+            await ReviewDeadLetteredJudgeJobsAsync(sp, queue, jobs);
             return false;
         }
         catch (Exception ex)
@@ -143,7 +145,38 @@ public sealed class ModelQueueDrainJob(
             logger.LogWarning(ex, "{Count} model job(s) failed.", jobs.Count);
             foreach (var job in jobs)
                 await queue.FailAsync(job.Id, ex.Message, countAttempt: true, ct: CancellationToken.None);
+            if (ex is not ModelThrottledException) await ReviewDeadLetteredJudgeJobsAsync(sp, queue, jobs);
             return false;
+        }
+    }
+
+    /// <summary>
+    /// A judge job that used up its attempts will never produce a verdict: send its candidate to the review list
+    /// with no verdict or score, so a human decides instead of the pair sitting in PendingJudge forever.
+    /// Never throws: a failure here must not break the run.
+    /// </summary>
+    private async Task ReviewDeadLetteredJudgeJobsAsync(IServiceProvider sp, ModelJobQueue queue, IEnumerable<ModelJob> jobs)
+    {
+        try
+        {
+            var db = sp.GetRequiredService<SavvoriDbContext>();
+            foreach (var job in jobs.Where(j => j.Type == ModelJobType.Judge))
+            {
+                var fresh = await queue.GetAsync(job.Id, CancellationToken.None);
+                if (fresh?.Status != ModelJobStatus.DeadLetter) continue;
+                var c = await db.MatchCandidates.FirstOrDefaultAsync(x => x.Id == job.SubjectId);
+                if (c is not { Status: CandidateStatus.PendingJudge }) continue;
+                c.Status = CandidateStatus.NeedsReview;
+                c.JudgeVerdict = null;
+                c.JudgeScore = null;
+                c.Note = "Judge failed " + fresh.Attempts + " times; needs a human.";
+                await db.SaveChangesAsync(CancellationToken.None);
+                telemetry.MatchesDecided.Add(1, new KeyValuePair<string, object?>("outcome", "judge-deadletter"));
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Could not send dead-lettered judge job(s) to review.");
         }
     }
 }

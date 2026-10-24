@@ -50,13 +50,20 @@ public interface IEmbeddingClient
 public sealed record JudgeItem(string Name, string? Brand, string? Size, string Chain);
 
 
+/// <summary>Per-call usage captured for the ModelCalls table (Batch 5); not stored in Batch 3.</summary>
+public sealed record JudgeUsage(int? InputTokens, int? OutputTokens, decimal? CostUsd, string? ResolvedModel, string? RequestId);
+
+/// <summary>A pair judge's answer: the verdict plus the raw score behind it (null for judges without one).</summary>
+public sealed record PairJudgement(JudgeVerdict Verdict, double? Score, JudgeUsage? Usage = null);
+
 public interface IPairJudge
 {
     /// <summary>
     /// Are these the same product? A transport failure throws <see cref="ModelUnavailableException"/>;
-    /// it is never reported as <see cref="JudgeVerdict.No"/>.
+    /// it is never reported as <see cref="JudgeVerdict.No"/>. The Score is the raw probability for the review UI,
+    /// null for judges without one.
     /// </summary>
-    Task<JudgeVerdict> JudgeAsync(JudgeItem a, JudgeItem b, CancellationToken ct = default);
+    Task<PairJudgement> JudgeAsync(JudgeItem a, JudgeItem b, CancellationToken ct = default);
 }
 
 /// <summary>Only product text (no user data) is ever sent to the judge.</summary>
