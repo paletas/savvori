@@ -57,6 +57,7 @@ public sealed class PipelineHost : IDisposable
         s.AddSingleton(Microsoft.Extensions.Options.Options.Create(Options));
         s.AddSingleton<ModelBreakers>();
         s.AddSingleton<ModelTelemetry>();
+        s.AddSingleton<IModelCallRecorder>(NullModelCallRecorder.Instance);
         s.AddSingleton<ThrottleTracker>();
         s.AddSingleton(Faults);
         s.AddSingleton<IModelProbe>(sp => new EmbeddingPingProbe(sp.GetRequiredService<IEmbeddingClient>()));

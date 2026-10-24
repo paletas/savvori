@@ -130,7 +130,16 @@ public record ModelStatusDto(
     int EmbeddedProducts,
     int Candidates,
     string EmbeddingModel,
-    string JudgeModel);
+    string CategoryModel,
+    string PairJudgeModel,
+    string TranslatorModel,
+    List<BreakerStatusDto> Breakers,
+    decimal SpendTodayUsd,
+    decimal Spend30dUsd,
+    List<TaskSpendDto> SpendByTask);
+
+public record BreakerStatusDto(string Backend, string State, int ConsecutiveFailures, DateTime? RetryAt, string? LastError);
+public record TaskSpendDto(string Task, decimal TodayUsd, decimal Last30dUsd, int Calls30d);
 
 public record MatchStatusCountDto(string Status, int Count);
 public record MatchMethodCountDto(string Method, int Count);

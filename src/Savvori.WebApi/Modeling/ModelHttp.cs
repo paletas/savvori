@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Savvori.Shared;
 
 namespace Savvori.WebApi.Modeling;
 
@@ -14,17 +16,28 @@ public static class ModelHttp
     /// Retry-After); a gateway 429 that is not time-bound and other 4xx to <see cref="ModelResponseException"/>.
     /// Cancellation by the caller is rethrown untouched. <paramref name="makeRequest"/> is called once per send,
     /// because a request message cannot be reused. <paramref name="throttle"/> is null for OpenRouter (no limiter,
-    /// no in-place retry).
+    /// no in-place retry). Records one ModelCalls row per HTTP attempt when given a recorder (and a call context);
+    /// a successful attempt is recorded by <see cref="ReadAsync{T}(HttpResponseMessage, ModelCallContext?, IModelCallRecorder?, TimeSpan, Func{T, JudgeUsage?}?, CancellationToken)"/>
+    /// once the body (and so the usage) is known.
     /// </summary>
     public static async Task<HttpResponseMessage> SendAsync(
         HttpClient http, Func<HttpRequestMessage> makeRequest, GatewayThrottle? throttle, TimeProvider time,
-        CancellationToken ct)
+        CancellationToken ct, ModelCallContext? call = null, IModelCallRecorder? recorder = null) =>
+        (await SendTimedAsync(http, makeRequest, throttle, time, ct, call, recorder)).Response;
+
+    /// <summary><see cref="SendAsync"/> that also returns the wall time of the successful attempt.</summary>
+    public static async Task<(HttpResponseMessage Response, TimeSpan Elapsed)> SendTimedAsync(
+        HttpClient http, Func<HttpRequestMessage> makeRequest, GatewayThrottle? throttle, TimeProvider time,
+        CancellationToken ct, ModelCallContext? call = null, IModelCallRecorder? recorder = null)
     {
         var o = throttle?.Options ?? new GatewayThrottleOptions();
+        Task Record(ModelCallStatus st, int? httpStatus, TimeSpan latency) =>
+            call is null || recorder is null ? Task.CompletedTask : recorder.RecordAsync(call, st, httpStatus, latency, null);
         for (var attempt = 0; ; attempt++)
         {
             HttpResponseMessage response;
             var lease = throttle is null ? null : await throttle.AcquireAsync(ct);
+            var sw = Stopwatch.StartNew();
             try
             {
                 using var request = makeRequest();
@@ -33,10 +46,12 @@ public static class ModelHttp
             }
             catch (HttpRequestException ex)
             {
+                await Record(ModelCallStatus.Unavailable, null, sw.Elapsed);
                 throw new ModelUnavailableException($"Model server unreachable: {ex.Message}", ex);
             }
             catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
             {
+                await Record(ModelCallStatus.Unavailable, null, sw.Elapsed);
                 throw new ModelUnavailableException("Model request timed out.", ex);
             }
             finally
@@ -45,7 +60,8 @@ public static class ModelHttp
                 lease?.Dispose();
             }
 
-            if (response.IsSuccessStatusCode) return response;
+            if (response.IsSuccessStatusCode) return (response, sw.Elapsed);
+            var attemptElapsed = sw.Elapsed;
 
             var status = response.StatusCode;
             var now = time.GetUtcNow();
@@ -66,6 +82,7 @@ public static class ModelHttp
 
             if (status == HttpStatusCode.TooManyRequests)
             {
+                await Record(ModelCallStatus.Throttled, 429, attemptElapsed);
                 var retryAt = retryAtMs is { } ms ? DateTimeOffset.FromUnixTimeMilliseconds(ms) - now : (TimeSpan?)null;
                 var dflt = TimeSpan.FromSeconds(o.DefaultRetryAfterSeconds);
 
@@ -103,7 +120,9 @@ public static class ModelHttp
                 throw new ModelResponseException($"Gateway rejected the request: 429 {code}.");
             }
 
-            if ((int)status >= 500 || status == HttpStatusCode.NotFound)
+            var unavailable = (int)status >= 500 || status == HttpStatusCode.NotFound;
+            await Record(unavailable ? ModelCallStatus.Unavailable : ModelCallStatus.Error, (int)status, attemptElapsed);
+            if (unavailable)
                 throw new ModelUnavailableException(
                     $"Model server returned {(int)status} {status}." + (code is null ? "" : $" ({code})"));
 
@@ -125,6 +144,52 @@ public static class ModelHttp
             double.TryParse(values.FirstOrDefault(), NumberStyles.Float, CultureInfo.InvariantCulture, out var secs))
             return secs < 0 ? TimeSpan.Zero : TimeSpan.FromSeconds(secs);
         return null;
+    }
+
+    /// <summary>
+    /// Sends a body-less request (ping, key probe) and records it as Ok with no items. Failures are recorded by
+    /// <see cref="SendTimedAsync"/>.
+    /// </summary>
+    public static async Task SendAndRecordAsync(
+        HttpClient http, Func<HttpRequestMessage> makeRequest, GatewayThrottle? throttle, TimeProvider time,
+        CancellationToken ct, ModelCallContext call, IModelCallRecorder recorder)
+    {
+        var (response, elapsed) = await SendTimedAsync(http, makeRequest, throttle, time, ct, call, recorder);
+        response.Dispose();
+        await recorder.RecordAsync(call, ModelCallStatus.Ok, 200, elapsed, null);
+    }
+
+    /// <summary>
+    /// <see cref="ReadAsync{T}(HttpResponseMessage, CancellationToken)"/> that then records the attempt:
+    /// Ok with the usage from <paramref name="usage"/>, or Error / Unavailable when the body is unusable.
+    /// </summary>
+    public static async Task<T> ReadAsync<T>(
+        HttpResponseMessage response, ModelCallContext? call, IModelCallRecorder? recorder, TimeSpan sendElapsed,
+        Func<T, JudgeUsage?>? usage, CancellationToken ct)
+    {
+        var sw = Stopwatch.StartNew();
+        async Task Record(ModelCallStatus st, int? httpStatus, JudgeUsage? u)
+        {
+            if (call is not null && recorder is not null)
+                await recorder.RecordAsync(call, st, httpStatus, sendElapsed + sw.Elapsed, u);
+        }
+        T body;
+        try
+        {
+            body = await ReadAsync<T>(response, ct);
+        }
+        catch (ModelResponseException)
+        {
+            await Record(ModelCallStatus.Error, 200, null);
+            throw;
+        }
+        catch (ModelUnavailableException)
+        {
+            await Record(ModelCallStatus.Unavailable, 200, null);
+            throw;
+        }
+        await Record(ModelCallStatus.Ok, 200, usage?.Invoke(body));
+        return body;
     }
 
     public static async Task<T> ReadAsync<T>(HttpResponseMessage response, CancellationToken ct)

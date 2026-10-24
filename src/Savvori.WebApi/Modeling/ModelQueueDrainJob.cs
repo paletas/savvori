@@ -22,12 +22,14 @@ public sealed class ModelQueueDrainJob(
     TimeProvider time,
     IServiceScopeFactory scopes,
     ModelTelemetry telemetry,
+    IModelCallRecorder recorder,
     ILogger<ModelQueueDrainJob> logger) : IJob
 {
     public async ValueTask Execute(IJobExecutionContext context, CancellationToken cancellationToken)
     {
         var opts = options.Value;
         if (!opts.Enabled) return;
+        await recorder.PruneIfDueAsync(context.CancellationToken);
         var ct = context.CancellationToken;
         var run = new ConcurrentDictionary<ModelBackend, DateTime>();
 
@@ -170,6 +172,7 @@ public sealed class ModelQueueDrainJob(
             var until = time.GetUtcNow().UtcDateTime + delay;
             if (ex.Kind != ThrottleKind.Quota) throttles.Record(first.Id);
             run.AddOrUpdate(backend, until, (_, old) => old > until ? old : until);
+            telemetry.Deferred.Add(1, new("backend", ModelBackends.Tag(backend)), new("kind", ex.Kind.ToString().ToLowerInvariant()));
             await queue.DeferAsync(first.Id, until, ex.Message, CancellationToken.None);
             foreach (var job in jobs.Skip(1))
                 await queue.ReleaseAsync(job.Id, until, CancellationToken.None);

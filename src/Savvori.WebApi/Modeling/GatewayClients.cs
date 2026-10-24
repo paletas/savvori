@@ -10,13 +10,17 @@ namespace Savvori.WebApi.Modeling;
 /// identity is a fixed <c>freellmapi:&lt;model&gt;</c> string. The dimension must be 1024 (<c>auto</c> would return 3072-d vectors).
 /// </summary>
 public sealed class GatewayEmbeddingClient(
-    HttpClient http, IOptions<ModelOptions> options, GatewayThrottle throttle, TimeProvider time) : IEmbeddingClient
+    HttpClient http, IOptions<ModelOptions> options, GatewayThrottle throttle, TimeProvider time,
+    IModelCallRecorder? recorder = null) : IEmbeddingClient
 {
     private const int ExpectedDimension = 1024;
+    private readonly IModelCallRecorder _recorder = recorder ?? NullModelCallRecorder.Instance;
 
     public async Task PingAsync(CancellationToken ct = default)
     {
-        (await ModelHttp.SendAsync(http, () => new HttpRequestMessage(HttpMethod.Get, "models"), throttle, time, ct)).Dispose();
+        var call = new ModelCallContext(ModelBackend.Gateway, "probe", options.Value.EmbeddingModel, 0);
+        await ModelHttp.SendAndRecordAsync(
+            http, () => new HttpRequestMessage(HttpMethod.Get, "models"), throttle, time, ct, call, _recorder);
     }
 
     public Task<ModelInfo> GetModelInfoAsync(CancellationToken ct = default)
@@ -31,11 +35,13 @@ public sealed class GatewayEmbeddingClient(
         var digest = "freellmapi:" + model;
         if (texts.Count == 0) return new([], model, digest, 0);
 
-        var response = await ModelHttp.SendAsync(http, () => new HttpRequestMessage(HttpMethod.Post, "embeddings")
+        var call = new ModelCallContext(ModelBackend.Gateway, "embed", model, texts.Count);
+        var (response, elapsed) = await ModelHttp.SendTimedAsync(http, () => new HttpRequestMessage(HttpMethod.Post, "embeddings")
         {
             Content = JsonContent.Create(new { model, input = texts })
-        }, throttle, time, ct);
-        var body = await ModelHttp.ReadAsync<EmbedResponse>(response, ct);
+        }, throttle, time, ct, call, _recorder);
+        var body = await ModelHttp.ReadAsync<EmbedResponse>(response, call, _recorder, elapsed,
+            r => r.Usage is null ? null : new JudgeUsage(r.Usage.PromptTokens, null, null, null, null), ct);
 
         var vectors = body.Data?.Select(d => d.Embedding ?? []).ToList();
         if (vectors is null || vectors.Count != texts.Count)
@@ -50,7 +56,10 @@ public sealed class GatewayEmbeddingClient(
         return new(vectors, model, digest, dim);
     }
 
-    private sealed record EmbedResponse([property: JsonPropertyName("data")] List<Item>? Data);
+    private sealed record EmbedResponse(
+        [property: JsonPropertyName("data")] List<Item>? Data,
+        [property: JsonPropertyName("usage")] Usage? Usage);
+    private sealed record Usage([property: JsonPropertyName("prompt_tokens")] int? PromptTokens);
     private sealed record Item([property: JsonPropertyName("embedding")] float[]? Embedding);
 }
 
@@ -62,8 +71,11 @@ public sealed class GatewayEmbeddingClient(
 /// docs/MODEL_MATCHING_PLAN.md). Don't trim them without re-measuring.
 /// </summary>
 public sealed class GatewayCategoryJudge(
-    HttpClient http, IOptions<ModelOptions> options, GatewayThrottle throttle, TimeProvider time) : ICategoryJudge
+    HttpClient http, IOptions<ModelOptions> options, GatewayThrottle throttle, TimeProvider time,
+    IModelCallRecorder? recorder = null) : ICategoryJudge
 {
+    private readonly IModelCallRecorder _recorder = recorder ?? NullModelCallRecorder.Instance;
+
     private const string SystemPrompt =
         """
         You are checking a product-category assignment for a Portuguese grocery price-comparison catalog.
@@ -137,7 +149,8 @@ public sealed class GatewayCategoryJudge(
 
     public async Task<JudgeVerdict> JudgeAsync(CategoryJudgeItem item, CancellationToken ct = default)
     {
-        var response = await ModelHttp.SendAsync(http, () => new HttpRequestMessage(HttpMethod.Post, "chat/completions")
+        var call = new ModelCallContext(ModelBackend.Gateway, "category", options.Value.CategoryModel, 1);
+        var (response, elapsed) = await ModelHttp.SendTimedAsync(http, () => new HttpRequestMessage(HttpMethod.Post, "chat/completions")
         {
             Content = JsonContent.Create(new
             {
@@ -150,15 +163,17 @@ public sealed class GatewayCategoryJudge(
                     new { role = "user", content = $"Product: {Describe(item)}\nAnswer:" }
                 }
             })
-        }, throttle, time, ct);
-        var body = await ModelHttp.ReadAsync<ChatResponse>(response, ct);
+        }, throttle, time, ct, call, _recorder);
+        var body = await ModelHttp.ReadAsync<ChatResponse>(response, call, _recorder, elapsed, r => ChatUsage.ToUsage(r.Usage), ct);
         return VerdictParser.Parse(body.Choices?.FirstOrDefault()?.Message?.Content);
     }
 
     private static string Describe(CategoryJudgeItem i) =>
         $"{i.Name} | Brand: {i.Brand ?? "(none)"} | Store category: {i.StoreCategory ?? "(none)"} | Proposed: {i.SuggestedCategory}";
 
-    private sealed record ChatResponse([property: JsonPropertyName("choices")] List<Choice>? Choices);
+    private sealed record ChatResponse(
+        [property: JsonPropertyName("choices")] List<Choice>? Choices,
+        [property: JsonPropertyName("usage")] ChatUsage? Usage);
     private sealed record Choice([property: JsonPropertyName("message")] ChatMessage? Message);
     private sealed record ChatMessage([property: JsonPropertyName("content")] string? Content);
 }
@@ -168,8 +183,11 @@ public sealed class GatewayCategoryJudge(
 /// JSON-schema <c>response_format</c> (temperature 0). Several products go in one request; answers are matched back by index.
 /// </summary>
 public sealed class GatewayProductTranslator(
-    HttpClient http, IOptions<ModelOptions> options, GatewayThrottle throttle, TimeProvider time) : IProductTranslator
+    HttpClient http, IOptions<ModelOptions> options, GatewayThrottle throttle, TimeProvider time,
+    IModelCallRecorder? recorder = null) : IProductTranslator
 {
+    private readonly IModelCallRecorder _recorder = recorder ?? NullModelCallRecorder.Instance;
+
     public async Task<IReadOnlyList<TranslateResult>> TranslateAsync(
         IReadOnlyList<TranslateItem> items, CancellationToken ct = default)
     {
@@ -177,7 +195,8 @@ public sealed class GatewayProductTranslator(
         var prompt = string.Join("\n", items.Select((it, i) =>
             $"{i}: {it.Name} | Brand: {it.Brand ?? "(none)"} | Store category: {it.Category ?? "(none)"}"));
 
-        var response = await ModelHttp.SendAsync(http, () => new HttpRequestMessage(HttpMethod.Post, "chat/completions")
+        var call = new ModelCallContext(ModelBackend.Gateway, "translate", options.Value.TranslatorModel, items.Count);
+        var (response, elapsed) = await ModelHttp.SendTimedAsync(http, () => new HttpRequestMessage(HttpMethod.Post, "chat/completions")
         {
             Content = JsonContent.Create(new
             {
@@ -195,12 +214,24 @@ public sealed class GatewayProductTranslator(
                     new { role = "user", content = prompt }
                 }
             })
-        }, throttle, time, ct);
-        var body = await ModelHttp.ReadAsync<ChatResponse>(response, ct);
+        }, throttle, time, ct, call, _recorder);
+        var body = await ModelHttp.ReadAsync<ChatResponse>(response, call, _recorder, elapsed, r => ChatUsage.ToUsage(r.Usage), ct);
         return ProductTranslation.Parse(body.Choices?.FirstOrDefault()?.Message?.Content, items.Count);
     }
 
-    private sealed record ChatResponse([property: JsonPropertyName("choices")] List<Choice>? Choices);
+    private sealed record ChatResponse(
+        [property: JsonPropertyName("choices")] List<Choice>? Choices,
+        [property: JsonPropertyName("usage")] ChatUsage? Usage);
     private sealed record Choice([property: JsonPropertyName("message")] ChatMessage? Message);
     private sealed record ChatMessage([property: JsonPropertyName("content")] string? Content);
+}
+
+/// <summary>The OpenAI-style <c>usage</c> block of a gateway chat reply; both fields may be missing.</summary>
+internal sealed record ChatUsage(
+    [property: JsonPropertyName("prompt_tokens")] int? PromptTokens,
+    [property: JsonPropertyName("completion_tokens")] int? CompletionTokens)
+{
+    /// <summary>The gateway has no cost; CostUsd stays null (recorded as 0 for an Ok gateway call).</summary>
+    public static JudgeUsage? ToUsage(ChatUsage? u) =>
+        u is null ? null : new JudgeUsage(u.PromptTokens, u.CompletionTokens, null, null, null);
 }

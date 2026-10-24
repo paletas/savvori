@@ -16,14 +16,19 @@ public sealed class EmbeddingPingProbe(IEmbeddingClient embeddings) : IModelProb
 }
 
 /// <summary>OpenRouter probe: <c>GET api/v1/key</c> under the OpenRouter breaker.</summary>
-public sealed class OpenRouterKeyProbe(HttpClient http, ModelBreakers breakers, TimeProvider time) : IModelProbe
+public sealed class OpenRouterKeyProbe(
+    HttpClient http, ModelBreakers breakers, TimeProvider time, IModelCallRecorder? recorder = null) : IModelProbe
 {
+    private readonly IModelCallRecorder _recorder = recorder ?? NullModelCallRecorder.Instance;
+
     public ModelBackend Backend => ModelBackend.OpenRouter;
 
     public Task PingAsync(CancellationToken ct) =>
         BreakerGuard.RunAsync(breakers.For(ModelBackend.OpenRouter), async () =>
         {
-            (await ModelHttp.SendAsync(http, () => new HttpRequestMessage(HttpMethod.Get, "api/v1/key"), null, time, ct)).Dispose();
+            await ModelHttp.SendAndRecordAsync(
+                http, () => new HttpRequestMessage(HttpMethod.Get, "api/v1/key"), null, time, ct,
+                new ModelCallContext(ModelBackend.OpenRouter, "probe", "key", 0), _recorder);
             return true;
         });
 }

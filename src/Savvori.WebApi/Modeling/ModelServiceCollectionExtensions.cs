@@ -20,6 +20,7 @@ public static class ModelServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<ModelBreakers>();
         services.AddSingleton<ModelTelemetry>();
+        services.AddSingleton<IModelCallRecorder, ModelCallRecorder>();
         services.AddHostedService<ModelTelemetrySampler>();
 
         // RemoveAllResilienceHandlers is flagged experimental but is the only way to opt one client out of ConfigureHttpClientDefaults.
@@ -37,20 +38,23 @@ public static class ModelServiceCollectionExtensions
                 sp.GetRequiredService<IHttpClientFactory>().CreateClient(GatewayHttpClientName),
                 sp.GetRequiredService<IOptions<ModelOptions>>(),
                 sp.GetRequiredService<GatewayThrottle>(),
-                sp.GetRequiredService<TimeProvider>()),
+                sp.GetRequiredService<TimeProvider>(),
+                sp.GetRequiredService<IModelCallRecorder>()),
             sp.GetRequiredService<ModelBreakers>().For(ModelBackend.Gateway)));
         services.AddSingleton<IPairJudge>(sp => new BreakerPairJudge(
             new JevPairJudge(
                 sp.GetRequiredService<IHttpClientFactory>().CreateClient(OpenRouterHttpClientName),
                 sp.GetRequiredService<IOptions<ModelOptions>>(),
-                sp.GetRequiredService<TimeProvider>()),
+                sp.GetRequiredService<TimeProvider>(),
+                sp.GetRequiredService<IModelCallRecorder>()),
             sp.GetRequiredService<ModelBreakers>().For(ModelBackend.OpenRouter)));
         services.AddSingleton<ICategoryJudge>(sp => new BreakerCategoryJudge(
             new GatewayCategoryJudge(
                 sp.GetRequiredService<IHttpClientFactory>().CreateClient(GatewayHttpClientName),
                 sp.GetRequiredService<IOptions<ModelOptions>>(),
                 sp.GetRequiredService<GatewayThrottle>(),
-                sp.GetRequiredService<TimeProvider>()),
+                sp.GetRequiredService<TimeProvider>(),
+                sp.GetRequiredService<IModelCallRecorder>()),
             sp.GetRequiredService<ModelBreakers>().For(ModelBackend.Gateway)));
 
         services.AddSingleton<IProductTranslator>(sp => new BreakerProductTranslator(
@@ -58,7 +62,8 @@ public static class ModelServiceCollectionExtensions
                 sp.GetRequiredService<IHttpClientFactory>().CreateClient(GatewayHttpClientName),
                 sp.GetRequiredService<IOptions<ModelOptions>>(),
                 sp.GetRequiredService<GatewayThrottle>(),
-                sp.GetRequiredService<TimeProvider>()),
+                sp.GetRequiredService<TimeProvider>(),
+                sp.GetRequiredService<IModelCallRecorder>()),
             sp.GetRequiredService<ModelBreakers>().For(ModelBackend.Gateway)));
 
         services.AddSingleton<ThrottleTracker>();
@@ -66,7 +71,8 @@ public static class ModelServiceCollectionExtensions
         services.AddSingleton<IModelProbe>(sp => new OpenRouterKeyProbe(
             sp.GetRequiredService<IHttpClientFactory>().CreateClient(OpenRouterHttpClientName),
             sp.GetRequiredService<ModelBreakers>(),
-            sp.GetRequiredService<TimeProvider>()));
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<IModelCallRecorder>()));
 
         services.AddScoped<ModelJobQueue>();
         services.AddSingleton<CurrentModelState>();

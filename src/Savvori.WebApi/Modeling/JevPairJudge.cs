@@ -10,8 +10,11 @@ namespace Savvori.WebApi.Modeling;
 /// with a probability in 0..1; at or above <c>Matching:PairJudgeThreshold</c> counts as a yes. Jev never says "unclear".
 /// OpenRouter has no limiter, so there is no gateway throttle: a 429 surfaces as <see cref="ModelThrottledException"/>.
 /// </summary>
-public sealed class JevPairJudge(HttpClient http, IOptions<ModelOptions> options, TimeProvider time) : IPairJudge
+public sealed class JevPairJudge(
+    HttpClient http, IOptions<ModelOptions> options, TimeProvider time, IModelCallRecorder? recorder = null) : IPairJudge
 {
+    private readonly IModelCallRecorder _recorder = recorder ?? NullModelCallRecorder.Instance;
+
     internal const string Instructions = "Are listing A and listing B the same product (same brand, variety/flavour and pack size)?";
     internal const string TrueCriterion = "Same brand, same variety or flavour and the same pack size; only the store or the wording differs.";
     internal const string FalseCriterion = "A different brand, variety, flavour or pack size.";
@@ -33,11 +36,12 @@ public sealed class JevPairJudge(HttpClient http, IOptions<ModelOptions> options
                 }
             }
         };
-        var response = await ModelHttp.SendAsync(http, () => new HttpRequestMessage(HttpMethod.Post, "api/alpha/decisions")
+        var call = new ModelCallContext(ModelBackend.OpenRouter, "pair", o.PairJudgeModel, 1);
+        var (response, elapsed) = await ModelHttp.SendTimedAsync(http, () => new HttpRequestMessage(HttpMethod.Post, "api/alpha/decisions")
         {
             Content = JsonContent.Create(body)
-        }, null, time, ct);
-        var parsed = await ModelHttp.ReadAsync<DecisionResponse>(response, ct);
+        }, null, time, ct, call, _recorder);
+        var parsed = await ModelHttp.ReadAsync<DecisionResponse>(response, call, _recorder, elapsed, ToUsage, ct);
         return Map(parsed, o.Matching.PairJudgeThreshold);
     }
 
@@ -52,9 +56,11 @@ public sealed class JevPairJudge(HttpClient http, IOptions<ModelOptions> options
         if (r.Answers is not null && r.Answers.TryGetValue("same", out var same)) noul = same?.Noul;
         if (noul is not { } score || double.IsNaN(score) || score < 0 || score > 1)
             throw new ModelResponseException("Jev returned no usable 'same' score.");
-        var usage = new JudgeUsage(r.Usage?.InputTokens, r.Usage?.OutputTokens, r.Usage?.Cost, r.Model, r.Id);
-        return new PairJudgement(score >= threshold ? JudgeVerdict.Yes : JudgeVerdict.No, score, usage);
+        return new PairJudgement(score >= threshold ? JudgeVerdict.Yes : JudgeVerdict.No, score, ToUsage(r));
     }
+
+    private static JudgeUsage ToUsage(DecisionResponse r) =>
+        new(r.Usage?.InputTokens, r.Usage?.OutputTokens, r.Usage?.Cost, r.Model, r.Id);
 
     internal sealed record DecisionResponse(
         [property: JsonPropertyName("model")] string? Model,

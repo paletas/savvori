@@ -50,6 +50,7 @@ public sealed class ModelTestHost : IDisposable
         services.AddSingleton(Microsoft.Extensions.Options.Options.Create(Options));
         services.AddSingleton<ModelBreakers>();
         services.AddSingleton<ModelTelemetry>();
+        services.AddSingleton<IModelCallRecorder>(NullModelCallRecorder.Instance);
         services.AddSingleton<ThrottleTracker>();
         services.AddSingleton<IModelProbe>(sp => new EmbeddingPingProbe(sp.GetRequiredService<IEmbeddingClient>()));
         services.AddSingleton(Faults);
