@@ -1,6 +1,17 @@
 # Model-assisted matching and categorisation: plan
 
+> Historical note: everything from "Principles" down to the 2026-09 addenda was written when the model host was Ollama (`OllamaEmbeddingClient`, `OllamaPairJudge`, `/api/embed`, `/api/chat`). That code was removed on 2026-10-25; those sections are kept as the record of what was measured and why. The current design is the section below.
+
 Status: **approved. Phases 1, 2 and 3 implemented; Phase 4: taxonomy v2 approved and implemented (explicit admin apply/revert, not yet applied to your database); the classifier is implemented and ships in dry run.**
+
+## Current state (2026-10-25)
+
+- Backends and tasks: the FreeLLMAPI gateway serves embeddings (`bge-m3`), category predictions and search-alias translation (`mistral-small-3.1-24b` for category and translator); the cross-chain pair judge is Jev 1.13 (`typesafe/jev-1.13`) on OpenRouter (`POST api/alpha/decisions`), a yes when `noul >= 0.5`, and the score is stored on the candidate.
+- Breakers and probes: one circuit breaker per backend (gateway, openrouter); while one is open, the drain job only probes that backend and skips only the job types that run on it.
+- 429: deferred via `Retry-After` without spending an attempt or opening the breaker.
+- Spend and telemetry: every HTTP attempt is a `ModelCalls` row (tokens, cost, no bodies; 90-day prune); `savvori.model.*` metrics; `GET /api/admin/model/status` and Admin/Mapping show breakers and spend.
+- No fallback host: when a backend is down, jobs wait and the deterministic behaviour applies.
+- Evidence: the 2026-10 addenda "Gateway trials 2026-10", "Jev pair judge, score and dead-letter review", "breaker and probe per backend, Retry-After deferral" and "ModelCalls, spend and metrics" at the end of this file.
 
 ## Principles (from the brief)
 
@@ -99,7 +110,7 @@ Note on the embedding metadata: I'm putting the `Embedding` entity in Phase 2, n
 - New code lives in `Savvori.WebApi/Modeling/`. The entities go in `Savvori.Shared`.
 - Docs (`FUNCTIONAL_REQUIREMENTS.md`, `TECHNICAL_ARCHITECTURE.md`) are updated in each phase.
 
-## Phase 1 report
+## Phase 1 report (historical: Ollama removed 2026-10-25)
 
 Commit: `feat: model backend foundation (breaker, job queue, status) behind a feature flag`.
 
@@ -149,7 +160,7 @@ Commit: `feat: model backend foundation (breaker, job queue, status) behind a fe
 
 **Threshold caveat.** The defaults (0.6 minimum, top-8, 2% size tolerance) came from a small hand-labelled sample and must be re-checked on real review-queue results.
 
-## Phase 3 report
+## Phase 3 report (historical: Ollama removed 2026-10-25)
 
 **What it does.** `MatchingService` (nightly, or "Run matching now" on Admin > Match review) evaluates stored candidates in tiers. Tier A (EAN, exact brand+name+size+unit) is unchanged. Tier B: cosine >= 0.90 (both sizes known) or >= 0.95 (a size unknown) and the brand check passed: auto-accept. Tier C: from 0.80 / 0.85 up to the accept threshold, and confident pairs whose brand is unknown: a `Judge` job is queued; only an explicit judge "yes" accepts. A failed, timed-out or malformed judge call is "no decision": the candidate stays pending and the queue retries, and it is never recorded as a "no". Tier D: everything else from `ReviewMinCosine` (0.70) up, plus judge "no"/"unclear" answers and merges blocked by a safety rule, goes to the review queue. Lower pairs stay unqueued proposals.
 
@@ -171,7 +182,7 @@ Commit: `feat: model backend foundation (breaker, job queue, status) behind a fe
 
 **Threshold caveat.** All defaults (0.90 / 0.95 / 0.80 / 0.85 / 0.70) were tuned on a small hand-labelled sample and should be re-checked on review-queue results before switching off the dry run.
 
-## Phase 4 report
+## Phase 4 report (historical: Ollama removed 2026-10-25)
 
 **Taxonomy v2.** Proposed as a document only: `docs/TAXONOMY_V2.md` (12 aisles, 87 categories, Bio / sem lactose / sem glúten as tags, and a mapping from each of today's 32 assignable categories, marking which are 1:1 and which split and how). **Nothing has been migrated and no category was changed.** The migration steps (additive columns, `LegacyCategoryId` kept for reversal, dry-run report first) are described in the document and wait for your approval; the "points for you to decide" at its end need your answers first.
 
@@ -259,7 +270,7 @@ This keeps the brief's guarantee ("a dry run is used for the first run") by maki
 conservative than a dry run, instead of a switch someone can turn on. On the beta sample the category classifier was about
 28% wrong even at confidence 1.00, which is why it is never given the authority to assign on its own.
 
-## Addendum: raw store category on StoreProduct, and a category judge (2026-09-23)
+## Addendum: raw store category on StoreProduct, and a category judge (2026-09-23) (historical: Ollama removed 2026-10-25)
 
 **`StoreProduct.Category`.** The k-NN classifier only ever saw `"{brand} {name}"` as text, which produces
 confident-but-wrong suggestions when a product's name shares a word with an unrelated category (a rice cooker
@@ -329,7 +340,7 @@ prompt nudging a handful of unrelated borderline calls, not a regression in the 
 tuning trades a small number of items against each other rather than producing clean wins, so this is a
 reasonable stopping point for prompt-only tuning.
 
-## Addendum: multilingual search aliases (2026-09-23)
+## Addendum: multilingual search aliases (2026-09-23) (historical: Ollama removed 2026-10-25)
 
 Problem: search is substring-only over vendor names, so "rice" finds nothing when every vendor writes "arroz".
 
@@ -378,7 +389,7 @@ on beta and review a sample before relying on it.
 **Merges.** `MatchApplier` deletes the retired canonical `Product`, so its aliases cascade away; the survivor's
 aliases are unaffected. Undo recreates the product and the next scan regenerates its aliases.
 
-## Addendum: pair judge (matching) investigation, same day — no changes shipped
+## Addendum: pair judge (matching) investigation, same day — no changes shipped (historical: Ollama removed 2026-10-25)
 
 Tried to carry the category judge's win (few-shot prompting) over to `OllamaPairJudge`. Result: **no code change**,
 because nothing tested beat the existing bare 3-line prompt. Recorded here so this ground isn't retested blind.
@@ -464,6 +475,8 @@ for embeddings (3072-d vectors) and never use `auto:context-1m` as a judge (pair
   timeouts and 404 as breaker failures.
 - With free-tier models that return 429 for hours, use a capped fallback (Ollama first, gateway when the PC is off)
   to avoid burning attempts.
+
+Outcome (2026-10-25): the verdicts above (fallback for category and translator, no for pair) were superseded: the migration shipped embeddings, category and translator on the gateway with `mistral-small-3.1-24b`, and the pair judge on Jev at .5, with no Ollama fallback. See hub `trials/REPORT.md`.
 
 ## Addendum: Jev pair judge, score and dead-letter review (2026-10-24)
 

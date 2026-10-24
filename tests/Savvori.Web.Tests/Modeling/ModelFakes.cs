@@ -146,7 +146,7 @@ public sealed class FlakyCategoryJudge(ICategoryJudge inner, FaultPlan plan) : I
     }
 }
 
-/// <summary>HttpMessageHandler driven by a lambda, for testing the Ollama clients without a server.</summary>
+/// <summary>HttpMessageHandler driven by a lambda, for testing the gateway and Jev clients without a server.</summary>
 public sealed class StubHttpHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
 {
     public List<(HttpMethod Method, string Path, string Body)> Requests { get; } = [];
