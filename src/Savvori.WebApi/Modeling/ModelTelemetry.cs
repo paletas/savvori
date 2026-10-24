@@ -49,7 +49,8 @@ public sealed class ModelTelemetry : IDisposable
     // ---- Gauges (sampled every ~30s by ModelTelemetrySampler; see there) ----------------------------
 
     private volatile int _queuePending, _queueRunning, _queueDeadLetter;
-    private volatile int _breakerOpen; // 0 = closed, 1 = open or half-open
+    private volatile int _breakerOpenGateway; // 0 = closed, 1 = open or half-open
+    private volatile int _breakerOpenOpenRouter;
 
     public ModelTelemetry()
     {
@@ -92,8 +93,11 @@ public sealed class ModelTelemetry : IDisposable
             new Measurement<int>(_queueDeadLetter, new KeyValuePair<string, object?>("status", "dead-letter")),
         ], "jobs", "Model job queue depth by status (ModelJobs table), sampled every ~30s.");
 
-        _meter.CreateObservableGauge("savvori.model.breaker.open",
-            () => new Measurement<int>(_breakerOpen), "1 = circuit breaker open/half-open (model calls suspended), 0 = closed.");
+        _meter.CreateObservableGauge<int>("savvori.model.breaker.open", () =>
+        [
+            new Measurement<int>(_breakerOpenGateway, new KeyValuePair<string, object?>("backend", "gateway")),
+            new Measurement<int>(_breakerOpenOpenRouter, new KeyValuePair<string, object?>("backend", "openrouter")),
+        ], "1", "1 = circuit breaker open/half-open (that backend's model calls suspended), 0 = closed. Per backend.");
     }
 
     /// <summary>Called by ModelTelemetrySampler after each sample.</summary>
@@ -105,7 +109,11 @@ public sealed class ModelTelemetry : IDisposable
     }
 
     /// <summary>Called by ModelTelemetrySampler after each sample.</summary>
-    public void SetBreakerOpen(bool open) => _breakerOpen = open ? 1 : 0;
+    public void SetBreakerOpen(ModelBackend backend, bool open)
+    {
+        if (backend == ModelBackend.Gateway) _breakerOpenGateway = open ? 1 : 0;
+        else _breakerOpenOpenRouter = open ? 1 : 0;
+    }
 
     /// <summary>Starts the root span for one model pipeline run.</summary>
     public Activity? StartRunActivity(string jobName) =>

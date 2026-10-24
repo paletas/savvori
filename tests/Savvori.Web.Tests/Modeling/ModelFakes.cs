@@ -57,7 +57,7 @@ public sealed class FakeCategoryJudge(JudgeVerdict verdict = JudgeVerdict.Yes) :
         Task.FromResult(Verdict);
 }
 
-public enum FaultMode { None, Timeout, ServerError, BadResponse }
+public enum FaultMode { None, Timeout, ServerError, BadResponse, Throttled }
 
 /// <summary>
 /// Shared switchboard for the flaky wrappers: fail always, fail until a moment in (fake) time
@@ -69,6 +69,9 @@ public sealed class FaultPlan(TimeProvider time)
     /// <summary>When set, <see cref="Mode"/> only applies until this instant.</summary>
     public DateTimeOffset? DownUntil { get; set; }
     public TimeSpan Delay { get; set; }
+    /// <summary>Retry-After carried by the <see cref="FaultMode.Throttled"/> failure.</summary>
+    public TimeSpan ThrottleRetryAfter { get; set; } = TimeSpan.FromSeconds(30);
+    public ThrottleKind ThrottleKind { get; set; } = ThrottleKind.Routing;
     public int Calls { get; private set; }
 
     public void GoDown(FaultMode mode = FaultMode.ServerError, TimeSpan? forHowLong = null)
@@ -89,9 +92,19 @@ public sealed class FaultPlan(TimeProvider time)
         {
             FaultMode.Timeout => new ModelUnavailableException("simulated timeout"),
             FaultMode.ServerError => new ModelUnavailableException("simulated 503"),
+            FaultMode.Throttled => new ModelThrottledException(ThrottleRetryAfter, ThrottleKind, "throttled"),
             _ => new ModelResponseException("simulated malformed response")
         };
     }
+}
+
+/// <summary>Stands in for the OpenRouter probe: the same fault plan as the pair judge, under the same breaker.</summary>
+public sealed class FaultProbe(ModelBackend backend, FaultPlan plan, ModelCircuitBreaker breaker) : IModelProbe
+{
+    public ModelBackend Backend => backend;
+
+    public Task PingAsync(CancellationToken ct) =>
+        BreakerGuard.RunAsync(breaker, async () => { await plan.ApplyAsync(ct); return true; });
 }
 
 public sealed class FlakyEmbeddingClient(IEmbeddingClient inner, FaultPlan plan) : IEmbeddingClient

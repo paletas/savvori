@@ -4,9 +4,10 @@ namespace Savvori.WebApi.Modeling;
 /// <summary>
 /// Runs a model call under the circuit breaker: refuses while open (without counting that as a new failure),
 /// records transport failures and successes. A <see cref="ModelResponseException"/> proves the server is
-/// reachable, so it counts as a success for the breaker.
+/// reachable, so it counts as a success for the breaker. A <see cref="ModelThrottledException"/> leaves the
+/// breaker unchanged and frees a half-open probe slot.
 /// </summary>
-internal static class BreakerGuard
+public static class BreakerGuard
 {
     public static async Task<T> RunAsync<T>(ModelCircuitBreaker breaker, Func<Task<T>> call)
     {
@@ -26,6 +27,11 @@ internal static class BreakerGuard
         catch (ModelResponseException ex)
         {
             breaker.RecordReachableButBad(ex.Message);
+            throw;
+        }
+        catch (ModelThrottledException)
+        {
+            breaker.ReleaseProbe();
             throw;
         }
     }

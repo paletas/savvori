@@ -29,13 +29,14 @@ public interface IModelStatusService
 
 public sealed class ModelStatusService(
     SavvoriDbContext db,
-    ModelCircuitBreaker breaker,
+    ModelBreakers breakers,
     IStaleEmbeddingSource stale,
     IOptions<ModelOptions> options) : IModelStatusService
 {
     public async Task<ModelStatus> GetAsync(CancellationToken ct = default)
     {
-        var snap = breaker.Snapshot();
+        // Gateway only until the status reports a breaker per backend.
+        var snap = breakers.For(ModelBackend.Gateway).Snapshot();
 
         var pending = db.ModelJobs.Where(j =>
             j.Status == ModelJobStatus.Pending || j.Status == ModelJobStatus.Running);

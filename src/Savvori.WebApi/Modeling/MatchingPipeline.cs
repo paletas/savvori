@@ -30,7 +30,7 @@ public sealed record MatchingRunResult(
 /// call itself. In degraded mode (feature off or breaker not closed) it decides nothing at all.
 /// </summary>
 public sealed class MatchingService(
-    SavvoriDbContext db, ModelJobQueue queue, ModelCircuitBreaker breaker,
+    SavvoriDbContext db, ModelJobQueue queue, ModelBreakers breakers,
     CurrentModelState state, IOptions<ModelOptions> options)
 {
     public async Task<MatchingRunResult> RunAsync(CancellationToken ct = default)
@@ -39,7 +39,7 @@ public sealed class MatchingService(
         var o = opts.Matching;
         MatchingRunResult Skipped(string why) => new(why, 0, 0, 0, 0, 0);
         if (!opts.Enabled) return Skipped("Model features are disabled.");
-        if (!breaker.IsClosed) return Skipped("Model unavailable (degraded mode): nothing model-dependent is decided.");
+        if (!breakers.For(ModelBackend.Gateway).IsClosed) return Skipped("Model unavailable (degraded mode): nothing model-dependent is decided.");
 
         var info = state.Info;
         var eligible = await db.MatchCandidates

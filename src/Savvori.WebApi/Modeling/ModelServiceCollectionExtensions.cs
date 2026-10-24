@@ -18,7 +18,7 @@ public static class ModelServiceCollectionExtensions
     {
         services.Configure<ModelOptions>(configuration.GetSection(ModelOptions.SectionName));
         services.TryAddSingleton(TimeProvider.System);
-        services.AddSingleton<ModelCircuitBreaker>();
+        services.AddSingleton<ModelBreakers>();
         services.AddSingleton<ModelTelemetry>();
         services.AddHostedService<ModelTelemetrySampler>();
 
@@ -38,20 +38,20 @@ public static class ModelServiceCollectionExtensions
                 sp.GetRequiredService<IOptions<ModelOptions>>(),
                 sp.GetRequiredService<GatewayThrottle>(),
                 sp.GetRequiredService<TimeProvider>()),
-            sp.GetRequiredService<ModelCircuitBreaker>()));
+            sp.GetRequiredService<ModelBreakers>().For(ModelBackend.Gateway)));
         services.AddSingleton<IPairJudge>(sp => new BreakerPairJudge(
             new JevPairJudge(
                 sp.GetRequiredService<IHttpClientFactory>().CreateClient(OpenRouterHttpClientName),
                 sp.GetRequiredService<IOptions<ModelOptions>>(),
                 sp.GetRequiredService<TimeProvider>()),
-            sp.GetRequiredService<ModelCircuitBreaker>()));
+            sp.GetRequiredService<ModelBreakers>().For(ModelBackend.OpenRouter)));
         services.AddSingleton<ICategoryJudge>(sp => new BreakerCategoryJudge(
             new GatewayCategoryJudge(
                 sp.GetRequiredService<IHttpClientFactory>().CreateClient(GatewayHttpClientName),
                 sp.GetRequiredService<IOptions<ModelOptions>>(),
                 sp.GetRequiredService<GatewayThrottle>(),
                 sp.GetRequiredService<TimeProvider>()),
-            sp.GetRequiredService<ModelCircuitBreaker>()));
+            sp.GetRequiredService<ModelBreakers>().For(ModelBackend.Gateway)));
 
         services.AddSingleton<IProductTranslator>(sp => new BreakerProductTranslator(
             new GatewayProductTranslator(
@@ -59,7 +59,14 @@ public static class ModelServiceCollectionExtensions
                 sp.GetRequiredService<IOptions<ModelOptions>>(),
                 sp.GetRequiredService<GatewayThrottle>(),
                 sp.GetRequiredService<TimeProvider>()),
-            sp.GetRequiredService<ModelCircuitBreaker>()));
+            sp.GetRequiredService<ModelBreakers>().For(ModelBackend.Gateway)));
+
+        services.AddSingleton<ThrottleTracker>();
+        services.AddSingleton<IModelProbe>(sp => new EmbeddingPingProbe(sp.GetRequiredService<IEmbeddingClient>()));
+        services.AddSingleton<IModelProbe>(sp => new OpenRouterKeyProbe(
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient(OpenRouterHttpClientName),
+            sp.GetRequiredService<ModelBreakers>(),
+            sp.GetRequiredService<TimeProvider>()));
 
         services.AddScoped<ModelJobQueue>();
         services.AddSingleton<CurrentModelState>();

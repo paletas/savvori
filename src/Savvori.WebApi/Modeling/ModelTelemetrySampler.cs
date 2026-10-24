@@ -10,7 +10,7 @@ namespace Savvori.WebApi.Modeling;
 /// the queue depth needs a DbContext, and gauge callbacks must stay synchronous and cheap.
 /// </summary>
 public sealed class ModelTelemetrySampler(
-    IServiceScopeFactory scopes, ModelTelemetry telemetry, ModelCircuitBreaker breaker,
+    IServiceScopeFactory scopes, ModelTelemetry telemetry, ModelBreakers breakers,
     IOptions<ModelOptions> options, ILogger<ModelTelemetrySampler> logger) : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(30);
@@ -19,7 +19,7 @@ public sealed class ModelTelemetrySampler(
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            telemetry.SetBreakerOpen(!breaker.IsClosed);
+            foreach (var (b, br) in breakers.All) telemetry.SetBreakerOpen(b, !br.IsClosed);
 
             if (options.Value.Enabled)
             {

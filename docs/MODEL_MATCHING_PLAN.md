@@ -24,7 +24,7 @@ Status: **approved. Phases 1, 2 and 3 implemented; Phase 4: taxonomy v2 approved
 - `BaseUrl`, `EmbeddingModel="bge-m3"`, `JudgeModel="qwen2.5:7b-instruct"`
 - `ConnectTimeoutSeconds`, `RequestTimeoutSeconds`, `BatchSize`, `MaxConcurrency`
 - `Breaker:FailureThreshold`, `Breaker:CooldownSeconds`
-- `Queue:MaxAttempts`, `Queue:BaseDelaySeconds`, `Queue:MaxDelaySeconds`
+- `Queue:MaxAttempts`, `Queue:BaseDelaySeconds`, `Queue:MaxDelaySeconds`, `Queue:ThrottleFloorSeconds` (default 30, the floor under a 429's `Retry-After`)
 - Later phases add the matching and classifier thresholds, with the defaults from the brief.
 
 **Interfaces** (in `Savvori.WebApi/Modeling`):
@@ -33,7 +33,7 @@ Status: **approved. Phases 1, 2 and 3 implemented; Phase 4: taxonomy v2 approved
 - `OllamaEmbeddingClient` uses `/api/embed`. `OllamaPairJudge` uses `/api/chat` with temperature 0 and no JSON mode, and parses a one-word answer defensively (anything that isn't clearly yes or no is `Unclear`). The digest comes from `/api/tags` (the model's entry), cached for 10 minutes.
 - Both go through one typed `HttpClient` with a connect timeout (`SocketsHttpHandler.ConnectTimeout`) and a total timeout. They use no standard resilience handler: the retry lives in the queue, so there are no hidden retries and none are unbounded.
 
-**Circuit breaker** (`ModelCircuitBreaker`, singleton, hand-written and small, thread-safe):
+**Circuit breaker** (`ModelCircuitBreaker`; since the per-backend change there is one per backend in the `ModelBreakers` singleton, see the addendum below; hand-written and small, thread-safe):
 - States are Closed, Open and HalfOpen. N consecutive failures or timeouts open it.
 - While Open, no calls are made. After the cool-down, one probe (`PingAsync`) runs, and success closes it.
 - It takes an injected `TimeProvider` so tests can advance time.
@@ -468,3 +468,10 @@ for embeddings (3072-d vectors) and never use `auto:context-1m` as a judge (pair
 ## Addendum: Jev pair judge, score and dead-letter review (2026-10-24)
 
 The pair judge is now Jev (`typesafe/jev-1.13`) on OpenRouter, `POST api/alpha/decisions`, replacing the Ollama `/api/chat` judge (`OllamaClients.cs` is deleted). A "noul" question returns a probability in 0..1; at or above `Matching:PairJudgeThreshold` (default 0.5) is a yes, otherwise a no; Jev never answers "unclear". `IPairJudge.JudgeAsync` returns a `PairJudgement` (verdict, raw score, usage) and the raw score is stored in `MatchCandidates.JudgeScore` (migration `AddJudgeScore`). The review list returns it and can be sorted by it (`sort=score`). A judge job that dead-letters moves its pair to the review list with no verdict and no score (`Note` says the judge failed), instead of leaving it pending. `PairJudgement.Usage` (tokens, cost, resolved model, request id) is captured but not stored yet; it is the hook for the ModelCalls table.
+
+## Addendum: breaker and probe per backend, Retry-After deferral
+
+- One circuit breaker per backend (`ModelBreakers`: Gateway for Embed, Translate and the category judge; OpenRouter for the Jev pair judge and Judge jobs). An outage of one no longer stops the other. `MatchingService` and `CategoryClassifier` degrade on the Gateway breaker (they need stored gateway embeddings); the status endpoint still reports the Gateway breaker only.
+- One probe per backend, run by the drain job while that backend's breaker is open: Gateway `GET models` (through the shared throttle, so it counts toward the per-IP limit), OpenRouter `GET /api/v1/key`. The drain job claims only job types whose backend breaker is closed; a backend that was open at the start of a run is probed and not drained in that same run.
+- A 429 is a deferral, not a failure: the job goes back to Pending without spending an attempt and the breaker is untouched (a half-open probe slot is released via `ReleaseProbe`). Quota (`quota_exceeded`): wait `max(Retry-After, floor)`, up to 31 days, no jitter or progression. Routing and Proxy: `max(Retry-After, 30 s floor)` doubled per consecutive deferral of that job (in memory, `ThrottleTracker`), with up to 25% jitter, capped at `Queue:MaxDelaySeconds` (1 h), because the gateway's `retryAtMs` is only the soonest cooldown anywhere. A throttled backend stops for the rest of the run (its other claimed jobs are put back with the same wait); the other backend keeps draining.
+- Telemetry: `savvori.model.breaker.open` carries a `backend` tag (`gateway`, `openrouter`).

@@ -44,6 +44,8 @@ public sealed class ModelOptions
         public int MaxAttempts { get; set; } = 8;
         public int BaseDelaySeconds { get; set; } = 30;
         public int MaxDelaySeconds { get; set; } = 3600;
+        /// <summary>Shortest deferral after a 429, in seconds; Retry-After is a lower bound and this is the floor under it.</summary>
+        public int ThrottleFloorSeconds { get; set; } = 30;
         public int LeaseSeconds { get; set; } = 600;
         /// <summary>Upper bound on claim-process cycles per drain run, so one run cannot go on forever.</summary>
         public int MaxBatchesPerRun { get; set; } = 50;

@@ -57,7 +57,7 @@ public sealed class JudgeReviewTests : IDisposable
             cand.JudgeVerdict = JudgeVerdict.Yes; // garbage that must not survive
             cand.JudgeScore = 0.99;
         });
-        _h.Faults.GoDown(FaultMode.BadResponse);
+        _h.JudgeFaults.GoDown(FaultMode.BadResponse);
 
         await _h.DrainAsync(); // attempt 1
         Assert.Equal(CandidateStatus.PendingJudge, _h.Candidate(c).Status);
