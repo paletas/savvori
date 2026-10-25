@@ -52,23 +52,24 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
     {
         var seen = new HashSet<string>();
         var products = new List<ScrapedProduct>();
+        var outcomes = new List<ScrapeOutcome>();
 
         if (category is not null)
         {
-            await ScrapeCategory(category, seen, products, ct);
+            await ScrapeCategory(category, seen, products, outcomes, ct);
         }
         else
         {
             foreach (var cat in GroceryCategories)
             {
                 ct.ThrowIfCancellationRequested();
-                await ScrapeCategory(cat, seen, products, ct);
+                await ScrapeCategory(cat, seen, products, outcomes, ct);
                 await Task.Delay(800, ct);
             }
         }
 
         Logger.LogInformation("PingoDoce: scraped {Count} distinct products", products.Count);
-        return new ScrapeRunResult(products, Array.Empty<ScrapeOutcome>(), Array.Empty<string>());
+        return new ScrapeRunResult(products, outcomes, Array.Empty<string>());
     }
 
     public override async Task<IReadOnlyList<ScrapedStoreLocation>> ScrapeStoreLocationsAsync(
@@ -123,8 +124,17 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
         string categoryId,
         HashSet<string> seen,
         List<ScrapedProduct> products,
+        List<ScrapeOutcome> outcomes,
         CancellationToken ct)
     {
+        var outcome = new ScrapeOutcome
+        {
+            Kind = OutcomeKind.Category,
+            Key = categoryId,
+            Url = $"{SearchUrl}?cgid={Uri.EscapeDataString(categoryId)}&format=ajax&start=0&sz={PageSize}"
+        };
+        outcomes.Add(outcome);
+        var firstPage = true;
         var start = 0;
         int? total = null;
 
@@ -132,19 +142,20 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
         {
             // Use category browse (cgid=) with ajax format — server-renders product tiles
             var url = $"{SearchUrl}?cgid={Uri.EscapeDataString(categoryId)}&format=ajax&start={start}&sz={PageSize}";
-            IDocument document;
-
-            try
+            var document = await GetHtmlAsync(url, outcome, ct);
+            if (document is null)
             {
-                document = await GetHtmlAsync(url, ct);
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError(ex, "PingoDoce: failed to fetch category='{Category}' start={Start}", categoryId, start);
+                Logger.LogError("PingoDoce: failed to fetch category='{Category}' start={Start}: {Err}",
+                    categoryId, start, outcome.FirstError);
                 break;
             }
 
             var tiles = document.QuerySelectorAll(".product-tile-pd").ToList();
+            if (firstPage)
+            {
+                firstPage = false;
+                MarkFirstPage(outcome, tiles.Count, tiles.Count(t => ParseTile(t) is not null));
+            }
             if (tiles.Count == 0) break;
 
             foreach (var tile in tiles)
@@ -152,7 +163,10 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
                 var product = ParseTile(tile);
                 if (product is null) continue;
                 if (seen.Add(product.ExternalId))
+                {
                     products.Add(product);
+                    outcome.ProductsFound++;
+                }
             }
 
             if (total is null)

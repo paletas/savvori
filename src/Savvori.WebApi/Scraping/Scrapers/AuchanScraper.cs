@@ -40,16 +40,17 @@ public sealed partial class AuchanScraper : BaseHttpScraper
         var terms = category is not null ? [category] : GrocerySearchTerms;
         var seen = new HashSet<string>();
         var products = new List<ScrapedProduct>();
+        var outcomes = new List<ScrapeOutcome>();
 
         foreach (var term in terms)
         {
             ct.ThrowIfCancellationRequested();
-            await ScrapeSearch(term, seen, products, ct);
+            await ScrapeSearch(term, seen, products, outcomes, ct);
             await Task.Delay(800, ct);
         }
 
         Logger.LogInformation("Auchan: scraped {Count} distinct products", products.Count);
-        return new ScrapeRunResult(products, Array.Empty<ScrapeOutcome>(), Array.Empty<string>());
+        return new ScrapeRunResult(products, outcomes, Array.Empty<string>());
     }
 
     public override Task<IReadOnlyList<ScrapedStoreLocation>> ScrapeStoreLocationsAsync(
@@ -62,8 +63,16 @@ public sealed partial class AuchanScraper : BaseHttpScraper
         string query,
         HashSet<string> seen,
         List<ScrapedProduct> products,
+        List<ScrapeOutcome> outcomes,
         CancellationToken ct)
     {
+        var outcome = new ScrapeOutcome
+        {
+            Kind = OutcomeKind.Term,
+            Key = query,
+            Url = $"{SearchBase}?q={Uri.EscapeDataString(query)}&start=0"
+        };
+        outcomes.Add(outcome);
         var page = 0;
         int? total = null;
 
@@ -71,19 +80,17 @@ public sealed partial class AuchanScraper : BaseHttpScraper
         {
             // Auchan ignores ?page=N (always returns the first page); paging is via ?start=N
             var url = $"{SearchBase}?q={Uri.EscapeDataString(query)}&start={page * PageSize}";
-            IDocument document;
-
-            try
+            var document = await GetHtmlAsync(url, outcome, ct);
+            if (document is null)
             {
-                document = await GetHtmlAsync(url, ct);
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError(ex, "Auchan: failed to fetch query='{Query}' page={Page}", query, page);
+                Logger.LogError("Auchan: failed to fetch query='{Query}' page={Page}: {Err}",
+                    query, page, outcome.FirstError);
                 break;
             }
 
             var tiles = document.QuerySelectorAll(".product-tile").ToList();
+            if (page == 0)
+                MarkFirstPage(outcome, tiles.Count, tiles.Count(t => ParseTile(t) is not null));
             if (tiles.Count == 0) break;
 
             var added = 0;
@@ -94,6 +101,7 @@ public sealed partial class AuchanScraper : BaseHttpScraper
                 if (seen.Add(product.ExternalId))
                 {
                     products.Add(product);
+                    outcome.ProductsFound++;
                     added++;
                 }
             }

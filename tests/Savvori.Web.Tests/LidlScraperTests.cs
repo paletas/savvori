@@ -1,3 +1,4 @@
+using System.Net;
 using NSubstitute;
 using Savvori.WebApi.Scraping.Scrapers;
 using Savvori.Shared;
@@ -17,6 +18,56 @@ public class LidlScraperTests
         factory.CreateClient("lidl").Returns(new HttpClient(handler));
 
         return new LidlScraper(factory, Substitute.For<ILogger<LidlScraper>>());
+    }
+
+    private static LidlScraper CreateScraper(FakeHttpMessageHandler handler)
+    {
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient("lidl").Returns(new HttpClient(handler));
+        return new LidlScraper(factory, Substitute.For<ILogger<LidlScraper>>());
+    }
+
+    [Fact]
+    public async Task Lidl_410OnFirstPage_OutcomeFailed()
+    {
+        var json = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "lidl_search.json"));
+        var handler = new FakeHttpMessageHandler();
+        handler.SetDefaultResponse(json);
+        handler.SetupRoute("q=&offset=0", "gone", HttpStatusCode.Gone);
+
+        var result = await CreateScraper(handler).ScrapeProductsAsync(null, CancellationToken.None);
+
+        var o = result.Outcomes.First();
+        Assert.Equal(OutcomeKind.Term, o.Kind);
+        Assert.Equal("(empty)", o.Key);
+        Assert.Equal(OutcomeResult.Failed, o.Result);
+        Assert.True(o.StatusCounts.ContainsKey(410));
+    }
+
+    [Fact]
+    public async Task Lidl_HealthyFirstPage_OutcomeOk()
+    {
+        var result = await CreateScraper().ScrapeProductsAsync("leite", CancellationToken.None);
+
+        var o = Assert.Single(result.Outcomes);
+        Assert.Equal(OutcomeResult.Ok, o.Result);
+        Assert.True(o.TilesSeen > 0);
+    }
+
+    [Fact]
+    public async Task Lidl_NonFoodOnlyPage_IsNotMissingFields()
+    {
+        const string json = """
+            {"numFound":1,"items":[{"gridbox":{"data":{"category":"Non-Food","itemId":20000001,"fullTitle":"Martelo","price":{"price":9.99}}}}]}
+            """;
+        var handler = new FakeHttpMessageHandler();
+        handler.SetDefaultResponse(json);
+
+        var result = await CreateScraper(handler).ScrapeProductsAsync("martelo", CancellationToken.None);
+
+        Assert.Empty(result.Products);
+        var o = Assert.Single(result.Outcomes);
+        Assert.Equal(OutcomeResult.Ok, o.Result);
     }
 
     [Fact]

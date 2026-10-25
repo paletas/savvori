@@ -1,3 +1,4 @@
+using System.Net;
 using NSubstitute;
 using Savvori.WebApi.Scraping.Scrapers;
 using Savvori.Shared;
@@ -24,6 +25,35 @@ public class CeleiroScraperTests
         factory.CreateClient("celeiro").Returns(new HttpClient(handler));
 
         return new CeleiroScraper(factory, Substitute.For<ILogger<CeleiroScraper>>());
+    }
+
+    [Fact]
+    public async Task Celeiro_410OnFirstPage_OutcomeFailed()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.SetupRoute("alimentacao", "gone", HttpStatusCode.Gone);
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient("celeiro").Returns(new HttpClient(handler));
+        var scraper = new CeleiroScraper(factory, Substitute.For<ILogger<CeleiroScraper>>());
+
+        var result = await scraper.ScrapeProductsAsync("alimentacao", CancellationToken.None);
+
+        Assert.Empty(result.Products);
+        var o = Assert.Single(result.Outcomes);
+        Assert.Equal(OutcomeKind.Category, o.Kind);
+        Assert.Equal("alimentacao", o.Key);
+        Assert.Equal(OutcomeResult.Failed, o.Result);
+        Assert.True(o.StatusCounts.ContainsKey(410));
+    }
+
+    [Fact]
+    public async Task Celeiro_HealthyFirstPage_OutcomeOk()
+    {
+        var result = await CreateScraper().ScrapeProductsAsync("leite", CancellationToken.None);
+
+        var o = Assert.Single(result.Outcomes);
+        Assert.Equal(OutcomeResult.Ok, o.Result);
+        Assert.True(o.TilesSeen > 0);
     }
 
     [Fact]

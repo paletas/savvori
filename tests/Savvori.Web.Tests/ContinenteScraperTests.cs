@@ -32,6 +32,33 @@ public class ContinenteScraperTests
     }
 
     [Fact]
+    public async Task Continente_410OnFirstPage_OutcomeFailed()
+    {
+        var (scraper, handler) = CreateScraper();
+        handler.SetupRoute("start=0", "gone", HttpStatusCode.Gone);
+
+        var result = await scraper.ScrapeProductsAsync("frescos", CancellationToken.None);
+
+        Assert.Empty(result.Products);
+        var o = Assert.Single(result.Outcomes);
+        Assert.Equal(OutcomeKind.Category, o.Kind);
+        Assert.Equal(OutcomeResult.Failed, o.Result);
+        Assert.True(o.StatusCounts.ContainsKey(410));
+    }
+
+    [Fact]
+    public async Task Continente_HealthyFirstPage_OutcomeOk()
+    {
+        var (scraper, _) = CreateScraper();
+
+        var result = await scraper.ScrapeProductsAsync("frescos", CancellationToken.None);
+
+        var o = Assert.Single(result.Outcomes);
+        Assert.Equal(OutcomeResult.Ok, o.Result);
+        Assert.True(o.TilesSeen > 0);
+    }
+
+    [Fact]
     public async Task ScrapeProductsAsync_ParsesProductsFromFixture()
     {
         var (scraper, _) = CreateScraper();

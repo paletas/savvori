@@ -40,34 +40,51 @@ public sealed partial class LidlScraper : BaseHttpScraper
     {
         var seen = new HashSet<string>();
         var products = new List<ScrapedProduct>();
+        var outcomes = new List<ScrapeOutcome>();
         string[] queries = category is not null ? [category] : ["", .. GrocerySearchTerms];
 
         foreach (var query in queries)
         {
             ct.ThrowIfCancellationRequested();
-            await ScrapeQuery(query, seen, products, ct);
+            await ScrapeQuery(query, seen, products, outcomes, ct);
         }
 
         Logger.LogInformation("Lidl: scraped {Count} distinct food products", products.Count);
-        return new ScrapeRunResult(products, Array.Empty<ScrapeOutcome>(), Array.Empty<string>());
+        return new ScrapeRunResult(products, outcomes, Array.Empty<string>());
     }
 
     private async Task ScrapeQuery(
-        string query, HashSet<string> seen, List<ScrapedProduct> products, CancellationToken ct)
+        string query, HashSet<string> seen, List<ScrapedProduct> products,
+        List<ScrapeOutcome> outcomes, CancellationToken ct)
     {
+        var outcome = new ScrapeOutcome
+        {
+            Kind = OutcomeKind.Term,
+            Key = query.Length == 0 ? "(empty)" : query,
+            Url = SearchUrl(query, 0)
+        };
+        outcomes.Add(outcome);
         for (var offset = 0; offset < MaxOffset; offset += FetchSize)
         {
-            var url = $"{BaseUrl}/q/api/search?q={Uri.EscapeDataString(query)}&offset={offset}" +
-                      $"&fetchsize={FetchSize}&locale=pt_PT&assortment=PT&version=2.1.0";
+            var url = SearchUrl(query, offset);
 
             JsonDocument doc;
+            var body = await GetStringAsync(url, outcome, ct);
+            if (body is null)
+            {
+                Logger.LogError("Lidl: failed to fetch query='{Query}' offset={Offset}: {Err}",
+                    query, offset, outcome.FirstError);
+                return;
+            }
             try
             {
-                doc = JsonDocument.Parse(await GetStringAsync(url, ct));
+                doc = JsonDocument.Parse(body);
             }
-            catch (Exception ex)
+            catch (JsonException ex)
             {
-                Logger.LogError(ex, "Lidl: failed to fetch query='{Query}' offset={Offset}", query, offset);
+                if (outcome.Result == OutcomeResult.Ok) outcome.Result = OutcomeResult.Failed;
+                outcome.FirstError ??= ex.Message;
+                Logger.LogError(ex, "Lidl: invalid JSON for query='{Query}' offset={Offset}", query, offset);
                 return;
             }
 
@@ -75,13 +92,22 @@ public sealed partial class LidlScraper : BaseHttpScraper
             {
                 var root = doc.RootElement;
                 if (!root.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
+                {
+                    if (offset == 0) MarkFirstPage(outcome, 0, 0);
                     return;
+                }
+
+                if (offset == 0)
+                    MarkFirstPage(outcome, items.GetArrayLength(), items.EnumerateArray().Count(HasCoreFields));
 
                 foreach (var item in items.EnumerateArray())
                 {
                     var product = ParseItem(item);
                     if (product is not null && seen.Add(product.ExternalId))
+                    {
                         products.Add(product);
+                        outcome.ProductsFound++;
+                    }
                 }
 
                 var numFound = root.TryGetProperty("numFound", out var nf) && nf.TryGetInt32(out var n) ? n : 0;
@@ -96,6 +122,23 @@ public sealed partial class LidlScraper : BaseHttpScraper
         CancellationToken ct = default)
     {
         return Task.FromResult<IReadOnlyList<ScrapedStoreLocation>>([]);
+    }
+
+    private static string SearchUrl(string query, int offset)
+        => $"{BaseUrl}/q/api/search?q={Uri.EscapeDataString(query)}&offset={offset}" +
+           $"&fetchsize={FetchSize}&locale=pt_PT&assortment=PT&version=2.1.0";
+
+    /// <summary>True when the item carries name, price and id, regardless of its category.</summary>
+    private static bool HasCoreFields(JsonElement item)
+    {
+        if (!item.TryGetProperty("gridbox", out var gridbox) ||
+            !gridbox.TryGetProperty("data", out var data))
+            return false;
+        var id = data.TryGetProperty("itemId", out var idEl) ? idEl.ToString() : null;
+        var name = GetString(data, "fullTitle") ?? GetString(data, "title");
+        if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(name)) return false;
+        return data.TryGetProperty("price", out var priceEl) &&
+               priceEl.TryGetProperty("price", out var pv) && pv.TryGetDecimal(out var price) && price > 0;
     }
 
     private static ScrapedProduct? ParseItem(JsonElement item)

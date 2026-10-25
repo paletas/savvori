@@ -15,6 +15,12 @@ public sealed class FakeHttpMessageHandler : HttpMessageHandler
     public void SetupRoute(string urlContains, string html, HttpStatusCode status = HttpStatusCode.OK)
         => _routes[urlContains] = (status, html);
 
+    private readonly Dictionary<string, string> _redirects = new();
+
+    /// <summary>Makes responses for matching URLs look like they were served from <paramref name="finalUrl"/> (as after a followed redirect).</summary>
+    public void SetupRedirect(string urlContains, string finalUrl)
+        => _redirects[urlContains] = finalUrl;
+
     public void SetDefaultResponse(string html)
         => _defaultContent = html;
 
@@ -37,6 +43,10 @@ public sealed class FakeHttpMessageHandler : HttpMessageHandler
         {
             Content = new StringContent(content, System.Text.Encoding.UTF8, "text/html")
         };
+        var redirect = _redirects.Where(kv => url.Contains(kv.Key, StringComparison.OrdinalIgnoreCase))
+            .Select(kv => kv.Value).FirstOrDefault();
+        if (redirect != null)
+            response.RequestMessage = new HttpRequestMessage(HttpMethod.Get, redirect);
         return Task.FromResult(response);
     }
 }
