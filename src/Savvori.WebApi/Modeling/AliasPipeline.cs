@@ -62,7 +62,7 @@ public sealed class AliasScanner(SavvoriDbContext db, ModelJobQueue queue, IOpti
         var fullyManual = (await db.ProductSearchAliases.AsNoTracking()
                 .Where(a => a.Source == AliasInputs.ManualSource)
                 .GroupBy(a => a.ProductId).Select(g => new { g.Key, N = g.Count() }).ToListAsync(ct))
-            .Where(g => g.N >= OllamaProductTranslator.Languages.Length).Select(g => g.Key).ToHashSet();
+            .Where(g => g.N >= ProductTranslation.Languages.Length).Select(g => g.Key).ToHashSet();
 
         var todo = new List<(Guid, string)>();
         foreach (var p in products)
@@ -112,7 +112,7 @@ public sealed class TranslateJobHandler(
         {
             if (!products.TryGetValue(job.SubjectId, out var p)) continue;
             if (AliasInputs.Hash(p.Name, p.Brand, p.Category) != job.PayloadHash) continue;
-            if (OllamaProductTranslator.Languages.All(l => manual.Contains((p.Id, l)))) continue;
+            if (ProductTranslation.Languages.All(l => manual.Contains((p.Id, l)))) continue;
             if (work.All(w => w.Id != p.Id)) work.Add((p.Id, job.PayloadHash, new TranslateItem(p.Name, p.Brand, p.Category)));
         }
 
@@ -134,11 +134,11 @@ public sealed class TranslateJobHandler(
         var existing = await db.ProductSearchAliases.Where(a => chunkIds.Contains(a.ProductId))
             .ToDictionaryAsync(a => (a.ProductId, a.Language), ct);
         var now = time.GetUtcNow().UtcDateTime;
-        var model = options.Value.JudgeModel;
+        var model = options.Value.TranslatorModel;
 
         for (var i = 0; i < chunk.Length; i++)
         {
-            foreach (var lang in OllamaProductTranslator.Languages)
+            foreach (var lang in ProductTranslation.Languages)
             {
                 if (manual.Contains((chunk[i].Id, lang))) continue;
                 var keywords = AliasInputs.Clean(results[i].Keywords.GetValueOrDefault(lang));

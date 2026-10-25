@@ -45,7 +45,7 @@ public sealed record ClassifierRunResult(
 /// rule-based <see cref="CategoryMapper"/> stays the only path in degraded mode.
 /// </summary>
 public sealed class CategoryClassifier(
-    SavvoriDbContext db, EmbeddingIndex index, ModelCircuitBreaker breaker, IOptions<ModelOptions> options,
+    SavvoriDbContext db, EmbeddingIndex index, ModelBreakers breakers, IOptions<ModelOptions> options,
     TimeProvider time, ModelTelemetry telemetry)
 {
     private DateTime Now => time.GetUtcNow().UtcDateTime;
@@ -56,7 +56,7 @@ public sealed class CategoryClassifier(
         var o = opts.Categories;
         ClassifierRunResult Skipped(string why) => new(why, 0, 0, 0, 0, 0, 0, 0);
         if (!opts.Enabled) return Skipped("Model features are disabled.");
-        if (!breaker.IsClosed) return Skipped("Model unavailable (degraded mode): categories come from the rule-based mapper only.");
+        if (!breakers.For(ModelBackend.Gateway).IsClosed) return Skipped("Model unavailable (degraded mode): categories come from the rule-based mapper only.");
 
         var snapshot = await index.RefreshAsync(ct);
         if (snapshot.Count == 0 || snapshot.Identity is null) return Skipped("No embeddings yet.");

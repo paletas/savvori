@@ -30,7 +30,7 @@ public sealed record MatchingRunResult(
 /// call itself. In degraded mode (feature off or breaker not closed) it decides nothing at all.
 /// </summary>
 public sealed class MatchingService(
-    SavvoriDbContext db, ModelJobQueue queue, ModelCircuitBreaker breaker,
+    SavvoriDbContext db, ModelJobQueue queue, ModelBreakers breakers,
     CurrentModelState state, IOptions<ModelOptions> options)
 {
     public async Task<MatchingRunResult> RunAsync(CancellationToken ct = default)
@@ -39,7 +39,7 @@ public sealed class MatchingService(
         var o = opts.Matching;
         MatchingRunResult Skipped(string why) => new(why, 0, 0, 0, 0, 0);
         if (!opts.Enabled) return Skipped("Model features are disabled.");
-        if (!breaker.IsClosed) return Skipped("Model unavailable (degraded mode): nothing model-dependent is decided.");
+        if (!breakers.For(ModelBackend.Gateway).IsClosed) return Skipped("Model unavailable (degraded mode): nothing model-dependent is decided.");
 
         var info = state.Info;
         var eligible = await db.MatchCandidates
@@ -75,7 +75,7 @@ public sealed class MatchingService(
         }
         await db.SaveChangesAsync(ct);
 
-        var queued = await QueueJudgeJobsAsync(toJudge, opts.JudgeModel, ct);
+        var queued = await QueueJudgeJobsAsync(toJudge, opts.PairJudgeModel, ct);
         return new(null, eligible.Count, suggested, queued, review, left);
     }
 
@@ -124,12 +124,15 @@ public sealed class JudgeJobHandler(
             var b = await db.StoreProducts.Include(sp => sp.StoreChain).FirstOrDefaultAsync(sp => sp.Id == c.StoreProductBId, ct);
             if (a is null || b is null) return;
             var opts = options.Value;
-            var (ia, ib, hash) = JudgeInputs.Build(a, b, opts.JudgeModel);
+            var (ia, ib, hash) = JudgeInputs.Build(a, b, opts.PairJudgeModel);
             if (hash != job.PayloadHash) return; // the listings changed since queueing; the next matching run re-queues
 
-            var verdict = await judge.JudgeAsync(ia, ib, ct); // throws on failure: no decision, retried
+            var judgement = await judge.JudgeAsync(ia, ib, ct); // throws on failure: no decision, retried
+            // Batch 5: judgement.Usage goes to ModelCalls here
+            var verdict = judgement.Verdict;
             c.JudgeVerdict = verdict;
-            c.JudgeModel = opts.JudgeModel;
+            c.JudgeScore = judgement.Score;
+            c.JudgeModel = opts.PairJudgeModel;
 
             // Whatever the answer, a human decides: a "yes" is shown as a suggestion, "no" and "unclear" as a hint.
             c.Status = CandidateStatus.NeedsReview;

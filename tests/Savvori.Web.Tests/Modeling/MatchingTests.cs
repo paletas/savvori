@@ -237,7 +237,7 @@ public sealed class MatchingTests : IDisposable
         var (c, a, b) = JudgeCase();
         _h.Judge.Verdict = JudgeVerdict.Yes;
         await _h.RunMatchingAsync();
-        _h.Faults.GoDown(FaultMode.Timeout);
+        _h.JudgeFaults.GoDown(FaultMode.Timeout);
 
         await DrainAsync();
 
@@ -248,7 +248,7 @@ public sealed class MatchingTests : IDisposable
         Assert.All(_h.Query(db => db.ModelJobs.ToList()), j => Assert.Equal(ModelJobStatus.Pending, j.Status));
 
         // Model back: the job is retried and now decides.
-        _h.Faults.Recover();
+        _h.JudgeFaults.Recover();
         _h.Time.Advance(TimeSpan.FromMinutes(5));
         await DrainAsync(); // probe
         await DrainAsync();
@@ -261,7 +261,7 @@ public sealed class MatchingTests : IDisposable
     {
         var (c, _, _) = JudgeCase();
         await _h.RunMatchingAsync();
-        _h.Faults.GoDown(FaultMode.BadResponse);
+        _h.JudgeFaults.GoDown(FaultMode.BadResponse);
 
         await DrainAsync();
 

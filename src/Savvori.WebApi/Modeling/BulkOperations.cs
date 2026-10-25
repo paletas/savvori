@@ -235,6 +235,12 @@ public sealed class CategoryBulkService(
                         verdict = JudgeVerdict.Unclear;
                         unavailableNote = "Held back: category judge was unavailable.";
                     }
+                    catch (ModelThrottledException ex)
+                    {
+                        logger.LogWarning("Category judge throttled for '{Product}': {Error}", row.ProductName, ex.Message);
+                        verdict = JudgeVerdict.Unclear;
+                        unavailableNote = "Held back: category judge was unavailable.";
+                    }
                     catch (ModelResponseException ex)
                     {
                         logger.LogWarning("Category judge gave a bad response for '{Product}': {Error}", row.ProductName, ex.Message);

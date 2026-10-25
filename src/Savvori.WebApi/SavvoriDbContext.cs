@@ -20,6 +20,7 @@ public class SavvoriDbContext : DbContext
     public DbSet<StoreProduct> StoreProducts { get; set; } = default!;
     public DbSet<StoreProductPrice> StoreProductPrices { get; set; } = default!;
     public DbSet<ModelJob> ModelJobs { get; set; } = default!;
+    public DbSet<ModelCall> ModelCalls { get; set; } = default!;
     public DbSet<StoreProductEmbedding> StoreProductEmbeddings { get; set; } = default!;
     public DbSet<MatchCandidate> MatchCandidates { get; set; } = default!;
     public DbSet<MatchMerge> MatchMerges { get; set; } = default!;
@@ -172,6 +173,8 @@ public class SavvoriDbContext : DbContext
             .IsUnique()
             .HasFilter("\"Status\" IN (0, 1)");
         modelBuilder.Entity<ModelJob>().HasIndex(j => new { j.Status, j.NextAttemptAt });
+        // ModelCall: spend/metrics rows, pruned after 90 days; the index serves the prune and the today/30-day sums.
+        modelBuilder.Entity<ModelCall>().HasIndex(c => c.At);
         // StoreProductEmbedding: one per StoreProduct, removed with it
         modelBuilder.Entity<StoreProductEmbedding>().HasKey(e => e.StoreProductId);
         modelBuilder.Entity<StoreProductEmbedding>()

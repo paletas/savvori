@@ -15,7 +15,7 @@ namespace Savvori.WebApi.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.11");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
 
             modelBuilder.Entity("Savvori.Shared.BulkBatch", b =>
                 {
@@ -204,6 +204,9 @@ namespace Savvori.WebApi.Migrations
                     b.Property<string>("JudgeModel")
                         .HasColumnType("TEXT");
 
+                    b.Property<double?>("JudgeScore")
+                        .HasColumnType("REAL");
+
                     b.Property<int?>("JudgeVerdict")
                         .HasColumnType("INTEGER");
 
@@ -299,6 +302,55 @@ namespace Savvori.WebApi.Migrations
                     b.HasIndex("CandidateId");
 
                     b.ToTable("MatchMerges");
+                });
+
+            modelBuilder.Entity("Savvori.Shared.ModelCall", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("At")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Backend")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("CompletionTokens")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double?>("CostUsd")
+                        .HasColumnType("REAL");
+
+                    b.Property<int?>("HttpStatus")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Items")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("LatencyMs")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Model")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("PromptTokens")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Task")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("At");
+
+                    b.ToTable("ModelCalls");
                 });
 
             modelBuilder.Entity("Savvori.Shared.ModelJob", b =>

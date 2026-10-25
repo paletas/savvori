@@ -50,7 +50,6 @@
 @* ── Model backend status ───────────────────────────────────────────── *@
 @if (Model.ModelStatus is { } ms)
 {
-    var breakerClass = ms.BreakerState == "Closed" ? "badge-success" : "badge-error";
     <div class="card bg-base-100 shadow mb-6">
         <div class="card-body p-4">
             <div class="flex flex-wrap items-center gap-3">
@@ -62,10 +61,13 @@
                 }
                 else
                 {
-                    <span class="badge @breakerClass">Breaker: @ms.BreakerState</span>
-                    @if (ms.BreakerState != "Closed")
+                    @foreach (var b in ms.Breakers)
                     {
-                        <span class="text-sm text-warning">Degraded mode: model features paused@(ms.BreakerRetryAt is { } retry ? $", next probe after {retry:HH:mm:ss} UTC" : "").</span>
+                        <span class="badge @(b.State == "Closed" ? "badge-success" : "badge-error")">@b.Backend: @b.State</span>
+                    }
+                    @foreach (var b in ms.Breakers.Where(b => b.State != "Closed"))
+                    {
+                        <span class="text-sm text-warning">Degraded mode (@b.Backend): its model features paused@(b.RetryAt is { } retry ? $", next probe after {retry:HH:mm:ss} UTC" : "").</span>
                     }
                 }
             </div>
@@ -81,6 +83,35 @@
                     <div><div class="text-base-content/60">Last success</div><div class="font-semibold">@(ms.LastSuccessAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? "never")</div></div>
                     <div class="col-span-2"><div class="text-base-content/60">Last error</div><div class="font-semibold break-words">@(ms.LastError ?? "–")</div></div>
                 </div>
+                <div class="mt-3 text-sm text-base-content/60 break-words">Models: embed @ms.EmbeddingModel · category @ms.CategoryModel · translate @ms.TranslatorModel · pair @ms.PairJudgeModel</div>
+                <h3 class="font-semibold mt-4">Model spend</h3>
+                <div class="grid grid-cols-2 gap-3 mt-2 text-sm">
+                    <div><div class="text-base-content/60">Today</div><div class="font-semibold">$@ms.SpendTodayUsd.ToString("0.0000")</div></div>
+                    <div><div class="text-base-content/60">Last 30 days</div><div class="font-semibold">$@ms.Spend30dUsd.ToString("0.0000")</div></div>
+                </div>
+                @if (ms.SpendByTask.Count == 0)
+                {
+                    <p class="text-sm text-base-content/60 mt-2">No model calls recorded yet.</p>
+                }
+                else
+                {
+                    <div class="overflow-x-auto mt-2">
+                        <table class="table table-sm text-xs sm:text-sm">
+                            <thead><tr><th>Task</th><th class="text-right">Today</th><th class="text-right">30 days</th><th class="text-right">Calls</th></tr></thead>
+                            <tbody>
+                                @foreach (var t in ms.SpendByTask)
+                                {
+                                    <tr>
+                                        <td>@t.Task</td>
+                                        <td class="text-right">$@t.TodayUsd.ToString("0.0000")</td>
+                                        <td class="text-right">$@t.Last30dUsd.ToString("0.0000")</td>
+                                        <td class="text-right">@t.Calls30d.ToString("N0")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
             }
         </div>
     </div>

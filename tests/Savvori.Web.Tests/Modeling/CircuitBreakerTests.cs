@@ -144,4 +144,58 @@ public sealed class CircuitBreakerTests
 
         Assert.Equal(0, breaker.Snapshot().ConsecutiveFailures);
     }
+
+    [Fact]
+    public void ReleaseProbe_FromHalfOpen_ReopensAndAllowsImmediateProbe()
+    {
+        var b = NewBreaker();
+        for (var i = 0; i < 3; i++) b.RecordFailure("boom");
+        _time.Advance(TimeSpan.FromSeconds(60));
+        Assert.True(b.TryAcquire());
+        Assert.Equal(BreakerState.HalfOpen, b.Snapshot().State);
+
+        b.ReleaseProbe();
+
+        var snap = b.Snapshot();
+        Assert.Equal(BreakerState.Open, snap.State);
+        Assert.Equal(3, snap.ConsecutiveFailures);
+        Assert.Equal("boom", snap.LastError);
+        Assert.True(b.TryAcquire()); // no time advanced: the next caller may probe at once
+    }
+
+    [Fact]
+    public void ReleaseProbe_WhenClosed_IsNoOp()
+    {
+        var b = NewBreaker();
+        b.RecordFailure("x");
+
+        b.ReleaseProbe();
+
+        Assert.True(b.IsClosed);
+        Assert.Equal(1, b.Snapshot().ConsecutiveFailures);
+    }
+
+    private sealed class ThrowingEmbedder(Exception ex) : IEmbeddingClient
+    {
+        public Task<ModelInfo> GetModelInfoAsync(CancellationToken ct = default) => throw ex;
+        public Task<EmbeddingResult> EmbedAsync(IReadOnlyList<string> texts, CancellationToken ct = default) => throw ex;
+        public Task PingAsync(CancellationToken ct = default) => throw ex;
+    }
+
+    [Fact]
+    public async Task HalfOpenProbe_EndingInThrottled_ReleasesSlot_BreakerNotClosedNotFailed()
+    {
+        var breaker = NewBreaker();
+        for (var i = 0; i < 3; i++) breaker.RecordFailure("boom");
+        _time.Advance(TimeSpan.FromSeconds(60));
+        var client = new BreakerEmbeddingClient(
+            new ThrowingEmbedder(new ModelThrottledException(TimeSpan.FromSeconds(30), ThrottleKind.Routing, "throttled")), breaker);
+
+        await Assert.ThrowsAsync<ModelThrottledException>(() => client.PingAsync(TestContext.Current.CancellationToken));
+
+        var snap = breaker.Snapshot();
+        Assert.Equal(BreakerState.Open, snap.State);
+        Assert.Equal(3, snap.ConsecutiveFailures);
+        Assert.True(breaker.TryAcquire()); // the slot was freed, not held by the throttled probe
+    }
 }
