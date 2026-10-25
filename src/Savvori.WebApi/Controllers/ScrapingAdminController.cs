@@ -14,10 +14,12 @@ public class ScrapingAdminController : ControllerBase
 {
     private readonly SavvoriDbContext _db;
     private readonly ISchedulerFactory _schedulerFactory;
+    private readonly IConfiguration _config;
 
-    public ScrapingAdminController(SavvoriDbContext db, ISchedulerFactory schedulerFactory)
+    public ScrapingAdminController(SavvoriDbContext db, ISchedulerFactory schedulerFactory, IConfiguration config)
     {
         _db = db;
+        _config = config;
         _schedulerFactory = schedulerFactory;
     }
 
@@ -164,5 +166,37 @@ public class ScrapingAdminController : ControllerBase
         {
             return StatusCode(500, new { Error = ex.Message });
         }
+    }
+
+    /// <summary>
+    /// Reactivate inactive products last scraped within each chain's grace window (backfill after the
+    /// health-gated stale rule). Dry run unless apply=true.
+    /// POST /api/admin/scraping/reactivate-recent?apply=true
+    /// </summary>
+    [HttpPost("reactivate-recent")]
+    public async Task<IActionResult> ReactivateRecent([FromQuery] bool apply = false, CancellationToken ct = default)
+    {
+        var configured = _config.GetSection("Scraping:Chains").Get<List<ScrapingChainConfig>>() ?? [];
+        var chains = await _db.StoreChains.Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync(ct);
+
+        var results = new List<object>();
+        foreach (var chain in chains)
+        {
+            var graceDays = configured.FirstOrDefault(c => c.Slug == chain.Slug)?.EffectiveGraceDays
+                ?? new ScrapingChainConfig { Slug = chain.Slug }.EffectiveGraceDays;
+            var cutoff = DateTime.UtcNow.AddDays(-graceDays);
+            var products = await _db.StoreProducts
+                .Where(sp => sp.StoreChainId == chain.Id && !sp.IsActive && sp.LastScraped >= cutoff)
+                .ToListAsync(ct);
+
+            if (apply)
+            {
+                foreach (var sp in products) sp.IsActive = true;
+                await _db.SaveChangesAsync(ct);
+            }
+
+            results.Add(new { ChainSlug = chain.Slug, GraceDays = graceDays, Count = products.Count, Applied = apply });
+        }
+        return Ok(results);
     }
 }

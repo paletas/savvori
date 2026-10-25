@@ -70,7 +70,7 @@ public class ScraperResultProcessorTests : IAsyncLifetime
             UnitPrice = 2.38m, Unit = ProductUnit.L, SizeValue = 5m
         };
 
-        await _processor.ProcessProductsAsync("continente", [scraped], TestContext.Current.CancellationToken);
+        await _processor.ProcessProductsAsync("continente", [scraped], ct: TestContext.Current.CancellationToken);
 
         var sp = await _db.StoreProducts.SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal(0.5m, sp.SizeValue);
@@ -86,7 +86,7 @@ public class ScraperResultProcessorTests : IAsyncLifetime
             UnitPrice = 3.98m, Unit = ProductUnit.G, SizeValue = 500m
         };
 
-        await _processor.ProcessProductsAsync("continente", [scraped], TestContext.Current.CancellationToken);
+        await _processor.ProcessProductsAsync("continente", [scraped], ct: TestContext.Current.CancellationToken);
 
         var sp = await _db.StoreProducts.SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal(500m, sp.SizeValue);
@@ -99,7 +99,7 @@ public class ScraperResultProcessorTests : IAsyncLifetime
     {
         var scraped = MakeScraped(price: 0.86m) with { UnitPrice = 0.86m };
 
-        await _processor.ProcessProductsAsync("continente", [scraped], TestContext.Current.CancellationToken);
+        await _processor.ProcessProductsAsync("continente", [scraped], ct: TestContext.Current.CancellationToken);
 
         var sp = await _db.StoreProducts.SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal(1m, sp.SizeValue);
@@ -112,7 +112,7 @@ public class ScraperResultProcessorTests : IAsyncLifetime
     public async Task ProcessProductsAsync_CreatesStoreProduct_WhenNotExists()
     {
         var scraped = MakeScraped();
-        await _processor.ProcessProductsAsync("continente", [scraped], TestContext.Current.CancellationToken);
+        await _processor.ProcessProductsAsync("continente", [scraped], ct: TestContext.Current.CancellationToken);
 
         var storeProducts = await _db.StoreProducts.ToListAsync(TestContext.Current.CancellationToken);
         Assert.Single(storeProducts);
@@ -124,8 +124,8 @@ public class ScraperResultProcessorTests : IAsyncLifetime
     public async Task ProcessProductsAsync_DoesNotDuplicateStoreProduct_OnReScrape()
     {
         var externalId = "ext-001";
-        await _processor.ProcessProductsAsync("continente", [MakeScraped(externalId: externalId)], TestContext.Current.CancellationToken);
-        await _processor.ProcessProductsAsync("continente", [MakeScraped(externalId: externalId, price: 1.50m)], TestContext.Current.CancellationToken);
+        await _processor.ProcessProductsAsync("continente", [MakeScraped(externalId: externalId)], ct: TestContext.Current.CancellationToken);
+        await _processor.ProcessProductsAsync("continente", [MakeScraped(externalId: externalId, price: 1.50m)], ct: TestContext.Current.CancellationToken);
 
         var count = await _db.StoreProducts.CountAsync(TestContext.Current.CancellationToken);
         Assert.Equal(1, count);
@@ -135,7 +135,7 @@ public class ScraperResultProcessorTests : IAsyncLifetime
     public async Task ProcessProductsAsync_StoresRawStoreCategory_OnCreation()
     {
         var scraped = MakeScraped(category: "congelados");
-        await _processor.ProcessProductsAsync("continente", [scraped], TestContext.Current.CancellationToken);
+        await _processor.ProcessProductsAsync("continente", [scraped], ct: TestContext.Current.CancellationToken);
 
         var sp = await _db.StoreProducts.SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal("congelados", sp.Category);
@@ -146,9 +146,9 @@ public class ScraperResultProcessorTests : IAsyncLifetime
     {
         var externalId = "ext-cat-001";
         await _processor.ProcessProductsAsync(
-            "continente", [MakeScraped(externalId: externalId, category: "congelados")], TestContext.Current.CancellationToken);
+            "continente", [MakeScraped(externalId: externalId, category: "congelados")], ct: TestContext.Current.CancellationToken);
         await _processor.ProcessProductsAsync(
-            "continente", [MakeScraped(externalId: externalId, category: "gelados")], TestContext.Current.CancellationToken);
+            "continente", [MakeScraped(externalId: externalId, category: "gelados")], ct: TestContext.Current.CancellationToken);
 
         var sp = await _db.StoreProducts.SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal("gelados", sp.Category);
@@ -160,7 +160,7 @@ public class ScraperResultProcessorTests : IAsyncLifetime
     public async Task ProcessProductsAsync_CreatesCanonicalProduct_WhenNoMatch()
     {
         var scraped = MakeScraped();
-        await _processor.ProcessProductsAsync("continente", [scraped], TestContext.Current.CancellationToken);
+        await _processor.ProcessProductsAsync("continente", [scraped], ct: TestContext.Current.CancellationToken);
 
         var products = await _db.Products.ToListAsync(TestContext.Current.CancellationToken);
         Assert.Single(products);
@@ -171,10 +171,10 @@ public class ScraperResultProcessorTests : IAsyncLifetime
     public async Task ProcessProductsAsync_MatchesExistingProduct_ByNormalizedNameAndSize()
     {
         // First insertion creates the canonical product
-        await _processor.ProcessProductsAsync("continente", [MakeScraped()], TestContext.Current.CancellationToken);
+        await _processor.ProcessProductsAsync("continente", [MakeScraped()], ct: TestContext.Current.CancellationToken);
 
         // Second run with different externalId but same product data
-        await _processor.ProcessProductsAsync("continente", [MakeScraped(externalId: "ext-2")], TestContext.Current.CancellationToken);
+        await _processor.ProcessProductsAsync("continente", [MakeScraped(externalId: "ext-2")], ct: TestContext.Current.CancellationToken);
 
         var count = await _db.Products.CountAsync(TestContext.Current.CancellationToken);
         Assert.Equal(1, count); // no duplicate canonical product
@@ -197,7 +197,7 @@ public class ScraperResultProcessorTests : IAsyncLifetime
         await _db.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Process a scraped product with the same EAN
-        await _processor.ProcessProductsAsync("continente", [MakeScraped(ean: "5601234567890", externalId: "ean-match-ext")], TestContext.Current.CancellationToken);
+        await _processor.ProcessProductsAsync("continente", [MakeScraped(ean: "5601234567890", externalId: "ean-match-ext")], ct: TestContext.Current.CancellationToken);
 
         var sp = await _db.StoreProducts.FirstAsync(TestContext.Current.CancellationToken);
         Assert.Equal(productId, sp.CanonicalProductId);
@@ -207,7 +207,7 @@ public class ScraperResultProcessorTests : IAsyncLifetime
     [Fact]
     public async Task ProcessProductsAsync_SetsMatchStatus_AutoMatched_OnCreation()
     {
-        await _processor.ProcessProductsAsync("continente", [MakeScraped()], TestContext.Current.CancellationToken);
+        await _processor.ProcessProductsAsync("continente", [MakeScraped()], ct: TestContext.Current.CancellationToken);
 
         var sp = await _db.StoreProducts.FirstAsync(TestContext.Current.CancellationToken);
         Assert.Equal(MatchStatus.AutoMatched, sp.MatchStatus);
@@ -219,7 +219,7 @@ public class ScraperResultProcessorTests : IAsyncLifetime
     [Fact]
     public async Task ProcessProductsAsync_AssignsCategoryId_WhenCategoryMapped()
     {
-        await _processor.ProcessProductsAsync("continente", [MakeScraped(category: "leite")], TestContext.Current.CancellationToken);
+        await _processor.ProcessProductsAsync("continente", [MakeScraped(category: "leite")], ct: TestContext.Current.CancellationToken);
 
         var product = await _db.Products.FirstOrDefaultAsync(TestContext.Current.CancellationToken);
         Assert.NotNull(product);
@@ -246,7 +246,7 @@ public class ScraperResultProcessorTests : IAsyncLifetime
         });
         await _db.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        await _processor.ProcessProductsAsync("continente", [MakeScraped(category: "leite")], TestContext.Current.CancellationToken);
+        await _processor.ProcessProductsAsync("continente", [MakeScraped(category: "leite")], ct: TestContext.Current.CancellationToken);
 
         var product = await _db.Products.FindAsync([productId], TestContext.Current.CancellationToken);
         Assert.NotNull(product);
@@ -258,7 +258,7 @@ public class ScraperResultProcessorTests : IAsyncLifetime
     [Fact]
     public async Task ProcessProductsAsync_CreatesStoreProductPrice_AsLatest()
     {
-        await _processor.ProcessProductsAsync("continente", [MakeScraped(price: 1.09m)], TestContext.Current.CancellationToken);
+        await _processor.ProcessProductsAsync("continente", [MakeScraped(price: 1.09m)], ct: TestContext.Current.CancellationToken);
 
         var prices = await _db.StoreProductPrices.ToListAsync(TestContext.Current.CancellationToken);
         Assert.Single(prices);
@@ -270,8 +270,8 @@ public class ScraperResultProcessorTests : IAsyncLifetime
     public async Task ProcessProductsAsync_MarksOldPriceHistorical_OnReScrape()
     {
         var externalId = "ext-rescrape";
-        await _processor.ProcessProductsAsync("continente", [MakeScraped(externalId: externalId, price: 1.09m)], TestContext.Current.CancellationToken);
-        await _processor.ProcessProductsAsync("continente", [MakeScraped(externalId: externalId, price: 0.89m)], TestContext.Current.CancellationToken);
+        await _processor.ProcessProductsAsync("continente", [MakeScraped(externalId: externalId, price: 1.09m)], ct: TestContext.Current.CancellationToken);
+        await _processor.ProcessProductsAsync("continente", [MakeScraped(externalId: externalId, price: 0.89m)], ct: TestContext.Current.CancellationToken);
 
         var prices = await _db.StoreProductPrices.ToListAsync(TestContext.Current.CancellationToken);
         Assert.Equal(2, prices.Count);
@@ -289,10 +289,16 @@ public class ScraperResultProcessorTests : IAsyncLifetime
         await _processor.ProcessProductsAsync("continente", [
             MakeScraped(externalId: ext1),
             MakeScraped(externalId: ext2)
-        ], TestContext.Current.CancellationToken);
+        ], ct: TestContext.Current.CancellationToken);
+
+        var gone = await _db.StoreProducts.FirstAsync(sp => sp.ExternalId == ext2, TestContext.Current.CancellationToken);
+        gone.LastScraped = DateTime.UtcNow.AddDays(-5);
+        await _db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        _db.ChangeTracker.Clear();
 
         // Second scrape omits ext2
-        await _processor.ProcessProductsAsync("continente", [MakeScraped(externalId: ext1)], TestContext.Current.CancellationToken);
+        var policy = new StalePolicy(true, TimeSpan.FromDays(3), [DateTime.UtcNow.AddDays(-4), DateTime.UtcNow]);
+        await _processor.ProcessProductsAsync("continente", [MakeScraped(externalId: ext1)], policy, TestContext.Current.CancellationToken);
 
         var sp2 = await _db.StoreProducts.FirstAsync(sp => sp.ExternalId == ext2, TestContext.Current.CancellationToken);
         Assert.False(sp2.IsActive);
@@ -304,7 +310,7 @@ public class ScraperResultProcessorTests : IAsyncLifetime
     public async Task ProcessProductsAsync_ReMatchesByEAN_WhenEANAdded()
     {
         // First scrape: no EAN, creates canonical product A via name+size
-        await _processor.ProcessProductsAsync("continente", [MakeScraped(ean: null, externalId: "ext-ean-upgrade")], TestContext.Current.CancellationToken);
+        await _processor.ProcessProductsAsync("continente", [MakeScraped(ean: null, externalId: "ext-ean-upgrade")], ct: TestContext.Current.CancellationToken);
         var sp = await _db.StoreProducts.FirstAsync(s => s.ExternalId == "ext-ean-upgrade", TestContext.Current.CancellationToken);
         var originalCanonicalId = sp.CanonicalProductId;
 
@@ -322,7 +328,7 @@ public class ScraperResultProcessorTests : IAsyncLifetime
         await _db.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Second scrape: same externalId, but now has EAN
-        await _processor.ProcessProductsAsync("continente", [MakeScraped(ean: "5601234000001", externalId: "ext-ean-upgrade")], TestContext.Current.CancellationToken);
+        await _processor.ProcessProductsAsync("continente", [MakeScraped(ean: "5601234000001", externalId: "ext-ean-upgrade")], ct: TestContext.Current.CancellationToken);
 
         sp = await _db.StoreProducts.FirstAsync(s => s.ExternalId == "ext-ean-upgrade", TestContext.Current.CancellationToken);
         Assert.Equal(targetProduct.Id, sp.CanonicalProductId);
@@ -334,7 +340,7 @@ public class ScraperResultProcessorTests : IAsyncLifetime
     [Fact]
     public async Task ProcessProductsAsync_Returns0_WhenChainNotFound()
     {
-        var count = await _processor.ProcessProductsAsync("nonexistent-chain", [MakeScraped()], TestContext.Current.CancellationToken);
-        Assert.Equal(0, count);
+        var count = await _processor.ProcessProductsAsync("nonexistent-chain", [MakeScraped()], ct: TestContext.Current.CancellationToken);
+        Assert.Equal(0, count.Processed);
     }
 }

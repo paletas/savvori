@@ -265,4 +265,6 @@ public class ScrapingChainConfig
     public bool ScrapeLocations { get; set; } = true;
     public string? MorningCron { get; set; }
     public string? EveningCron { get; set; }
+    public int? GraceDays { get; set; }
+    public int EffectiveGraceDays => GraceDays ?? (Slug == "lidl" ? 14 : 3);
 }
