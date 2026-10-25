@@ -187,11 +187,11 @@ public record MatchingSummaryDto(
 
 public record ReviewListingDto(
     Guid Id, string Name, string? Brand, decimal? SizeValue, string Unit, string? ImageUrl, string? SourceUrl,
-    string Chain, Guid? CanonicalProductId, decimal? Price);
+    string Chain, Guid? CanonicalProductId, decimal? Price, bool IsActive = true, DateTime? LastScraped = null);
 
 public record ReviewItemDto(
     Guid Id, double Cosine, bool SizeKnown, string BrandCheck, string Status, string? Suggestion, string? Verdict, double? JudgeScore,
-    string? Note, string? Method, string? Warning, ReviewListingDto A, ReviewListingDto B);
+    string? Note, string? Method, string? Warning, ReviewListingDto A, ReviewListingDto B, bool Inactive = false);
 
 public record ReviewPageDto(int Page, int PageSize, int Total, int TotalPages, List<ReviewItemDto> Items);
 

@@ -5,7 +5,7 @@
 @{
     ViewData["Title"] = "Match review";
     Layout = "../_AdminLayout";
-    var filters = new[] { ("all", "To review"), ("applied", "Applied (undo)"), ("bulk", "Bulk apply") };
+    var filters = new[] { ("all", "To review"), ("inactive", "Inactive"), ("applied", "Applied (undo)"), ("bulk", "Bulk apply") };
 }
 
 <div class="mb-6">
@@ -190,6 +190,10 @@ else
                     {
                         <span class="badge badge-success">applied via @item.Method</span>
                     }
+                    @if (item.Inactive)
+                    {
+                        <span class="badge badge-warning" title="One of the two products is no longer sold; kept so a decision is not lost">Inactive</span>
+                    }
                 </div>
                 @if (item.Warning is not null || item.Note is not null)
                 {
@@ -209,6 +213,7 @@ else
                             }
                             <div class="min-w-0">
                                 <div class="text-xs uppercase text-base-content/60">@side.Chain</div>
+                                @if (!side.IsActive) { <div class="text-xs text-base-content/60">last seen @side.LastScraped?.ToString("yyyy-MM-dd")</div> }
                                 <div class="font-semibold break-words">
                                     @if (!string.IsNullOrEmpty(side.SourceUrl))
                                     {
