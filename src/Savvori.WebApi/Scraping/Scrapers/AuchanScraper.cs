@@ -34,7 +34,7 @@ public sealed partial class AuchanScraper : BaseHttpScraper
     {
     }
 
-    public override async Task<IReadOnlyList<ScrapedProduct>> ScrapeProductsAsync(
+    public override async Task<ScrapeRunResult> ScrapeProductsAsync(
         string? category = null, CancellationToken ct = default)
     {
         var terms = category is not null ? [category] : GrocerySearchTerms;
@@ -49,7 +49,7 @@ public sealed partial class AuchanScraper : BaseHttpScraper
         }
 
         Logger.LogInformation("Auchan: scraped {Count} distinct products", products.Count);
-        return products;
+        return new ScrapeRunResult(products, Array.Empty<ScrapeOutcome>(), Array.Empty<string>());
     }
 
     public override Task<IReadOnlyList<ScrapedStoreLocation>> ScrapeStoreLocationsAsync(

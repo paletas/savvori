@@ -34,7 +34,7 @@ public class PingoDoceScraperTests
     public async Task ScrapeProductsAsync_ParsesProductsFromFixture()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("leite", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("leite", CancellationToken.None)).Products;
 
         // 3 valid products (1 without GTM data is skipped)
         Assert.Equal(3, products.Count);
@@ -44,7 +44,7 @@ public class PingoDoceScraperTests
     public async Task ScrapeProductsAsync_ParsesNameAndBrand()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("leite", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("leite", CancellationToken.None)).Products;
 
         var leite = products.First(p => p.ExternalId == "48150");
         Assert.Equal("Leite UHT Meio Gordo", leite.Name);
@@ -55,7 +55,7 @@ public class PingoDoceScraperTests
     public async Task ScrapeProductsAsync_ParsesPrice()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("leite", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("leite", CancellationToken.None)).Products;
 
         var leite = products.First(p => p.ExternalId == "48150");
         Assert.Equal(0.86m, leite.Price);
@@ -65,7 +65,7 @@ public class PingoDoceScraperTests
     public async Task ScrapeProductsAsync_ParsesUnitPriceFromTileText()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("leite", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("leite", CancellationToken.None)).Products;
 
         var leite = products.First(p => p.ExternalId == "48150");
         Assert.Equal(0.86m, leite.UnitPrice);
@@ -77,7 +77,7 @@ public class PingoDoceScraperTests
     public async Task ScrapeProductsAsync_DetectsPromotion_WhenDiscountIsPositive()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("leite", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("leite", CancellationToken.None)).Products;
 
         var mimosa = products.First(p => p.ExternalId == "41043");
         Assert.True(mimosa.IsPromotion);
@@ -88,7 +88,7 @@ public class PingoDoceScraperTests
     public async Task ScrapeProductsAsync_NoPromotion_WhenDiscountIsZero()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("leite", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("leite", CancellationToken.None)).Products;
 
         var leite = products.First(p => p.ExternalId == "48150");
         Assert.False(leite.IsPromotion);
@@ -98,7 +98,7 @@ public class PingoDoceScraperTests
     public async Task ScrapeProductsAsync_ParsesCategory()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("leite", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("leite", CancellationToken.None)).Products;
 
         var leite = products.First(p => p.ExternalId == "48150");
         Assert.Equal("Leite Meio Gordo e Gordo", leite.Category);
@@ -108,7 +108,7 @@ public class PingoDoceScraperTests
     public async Task ScrapeProductsAsync_ParsesGramProduct()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("leite", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("leite", CancellationToken.None)).Products;
 
         var iogurte = products.First(p => p.ExternalId == "123456");
         Assert.Equal(ProductUnit.G, iogurte.Unit);
@@ -120,7 +120,7 @@ public class PingoDoceScraperTests
     public async Task ScrapeProductsAsync_SkipsProductsWithNoGtmInfo()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("leite", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("leite", CancellationToken.None)).Products;
 
         Assert.DoesNotContain(products, p => p.ExternalId == "9999");
     }
@@ -129,7 +129,7 @@ public class PingoDoceScraperTests
     public async Task ScrapeProductsAsync_DeduplicatesProducts()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("leite", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("leite", CancellationToken.None)).Products;
 
         var pids = products.Select(p => p.ExternalId).ToList();
         Assert.Equal(pids.Distinct().Count(), pids.Count);

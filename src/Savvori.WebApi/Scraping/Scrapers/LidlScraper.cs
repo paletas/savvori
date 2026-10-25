@@ -35,7 +35,7 @@ public sealed partial class LidlScraper : BaseHttpScraper
     {
     }
 
-    public override async Task<IReadOnlyList<ScrapedProduct>> ScrapeProductsAsync(
+    public override async Task<ScrapeRunResult> ScrapeProductsAsync(
         string? category = null, CancellationToken ct = default)
     {
         var seen = new HashSet<string>();
@@ -49,7 +49,7 @@ public sealed partial class LidlScraper : BaseHttpScraper
         }
 
         Logger.LogInformation("Lidl: scraped {Count} distinct food products", products.Count);
-        return products;
+        return new ScrapeRunResult(products, Array.Empty<ScrapeOutcome>(), Array.Empty<string>());
     }
 
     private async Task ScrapeQuery(

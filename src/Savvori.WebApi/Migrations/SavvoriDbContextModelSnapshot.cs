@@ -559,10 +559,28 @@ namespace Savvori.WebApi.Migrations
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<double?>("DropRatio")
+                        .HasColumnType("REAL");
+
                     b.Property<string>("ErrorMessage")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("HealthReason")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("PreviousHealthyCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ProductsReturned")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("ProductsScraped")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("StaleMarked")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("StaleMarkingSkipped")
                         .HasColumnType("INTEGER");
 
                     b.Property<DateTime>("StartedAt")
@@ -573,6 +591,9 @@ namespace Savvori.WebApi.Migrations
 
                     b.Property<Guid>("StoreChainId")
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("WarningCount")
+                        .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
 
@@ -605,6 +626,59 @@ namespace Savvori.WebApi.Migrations
                     b.HasIndex("ScrapingJobId");
 
                     b.ToTable("ScrapingLogs");
+                });
+
+            modelBuilder.Entity("Savvori.Shared.ScrapingRunOutcome", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FirstError")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PagesFetched")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ProductsFound")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Result")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Retries")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("ScrapingJobId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("StatusCounts")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("TilesSeen")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ScrapingJobId");
+
+                    b.HasIndex("Key", "ScrapingJobId");
+
+                    b.ToTable("ScrapingRunOutcomes");
                 });
 
             modelBuilder.Entity("Savvori.Shared.ShoppingList", b =>
@@ -1094,6 +1168,17 @@ namespace Savvori.WebApi.Migrations
                     b.Navigation("ScrapingJob");
                 });
 
+            modelBuilder.Entity("Savvori.Shared.ScrapingRunOutcome", b =>
+                {
+                    b.HasOne("Savvori.Shared.ScrapingJob", "ScrapingJob")
+                        .WithMany("Outcomes")
+                        .HasForeignKey("ScrapingJobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ScrapingJob");
+                });
+
             modelBuilder.Entity("Savvori.Shared.ShoppingListItem", b =>
                 {
                     b.HasOne("Savvori.Shared.Product", "Product")
@@ -1222,6 +1307,8 @@ namespace Savvori.WebApi.Migrations
             modelBuilder.Entity("Savvori.Shared.ScrapingJob", b =>
                 {
                     b.Navigation("Logs");
+
+                    b.Navigation("Outcomes");
                 });
 
             modelBuilder.Entity("Savvori.Shared.ShoppingList", b =>

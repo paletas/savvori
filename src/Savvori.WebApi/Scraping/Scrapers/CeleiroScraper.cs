@@ -30,7 +30,7 @@ public sealed partial class CeleiroScraper : BaseHttpScraper
     {
     }
 
-    public override async Task<IReadOnlyList<ScrapedProduct>> ScrapeProductsAsync(
+    public override async Task<ScrapeRunResult> ScrapeProductsAsync(
         string? category = null, CancellationToken ct = default)
     {
         var seen = new HashSet<string>();
@@ -52,7 +52,7 @@ public sealed partial class CeleiroScraper : BaseHttpScraper
         }
 
         Logger.LogInformation("Celeiro: scraped {Count} distinct products", products.Count);
-        return products;
+        return new ScrapeRunResult(products, Array.Empty<ScrapeOutcome>(), Array.Empty<string>());
     }
 
     public override Task<IReadOnlyList<ScrapedStoreLocation>> ScrapeStoreLocationsAsync(

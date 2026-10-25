@@ -86,7 +86,7 @@ public sealed class StoreScrapeJobTests : IAsyncLifetime
     {
         public string StoreChainSlug => "pingodoce";
 
-        public Task<IReadOnlyList<ScrapedProduct>> ScrapeProductsAsync(
+        public Task<ScrapeRunResult> ScrapeProductsAsync(
             string? category = null,
             CancellationToken ct = default)
         {
@@ -108,8 +108,10 @@ public sealed class StoreScrapeJobTests : IAsyncLifetime
                     SizeValue: 1m)
             ];
 
-            return Task.FromResult(products);
+            return Task.FromResult(new ScrapeRunResult(products, [], []));
         }
+
+        public Task<CanaryResult> ProbeAsync(CancellationToken ct = default) => Task.FromResult(new CanaryResult(true, "ok", 0));
 
         public Task<IReadOnlyList<ScrapedStoreLocation>> ScrapeStoreLocationsAsync(CancellationToken ct = default)
         {

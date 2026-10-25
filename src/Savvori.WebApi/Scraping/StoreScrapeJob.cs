@@ -111,7 +111,8 @@ public sealed class StoreScrapeJob : IJob
             // Product scraping phase
             using var prodActivity = _telemetry.StartPhaseActivity("products", slug);
             _logger.LogInformation("Scraping products for {Slug}", slug);
-            var products = await scraper.ScrapeProductsAsync(ct: context.CancellationToken);
+            var result = await scraper.ScrapeProductsAsync(ct: context.CancellationToken);
+            var products = result.Products;
             var count = await _processor.ProcessProductsAsync(slug, products, context.CancellationToken);
 
             prodActivity?.SetTag("scraping.result.count", count);

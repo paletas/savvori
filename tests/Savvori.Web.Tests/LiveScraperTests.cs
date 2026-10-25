@@ -34,7 +34,7 @@ public sealed class LiveScraperTests
         var factory = BuildFactory("auchan", "https://www.auchan.pt");
         var scraper = new AuchanScraper(factory, NullLogger<AuchanScraper>.Instance);
 
-        var products = await scraper.ScrapeProductsAsync("ovos", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("ovos", CancellationToken.None)).Products;
 
         Assert.NotEmpty(products);
         Assert.All(products, p =>
@@ -54,7 +54,7 @@ public sealed class LiveScraperTests
         var factory = BuildFactory("continente", "https://www.continente.pt");
         var scraper = new ContinenteScraper(factory, NullLogger<ContinenteScraper>.Instance);
 
-        var products = await scraper.ScrapeProductsAsync("laticinios-e-ovos/leite", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("laticinios-e-ovos/leite", CancellationToken.None)).Products;
 
         Assert.NotEmpty(products);
         Assert.All(products, p =>
@@ -74,7 +74,7 @@ public sealed class LiveScraperTests
         var factory = BuildFactory("pingodoce", "https://www.pingodoce.pt");
         var scraper = new PingoDoceScraper(factory, NullLogger<PingoDoceScraper>.Instance);
 
-        var products = await scraper.ScrapeProductsAsync("ec_leitebebidasvegetais_900", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("ec_leitebebidasvegetais_900", CancellationToken.None)).Products;
 
         Assert.NotEmpty(products);
         Assert.All(products, p =>
@@ -94,7 +94,7 @@ public sealed class LiveScraperTests
         var factory = BuildFactory("lidl", "https://www.lidl.pt");
         var scraper = new LidlScraper(factory, NullLogger<LidlScraper>.Instance);
 
-        var products = await scraper.ScrapeProductsAsync("leite", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("leite", CancellationToken.None)).Products;
 
         Assert.NotEmpty(products);
         Assert.All(products, p =>
@@ -114,7 +114,7 @@ public sealed class LiveScraperTests
         var factory = BuildFactory("celeiro", "https://www.celeiro.pt");
         var scraper = new CeleiroScraper(factory, NullLogger<CeleiroScraper>.Instance);
 
-        var products = await scraper.ScrapeProductsAsync("leite", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("leite", CancellationToken.None)).Products;
 
         Assert.NotEmpty(products);
         Assert.All(products, p =>

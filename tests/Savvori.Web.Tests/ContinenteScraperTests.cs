@@ -36,7 +36,7 @@ public class ContinenteScraperTests
     {
         var (scraper, _) = CreateScraper();
 
-        var products = await scraper.ScrapeProductsAsync("frescos", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("frescos", CancellationToken.None)).Products;
 
         // 3 valid products (1 with price=0 is skipped)
         Assert.Equal(3, products.Count);
@@ -46,7 +46,7 @@ public class ContinenteScraperTests
     public async Task ScrapeProductsAsync_ParsesNameAndBrand()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("frescos", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("frescos", CancellationToken.None)).Products;
 
         var leite = products.First(p => p.ExternalId == "8696608");
         Assert.Equal("Leite UHT Magro sem Lactose Continente", leite.Name);
@@ -57,7 +57,7 @@ public class ContinenteScraperTests
     public async Task ScrapeProductsAsync_ParsesPrice()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("frescos", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("frescos", CancellationToken.None)).Products;
 
         var leite = products.First(p => p.ExternalId == "8696608");
         Assert.Equal(1.08m, leite.Price);
@@ -67,7 +67,7 @@ public class ContinenteScraperTests
     public async Task ScrapeProductsAsync_ParsesUnitPrice()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("frescos", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("frescos", CancellationToken.None)).Products;
 
         var leite = products.First(p => p.ExternalId == "8696608");
         Assert.Equal(1.08m, leite.UnitPrice);
@@ -79,7 +79,7 @@ public class ContinenteScraperTests
     public async Task ScrapeProductsAsync_DetectsPromotion()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("frescos", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("frescos", CancellationToken.None)).Products;
 
         var mimosa = products.First(p => p.ExternalId == "2210947");
         Assert.True(mimosa.IsPromotion);
@@ -90,7 +90,7 @@ public class ContinenteScraperTests
     public async Task ScrapeProductsAsync_NonPromoProduct_IsNotPromotion()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("frescos", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("frescos", CancellationToken.None)).Products;
 
         var leite = products.First(p => p.ExternalId == "8696608");
         Assert.False(leite.IsPromotion);
@@ -100,7 +100,7 @@ public class ContinenteScraperTests
     public async Task ScrapeProductsAsync_ParsesCategory()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("frescos", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("frescos", CancellationToken.None)).Products;
 
         var leite = products.First(p => p.ExternalId == "8696608");
         Assert.Equal("Leite sem Lactose", leite.Category);
@@ -110,7 +110,7 @@ public class ContinenteScraperTests
     public async Task ScrapeProductsAsync_ParsesImageUrl()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("frescos", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("frescos", CancellationToken.None)).Products;
 
         var leite = products.First(p => p.ExternalId == "8696608");
         Assert.NotNull(leite.ImageUrl);
@@ -121,7 +121,7 @@ public class ContinenteScraperTests
     public async Task ScrapeProductsAsync_ParsesSourceUrl()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("frescos", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("frescos", CancellationToken.None)).Products;
 
         var leite = products.First(p => p.ExternalId == "8696608");
         Assert.NotNull(leite.SourceUrl);
@@ -132,7 +132,7 @@ public class ContinenteScraperTests
     public async Task ScrapeProductsAsync_SkipsProductsWithZeroPrice()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("frescos", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("frescos", CancellationToken.None)).Products;
 
         Assert.DoesNotContain(products, p => p.ExternalId == "9999999");
     }
@@ -141,7 +141,7 @@ public class ContinenteScraperTests
     public async Task ScrapeProductsAsync_ParsesGramProduct()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("frescos", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("frescos", CancellationToken.None)).Products;
 
         var queijo = products.First(p => p.ExternalId == "1234567");
         Assert.Equal(ProductUnit.G, queijo.Unit);

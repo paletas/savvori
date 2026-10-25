@@ -2,7 +2,11 @@ namespace Savvori.Shared;
 
 public enum ProductUnit { Unit, Kg, G, L, Ml, Pack }
 
-public enum ScrapingJobStatus { Pending, Running, Completed, Failed }
+public enum ScrapingJobStatus { Pending, Running, Completed, Failed, CompletedWithWarnings = 4, Degraded = 5 }
+
+public enum OutcomeKind { Category, Term, Discovery, Canary }
+
+public enum OutcomeResult { Ok, Failed, Redirected, Blocked, NoTiles, MissingFields, Recovered }
 
 public enum ScrapingLogLevel { Info, Warning, Error }
 

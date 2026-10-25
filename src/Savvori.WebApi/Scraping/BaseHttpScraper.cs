@@ -55,8 +55,11 @@ public abstract class BaseHttpScraper : IStoreScraper
 
     public abstract string StoreChainSlug { get; }
 
-    public abstract Task<IReadOnlyList<ScrapedProduct>> ScrapeProductsAsync(
+    public abstract Task<ScrapeRunResult> ScrapeProductsAsync(
         string? category = null, CancellationToken ct = default);
+
+    public virtual Task<CanaryResult> ProbeAsync(CancellationToken ct = default)
+        => Task.FromResult(new CanaryResult(true, "not implemented", 0));
 
     public abstract Task<IReadOnlyList<ScrapedStoreLocation>> ScrapeStoreLocationsAsync(
         CancellationToken ct = default);

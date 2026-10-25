@@ -29,7 +29,7 @@ public class CeleiroScraperTests
     [Fact]
     public async Task ScrapeProductsAsync_ParsesValidProductsOnce_AndStopsOnRepeatedPage()
     {
-        var products = await CreateScraper().ScrapeProductsAsync("leite", CancellationToken.None);
+        var products = (await CreateScraper().ScrapeProductsAsync("leite", CancellationToken.None)).Products;
 
         // 2 valid products; the SKU-less item is skipped; repeated pages add nothing
         Assert.Equal(2, products.Count);
@@ -38,7 +38,7 @@ public class CeleiroScraperTests
     [Fact]
     public async Task ScrapeProductsAsync_ParsesFields()
     {
-        var products = await CreateScraper().ScrapeProductsAsync("leite", CancellationToken.None);
+        var products = (await CreateScraper().ScrapeProductsAsync("leite", CancellationToken.None)).Products;
 
         var aveia = products.First(p => p.ExternalId == "130950");
         Assert.Equal("Bebida de Aveia Bio", aveia.Name);
@@ -53,7 +53,7 @@ public class CeleiroScraperTests
     [Fact]
     public async Task ScrapeProductsAsync_ParsesKgUnitPrice_AndPromotion()
     {
-        var products = await CreateScraper().ScrapeProductsAsync("amendoas", CancellationToken.None);
+        var products = (await CreateScraper().ScrapeProductsAsync("amendoas", CancellationToken.None)).Products;
 
         var amendoas = products.First(p => p.ExternalId == "16813");
         Assert.Equal(3.11m, amendoas.Price);

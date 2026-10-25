@@ -34,7 +34,7 @@ public class AuchanScraperTests
     public async Task ScrapeProductsAsync_ParsesProductsFromFixture()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("leite-e-laticínios", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("leite-e-laticínios", CancellationToken.None)).Products;
 
         // 4 valid products; 2 invalid (no pid, price=0) are skipped
         Assert.Equal(4, products.Count);
@@ -44,7 +44,7 @@ public class AuchanScraperTests
     public async Task ScrapeProductsAsync_ParsesNameAndBrand()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("leite-e-laticínios", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("leite-e-laticínios", CancellationToken.None)).Products;
 
         var leite = products.First(p => p.ExternalId == "3010403");
         Assert.Equal("LEITE AUCHAN UHT MEIO GORDO SLIM 1L", leite.Name);
@@ -55,7 +55,7 @@ public class AuchanScraperTests
     public async Task ScrapeProductsAsync_ParsesPrice()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("leite-e-laticínios", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("leite-e-laticínios", CancellationToken.None)).Products;
 
         var leite = products.First(p => p.ExternalId == "3010403");
         Assert.Equal(0.86m, leite.Price);
@@ -65,7 +65,7 @@ public class AuchanScraperTests
     public async Task ScrapeProductsAsync_ParsesUnitPrice()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("leite-e-laticínios", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("leite-e-laticínios", CancellationToken.None)).Products;
 
         var leite = products.First(p => p.ExternalId == "3010403");
         Assert.Equal(0.86m, leite.UnitPrice);
@@ -75,7 +75,7 @@ public class AuchanScraperTests
     public async Task ScrapeProductsAsync_DetectsPromotion_WhenDimension7IsYes()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("leite-e-laticínios", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("leite-e-laticínios", CancellationToken.None)).Products;
 
         var mimosa = products.First(p => p.ExternalId == "11885");
         Assert.True(mimosa.IsPromotion);
@@ -86,7 +86,7 @@ public class AuchanScraperTests
     {
         // The Mimosa product has auc-price__promotion element even if dimension7 weren't "Yes"
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("leite-e-laticínios", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("leite-e-laticínios", CancellationToken.None)).Products;
 
         var mimosa = products.First(p => p.ExternalId == "11885");
         Assert.True(mimosa.IsPromotion);
@@ -96,7 +96,7 @@ public class AuchanScraperTests
     public async Task ScrapeProductsAsync_NoPromotion_WhenDimension7IsNo()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("leite-e-laticínios", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("leite-e-laticínios", CancellationToken.None)).Products;
 
         var leite = products.First(p => p.ExternalId == "3010403");
         Assert.False(leite.IsPromotion);
@@ -106,7 +106,7 @@ public class AuchanScraperTests
     public async Task ScrapeProductsAsync_ExtractsCategory_AsLeafOfPath()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("leite-e-laticínios", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("leite-e-laticínios", CancellationToken.None)).Products;
 
         var leite = products.First(p => p.ExternalId == "3010403");
         Assert.Equal("leite-uht", leite.Category);
@@ -116,7 +116,7 @@ public class AuchanScraperTests
     public async Task ScrapeProductsAsync_ExtractsSourceUrl()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("leite-e-laticínios", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("leite-e-laticínios", CancellationToken.None)).Products;
 
         var leite = products.First(p => p.ExternalId == "3010403");
         Assert.NotNull(leite.SourceUrl);
@@ -127,7 +127,7 @@ public class AuchanScraperTests
     public async Task ScrapeProductsAsync_ExtractsSizeFromProductName()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("leite-e-laticínios", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("leite-e-laticínios", CancellationToken.None)).Products;
 
         var leite = products.First(p => p.ExternalId == "3010403");
         Assert.Equal(1m, leite.SizeValue);
@@ -138,7 +138,7 @@ public class AuchanScraperTests
     public async Task ScrapeProductsAsync_ExtractsMultipackSize()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("leite-e-laticínios", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("leite-e-laticínios", CancellationToken.None)).Products;
 
         var multipack = products.First(p => p.ExternalId == "3010402");
         Assert.Equal("LEITE AUCHAN UHT MEIO GORDO SLIM 6X1L", multipack.Name);
@@ -165,7 +165,7 @@ public class AuchanScraperTests
         var logger = Substitute.For<ILogger<AuchanScraper>>();
         var scraper = new AuchanScraper(factory, logger);
 
-        var products = await scraper.ScrapeProductsAsync("leite-e-laticínios", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("leite-e-laticínios", CancellationToken.None)).Products;
 
         var leiteCount = products.Count(p => p.ExternalId == "3010403");
         Assert.Equal(1, leiteCount);
@@ -175,7 +175,7 @@ public class AuchanScraperTests
     public async Task ScrapeProductsAsync_SkipsProductsWithNoPid()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("leite-e-laticínios", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("leite-e-laticínios", CancellationToken.None)).Products;
 
         Assert.DoesNotContain(products, p => p.Name == "PRODUTO SEM ID");
     }
@@ -184,7 +184,7 @@ public class AuchanScraperTests
     public async Task ScrapeProductsAsync_SkipsProductsWithZeroPrice()
     {
         var (scraper, _) = CreateScraper();
-        var products = await scraper.ScrapeProductsAsync("leite-e-laticínios", CancellationToken.None);
+        var products = (await scraper.ScrapeProductsAsync("leite-e-laticínios", CancellationToken.None)).Products;
 
         Assert.DoesNotContain(products, p => p.Name == "PRODUTO SEM PRECO");
     }
@@ -208,8 +208,8 @@ public class AuchanScraperTests
         factory.CreateClient("auchan").Returns(new HttpClient(handler));
         var scraper = new AuchanScraper(factory, Substitute.For<ILogger<AuchanScraper>>());
 
-        var products = await scraper.ScrapeProductsAsync("ovos", CancellationToken.None)
-            .WaitAsync(TimeSpan.FromSeconds(10));
+        var products = (await scraper.ScrapeProductsAsync("ovos", CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(10))).Products;
 
         Assert.Equal(4, products.Count);
         Assert.True(handler.RequestCount <= 3, $"Expected the loop to stop, made {handler.RequestCount} requests");

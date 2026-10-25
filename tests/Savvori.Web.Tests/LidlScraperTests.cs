@@ -22,7 +22,7 @@ public class LidlScraperTests
     [Fact]
     public async Task ScrapeProductsAsync_KeepsOnlyPricedFoodItems()
     {
-        var products = await CreateScraper().ScrapeProductsAsync(null, CancellationToken.None);
+        var products = (await CreateScraper().ScrapeProductsAsync(null, CancellationToken.None)).Products;
 
         // Non-food and price-less items are skipped
         Assert.Equal(2, products.Count);
@@ -33,7 +33,7 @@ public class LidlScraperTests
     [Fact]
     public async Task ScrapeProductsAsync_ParsesPromotedProduct()
     {
-        var products = await CreateScraper().ScrapeProductsAsync(null, CancellationToken.None);
+        var products = (await CreateScraper().ScrapeProductsAsync(null, CancellationToken.None)).Products;
 
         var leite = products.First(p => p.ExternalId == "11038070");
         Assert.Equal("Mimosa Leite Meio Gordo", leite.Name);
@@ -49,7 +49,7 @@ public class LidlScraperTests
     [Fact]
     public async Task ScrapeProductsAsync_ParsesBasePriceAsUnitPrice()
     {
-        var products = await CreateScraper().ScrapeProductsAsync(null, CancellationToken.None);
+        var products = (await CreateScraper().ScrapeProductsAsync(null, CancellationToken.None)).Products;
 
         var agros = products.First(p => p.ExternalId == "11500001");
         Assert.Equal(2.8m, agros.Price);

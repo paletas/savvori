@@ -51,7 +51,7 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
     {
     }
 
-    public override async Task<IReadOnlyList<ScrapedProduct>> ScrapeProductsAsync(
+    public override async Task<ScrapeRunResult> ScrapeProductsAsync(
         string? category = null, CancellationToken ct = default)
     {
         IReadOnlyList<string> categories;
@@ -77,7 +77,7 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
 
         Logger.LogInformation("Continente: scraped {Count} distinct products across {Cats} categories",
             products.Count, categories.Count);
-        return products;
+        return new ScrapeRunResult(products, Array.Empty<ScrapeOutcome>(), Array.Empty<string>());
     }
 
     public override async Task<IReadOnlyList<ScrapedStoreLocation>> ScrapeStoreLocationsAsync(
