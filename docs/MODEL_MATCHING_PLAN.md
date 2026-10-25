@@ -1,6 +1,17 @@
 # Model-assisted matching and categorisation: plan
 
+> Historical note: everything from "Principles" down to the 2026-09 addenda was written when the model host was Ollama (`OllamaEmbeddingClient`, `OllamaPairJudge`, `/api/embed`, `/api/chat`). That code was removed on 2026-10-25; those sections are kept as the record of what was measured and why. The current design is the section below.
+
 Status: **approved. Phases 1, 2 and 3 implemented; Phase 4: taxonomy v2 approved and implemented (explicit admin apply/revert, not yet applied to your database); the classifier is implemented and ships in dry run.**
+
+## Current state (2026-10-25)
+
+- Backends and tasks: the FreeLLMAPI gateway serves embeddings (`bge-m3`), category predictions and search-alias translation (`mistral-small-3.1-24b` for category and translator); the cross-chain pair judge is Jev 1.13 (`typesafe/jev-1.13`) on OpenRouter (`POST api/alpha/decisions`), a yes when `noul >= 0.5`, and the score is stored on the candidate.
+- Breakers and probes: one circuit breaker per backend (gateway, openrouter); while one is open, the drain job only probes that backend and skips only the job types that run on it.
+- 429: deferred via `Retry-After` without spending an attempt or opening the breaker.
+- Spend and telemetry: every HTTP attempt is a `ModelCalls` row (tokens, cost, no bodies; 90-day prune); `savvori.model.*` metrics; `GET /api/admin/model/status` and Admin/Mapping show breakers and spend.
+- No fallback host: when a backend is down, jobs wait and the deterministic behaviour applies.
+- Evidence: the 2026-10 addenda "Gateway trials 2026-10", "Jev pair judge, score and dead-letter review", "breaker and probe per backend, Retry-After deferral" and "ModelCalls, spend and metrics" at the end of this file.
 
 ## Principles (from the brief)
 
@@ -24,7 +35,7 @@ Status: **approved. Phases 1, 2 and 3 implemented; Phase 4: taxonomy v2 approved
 - `BaseUrl`, `EmbeddingModel="bge-m3"`, `JudgeModel="qwen2.5:7b-instruct"`
 - `ConnectTimeoutSeconds`, `RequestTimeoutSeconds`, `BatchSize`, `MaxConcurrency`
 - `Breaker:FailureThreshold`, `Breaker:CooldownSeconds`
-- `Queue:MaxAttempts`, `Queue:BaseDelaySeconds`, `Queue:MaxDelaySeconds`
+- `Queue:MaxAttempts`, `Queue:BaseDelaySeconds`, `Queue:MaxDelaySeconds`, `Queue:ThrottleFloorSeconds` (default 30, the floor under a 429's `Retry-After`)
 - Later phases add the matching and classifier thresholds, with the defaults from the brief.
 
 **Interfaces** (in `Savvori.WebApi/Modeling`):
@@ -33,7 +44,7 @@ Status: **approved. Phases 1, 2 and 3 implemented; Phase 4: taxonomy v2 approved
 - `OllamaEmbeddingClient` uses `/api/embed`. `OllamaPairJudge` uses `/api/chat` with temperature 0 and no JSON mode, and parses a one-word answer defensively (anything that isn't clearly yes or no is `Unclear`). The digest comes from `/api/tags` (the model's entry), cached for 10 minutes.
 - Both go through one typed `HttpClient` with a connect timeout (`SocketsHttpHandler.ConnectTimeout`) and a total timeout. They use no standard resilience handler: the retry lives in the queue, so there are no hidden retries and none are unbounded.
 
-**Circuit breaker** (`ModelCircuitBreaker`, singleton, hand-written and small, thread-safe):
+**Circuit breaker** (`ModelCircuitBreaker`; since the per-backend change there is one per backend in the `ModelBreakers` singleton, see the addendum below; hand-written and small, thread-safe):
 - States are Closed, Open and HalfOpen. N consecutive failures or timeouts open it.
 - While Open, no calls are made. After the cool-down, one probe (`PingAsync`) runs, and success closes it.
 - It takes an injected `TimeProvider` so tests can advance time.
@@ -99,7 +110,7 @@ Note on the embedding metadata: I'm putting the `Embedding` entity in Phase 2, n
 - New code lives in `Savvori.WebApi/Modeling/`. The entities go in `Savvori.Shared`.
 - Docs (`FUNCTIONAL_REQUIREMENTS.md`, `TECHNICAL_ARCHITECTURE.md`) are updated in each phase.
 
-## Phase 1 report
+## Phase 1 report (historical: Ollama removed 2026-10-25)
 
 Commit: `feat: model backend foundation (breaker, job queue, status) behind a feature flag`.
 
@@ -149,7 +160,7 @@ Commit: `feat: model backend foundation (breaker, job queue, status) behind a fe
 
 **Threshold caveat.** The defaults (0.6 minimum, top-8, 2% size tolerance) came from a small hand-labelled sample and must be re-checked on real review-queue results.
 
-## Phase 3 report
+## Phase 3 report (historical: Ollama removed 2026-10-25)
 
 **What it does.** `MatchingService` (nightly, or "Run matching now" on Admin > Match review) evaluates stored candidates in tiers. Tier A (EAN, exact brand+name+size+unit) is unchanged. Tier B: cosine >= 0.90 (both sizes known) or >= 0.95 (a size unknown) and the brand check passed: auto-accept. Tier C: from 0.80 / 0.85 up to the accept threshold, and confident pairs whose brand is unknown: a `Judge` job is queued; only an explicit judge "yes" accepts. A failed, timed-out or malformed judge call is "no decision": the candidate stays pending and the queue retries, and it is never recorded as a "no". Tier D: everything else from `ReviewMinCosine` (0.70) up, plus judge "no"/"unclear" answers and merges blocked by a safety rule, goes to the review queue. Lower pairs stay unqueued proposals.
 
@@ -171,7 +182,7 @@ Commit: `feat: model backend foundation (breaker, job queue, status) behind a fe
 
 **Threshold caveat.** All defaults (0.90 / 0.95 / 0.80 / 0.85 / 0.70) were tuned on a small hand-labelled sample and should be re-checked on review-queue results before switching off the dry run.
 
-## Phase 4 report
+## Phase 4 report (historical: Ollama removed 2026-10-25)
 
 **Taxonomy v2.** Proposed as a document only: `docs/TAXONOMY_V2.md` (12 aisles, 87 categories, Bio / sem lactose / sem glúten as tags, and a mapping from each of today's 32 assignable categories, marking which are 1:1 and which split and how). **Nothing has been migrated and no category was changed.** The migration steps (additive columns, `LegacyCategoryId` kept for reversal, dry-run report first) are described in the document and wait for your approval; the "points for you to decide" at its end need your answers first.
 
@@ -259,7 +270,7 @@ This keeps the brief's guarantee ("a dry run is used for the first run") by maki
 conservative than a dry run, instead of a switch someone can turn on. On the beta sample the category classifier was about
 28% wrong even at confidence 1.00, which is why it is never given the authority to assign on its own.
 
-## Addendum: raw store category on StoreProduct, and a category judge (2026-09-23)
+## Addendum: raw store category on StoreProduct, and a category judge (2026-09-23) (historical: Ollama removed 2026-10-25)
 
 **`StoreProduct.Category`.** The k-NN classifier only ever saw `"{brand} {name}"` as text, which produces
 confident-but-wrong suggestions when a product's name shares a word with an unrelated category (a rice cooker
@@ -329,7 +340,7 @@ prompt nudging a handful of unrelated borderline calls, not a regression in the 
 tuning trades a small number of items against each other rather than producing clean wins, so this is a
 reasonable stopping point for prompt-only tuning.
 
-## Addendum: multilingual search aliases (2026-09-23)
+## Addendum: multilingual search aliases (2026-09-23) (historical: Ollama removed 2026-10-25)
 
 Problem: search is substring-only over vendor names, so "rice" finds nothing when every vendor writes "arroz".
 
@@ -378,7 +389,7 @@ on beta and review a sample before relying on it.
 **Merges.** `MatchApplier` deletes the retired canonical `Product`, so its aliases cascade away; the survivor's
 aliases are unaffected. Undo recreates the product and the next scan regenerates its aliases.
 
-## Addendum: pair judge (matching) investigation, same day — no changes shipped
+## Addendum: pair judge (matching) investigation, same day — no changes shipped (historical: Ollama removed 2026-10-25)
 
 Tried to carry the category judge's win (few-shot prompting) over to `OllamaPairJudge`. Result: **no code change**,
 because nothing tested beat the existing bare 3-line prompt. Recorded here so this ground isn't retested blind.
@@ -420,3 +431,70 @@ the correct outcome for most of this band, not a bug.
 **Net conclusion:** the current `OllamaPairJudge` prompt, as shipped before this investigation, is already solid
 (75%/81%) and nothing tested here beat it. No code changes were made to matching as a result of this session.
 
+## Addendum: Gateway trials 2026-10 (FreeLLMAPI vs Ollama)
+
+Question: can the FreeLLMAPI gateway replace or back up Ollama for Savvori's four model uses? Embeddings: yes,
+replace. Pair judge: no. Category judge and translator: usable as a fallback, not a replacement. The trials ran on
+eval sets rebuilt from a read-only copy of the prod DB, with the Ollama `qwen2.5:7b-instruct` re-run on the same
+sets as the baseline. **No Savvori code or config changed**; this section only records the results.
+
+| use | verdict | model(s) | key numbers |
+|---|---|---|---|
+| embeddings | replace | `bge-m3` (also `@cf/baai/bge-m3`, `BAAI/bge-m3`) | median cosine ~1.0, min 0.9999, top-8 overlap 0.9971 (300 texts) and 0.9911 (all 20,883); 0 of 195 threshold-band crossings; backfill 20,883/20,883, 0x 429, 0x 502, ~1,859 texts/min |
+| pair judge | no | `llama-3.3-70b-fp8-fast` (best gateway candidate) | recall 0.733 vs Ollama 0.833; precision 0.880 vs 0.833; determinism 1.0000 |
+| category judge | fallback | `llama-3.3-70b-fp8-fast`, `mistral-small-3.1-24b` | known-bad rejected 0.967 vs Ollama 0.933; accepted yes 0.96 vs 0.86; baby/books yes 0.941 vs 0.765 (llama) |
+| translator | fallback | `mistral-small-3.1-24b` | strict json_schema 45/45, equal to Ollama; llama-3.3-70b 21/45; `auto:context-1m` 0/45 |
+
+Rules applied literally: Replace = at least the Ollama re-run on every metric, determinism >= 98%, and for
+embeddings the backfill finished. Fallback = within 5 percentage points, or for embeddings the equivalence trial
+passed. Otherwise no. Caveats: the embeddings 98% clause rests on indirect evidence (no repeat-run determinism
+trial was kept); category and translator determinism were not run, so neither is granted Replace. Never use `auto`
+for embeddings (3072-d vectors) and never use `auto:context-1m` as a judge (pair determinism 0.2396).
+
+**Saved eval sets** (seed 20261023; ids are GUID strings). The id lists live in the dev hub workspace
+`savvori-gateway-trials` under `trials/sets/`, not in this repo, and the prod export is not kept.
+
+- `embed300`: 300
+- `pair_pos`: 60
+- `pair_neg`: 36 (MatchCandidates Status 5, the only rejected status in prod)
+- `cat_known_bad`: 30
+- `cat_accepted`: 50
+- `cat_babybooks`: 17
+- `translator45`: 45
+
+**Trial 7 proposal (ops), nothing changed on the gateway or in Savvori:**
+
+- Give Savvori its own gateway key with caps, separate from the shared one (120 requests per window): about 60 per
+  window for embeddings (the backfill ran ~58 requests/min at batch 32) and a small separate cap of about 20 for chat.
+- Pin `bge-m3` for embeddings (or an explicit provider id), never `auto`. For chat pin an explicit model (e.g.
+  `mistral-small-3.1-24b` for the translator), never `auto:context-1m`.
+- Today the breaker opens after 5 failures with a 300 s cooldown and `Queue.MaxAttempts` is 8. 5xx and 404 map to
+  `ModelUnavailableException` (breaker failure); 429 maps to `ModelResponseException`, which resets the breaker
+  counter and spends one of the job's 8 attempts. `Retry-After` is not read anywhere.
+- Read `Retry-After` on 429 and defer the job without spending an attempt and without opening the breaker; keep 502,
+  timeouts and 404 as breaker failures.
+- With free-tier models that return 429 for hours, use a capped fallback (Ollama first, gateway when the PC is off)
+  to avoid burning attempts.
+
+Outcome (2026-10-25): the verdicts above (fallback for category and translator, no for pair) were superseded: the migration shipped embeddings, category and translator on the gateway with `mistral-small-3.1-24b`, and the pair judge on Jev at .5, with no Ollama fallback. See hub `trials/REPORT.md`.
+
+## Addendum: Jev pair judge, score and dead-letter review (2026-10-24)
+
+The pair judge is now Jev (`typesafe/jev-1.13`) on OpenRouter, `POST api/alpha/decisions`, replacing the Ollama `/api/chat` judge (`OllamaClients.cs` is deleted). A "noul" question returns a probability in 0..1; at or above `Matching:PairJudgeThreshold` (default 0.5) is a yes, otherwise a no; Jev never answers "unclear". `IPairJudge.JudgeAsync` returns a `PairJudgement` (verdict, raw score, usage) and the raw score is stored in `MatchCandidates.JudgeScore` (migration `AddJudgeScore`). The review list returns it and can be sorted by it (`sort=score`). A judge job that dead-letters moves its pair to the review list with no verdict and no score (`Note` says the judge failed), instead of leaving it pending. `PairJudgement.Usage` (tokens, cost, resolved model, request id) is captured but not stored yet; it is the hook for the ModelCalls table.
+
+## Addendum: breaker and probe per backend, Retry-After deferral
+
+- One circuit breaker per backend (`ModelBreakers`: Gateway for Embed, Translate and the category judge; OpenRouter for the Jev pair judge and Judge jobs). An outage of one no longer stops the other. `MatchingService` and `CategoryClassifier` degrade on the Gateway breaker (they need stored gateway embeddings); the status endpoint still reports the Gateway breaker only.
+- One probe per backend, run by the drain job while that backend's breaker is open: Gateway `GET models` (through the shared throttle, so it counts toward the per-IP limit), OpenRouter `GET /api/v1/key`. The drain job claims only job types whose backend breaker is closed; a backend that was open at the start of a run is probed and not drained in that same run.
+- A 429 is a deferral, not a failure: the job goes back to Pending without spending an attempt and the breaker is untouched (a half-open probe slot is released via `ReleaseProbe`). Quota (`quota_exceeded`): wait `max(Retry-After, floor)`, up to 31 days, no jitter or progression. Routing and Proxy: `max(Retry-After, 30 s floor)` doubled per consecutive deferral of that job (in memory, `ThrottleTracker`), with up to 25% jitter, capped at `Queue:MaxDelaySeconds` (1 h), because the gateway's `retryAtMs` is only the soonest cooldown anywhere. A throttled backend stops for the rest of the run (its other claimed jobs are put back with the same wait); the other backend keeps draining.
+- Telemetry: `savvori.model.breaker.open` carries a `backend` tag (`gateway`, `openrouter`).
+
+## Addendum: ModelCalls, spend and metrics
+
+- Table `ModelCalls` (migration `AddModelCalls`): one row per model HTTP attempt (a proxy-429 retry written as its own `Throttled` row, then the final result). Columns: `Id`, `At` (UTC), `Backend` (`gateway`|`openrouter`), `Task` (`embed`|`category`|`translate`|`pair`|`probe`), `Model` (the configured model, replaced by the resolved id when the reply carries one), `Status` (`Ok`|`Throttled`|`Unavailable`|`Error`), `HttpStatus`, `LatencyMs`, `Items` (embed: texts in the batch; translate: products; chat and pair: 1; probe: 0), `PromptTokens`, `CompletionTokens`, `CostUsd`. No request or response body is ever stored. The index on `At` serves the prune and the sums.
+- Where the numbers come from: Jev's reply `usage.input_tokens`, `usage.output_tokens` and `usage.cost` (USD per request) and its resolved `model`; gateway chat replies `usage.prompt_tokens` / `completion_tokens`, embeddings `usage.prompt_tokens`. The gateway has no cost, so an Ok gateway call is recorded with cost 0. Status mapping: 2xx with a parsed body = Ok; 429 = Throttled; transport error, timeout, 5xx, 404 or a cut-off body = Unavailable; other 4xx, malformed JSON or an empty body = Error.
+- `IModelCallRecorder` (singleton, writes through a fresh scope per row) never throws into the call: a failed write is logged at Warning and swallowed. Metrics are emitted before the write, so they do not depend on the database. Clients get a `ModelCallContext` (backend, task, model, items) and pass it to `ModelHttp`.
+- Prune: rows older than 90 days are deleted at the start of the queue drain, at most once per 24 hours.
+- Instruments (meter `Savvori.Model`, tags `backend`, `task`, `model`, `status` unless noted): `savvori.model.calls`, `savvori.model.call.duration` (ms), `savvori.model.tokens` (extra tag `kind` = `prompt`|`completion`), `savvori.model.cost` (USD, only when above zero), `savvori.model.throttled` (429s), and `savvori.model.deferred` (tags `backend`, `kind` = `quota`|`routing`|`proxy`; once per deferred job set in the drain).
+- Status (`GET /api/admin/model/status`): `Breakers[]` (backend, state, failures, retry time, last error; the flat `BreakerState`... fields remain and describe the Gateway breaker), `CategoryModel`, `PairJudgeModel`, `TranslatorModel` (replacing `JudgeModel`), `EmbeddingModel`, `SpendTodayUsd`, `Spend30dUsd` and `SpendByTask[]` (task, today, 30 days, calls over 30 days; every row counts, probes and failed attempts included).
+- Admin card (`Admin/Mapping`): one breaker badge per backend, a line with the four task models, and a "Model spend" block with today / last 30 days and a per-task table.

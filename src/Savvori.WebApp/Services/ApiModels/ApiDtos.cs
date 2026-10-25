@@ -130,7 +130,16 @@ public record ModelStatusDto(
     int EmbeddedProducts,
     int Candidates,
     string EmbeddingModel,
-    string JudgeModel);
+    string CategoryModel,
+    string PairJudgeModel,
+    string TranslatorModel,
+    List<BreakerStatusDto> Breakers,
+    decimal SpendTodayUsd,
+    decimal Spend30dUsd,
+    List<TaskSpendDto> SpendByTask);
+
+public record BreakerStatusDto(string Backend, string State, int ConsecutiveFailures, DateTime? RetryAt, string? LastError);
+public record TaskSpendDto(string Task, decimal TodayUsd, decimal Last30dUsd, int Calls30d);
 
 public record MatchStatusCountDto(string Status, int Count);
 public record MatchMethodCountDto(string Method, int Count);
@@ -181,7 +190,7 @@ public record ReviewListingDto(
     string Chain, Guid? CanonicalProductId, decimal? Price);
 
 public record ReviewItemDto(
-    Guid Id, double Cosine, bool SizeKnown, string BrandCheck, string Status, string? Suggestion, string? Verdict,
+    Guid Id, double Cosine, bool SizeKnown, string BrandCheck, string Status, string? Suggestion, string? Verdict, double? JudgeScore,
     string? Note, string? Method, string? Warning, ReviewListingDto A, ReviewListingDto B);
 
 public record ReviewPageDto(int Page, int PageSize, int Total, int TotalPages, List<ReviewItemDto> Items);

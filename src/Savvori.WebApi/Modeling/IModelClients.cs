@@ -13,6 +13,19 @@ public sealed class ModelUnavailableException(string message, Exception? inner =
 public sealed class ModelResponseException(string message, Exception? inner = null)
     : Exception(message, inner);
 
+public enum ThrottleKind { Proxy, Routing, Quota }
+
+/// <summary>
+/// The backend is alive but throttling us. NOT a breaker failure and NOT a judge "no". <see cref="RetryAfter"/> is a
+/// lower bound; the job queue defers the job without spending an attempt.
+/// </summary>
+public sealed class ModelThrottledException(TimeSpan retryAfter, ThrottleKind kind, string message, Exception? inner = null)
+    : Exception(message, inner)
+{
+    public TimeSpan RetryAfter { get; } = retryAfter;
+    public ThrottleKind Kind { get; } = kind;
+}
+
 /// <param name="ModelName">Model that produced the vectors.</param>
 /// <param name="ModelDigest">Version fingerprint of that model; vectors from different digests must never be compared.</param>
 public sealed record EmbeddingResult(
@@ -37,13 +50,20 @@ public interface IEmbeddingClient
 public sealed record JudgeItem(string Name, string? Brand, string? Size, string Chain);
 
 
+/// <summary>Per-call usage captured for the ModelCalls table (Batch 5); not stored in Batch 3.</summary>
+public sealed record JudgeUsage(int? InputTokens, int? OutputTokens, decimal? CostUsd, string? ResolvedModel, string? RequestId);
+
+/// <summary>A pair judge's answer: the verdict plus the raw score behind it (null for judges without one).</summary>
+public sealed record PairJudgement(JudgeVerdict Verdict, double? Score, JudgeUsage? Usage = null);
+
 public interface IPairJudge
 {
     /// <summary>
     /// Are these the same product? A transport failure throws <see cref="ModelUnavailableException"/>;
-    /// it is never reported as <see cref="JudgeVerdict.No"/>.
+    /// it is never reported as <see cref="JudgeVerdict.No"/>. The Score is the raw probability for the review UI,
+    /// null for judges without one.
     /// </summary>
-    Task<JudgeVerdict> JudgeAsync(JudgeItem a, JudgeItem b, CancellationToken ct = default);
+    Task<PairJudgement> JudgeAsync(JudgeItem a, JudgeItem b, CancellationToken ct = default);
 }
 
 /// <summary>Only product text (no user data) is ever sent to the judge.</summary>

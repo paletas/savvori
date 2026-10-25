@@ -48,12 +48,15 @@ public sealed class ModelTestHost : IDisposable
         services.AddLogging();
         services.AddSingleton<TimeProvider>(Time);
         services.AddSingleton(Microsoft.Extensions.Options.Options.Create(Options));
-        services.AddSingleton<ModelCircuitBreaker>();
+        services.AddSingleton<ModelBreakers>();
         services.AddSingleton<ModelTelemetry>();
+        services.AddSingleton<IModelCallRecorder>(NullModelCallRecorder.Instance);
+        services.AddSingleton<ThrottleTracker>();
+        services.AddSingleton<IModelProbe>(sp => new EmbeddingPingProbe(sp.GetRequiredService<IEmbeddingClient>()));
         services.AddSingleton(Faults);
         services.AddSingleton<IEmbeddingClient>(sp => new BreakerEmbeddingClient(
             new FlakyEmbeddingClient(new FakeEmbeddingClient(), sp.GetRequiredService<FaultPlan>()),
-            sp.GetRequiredService<ModelCircuitBreaker>()));
+            sp.GetRequiredService<ModelBreakers>().For(ModelBackend.Gateway)));
         services.AddDbContext<SavvoriDbContext>(o => o.UseInMemoryDatabase(dbName), ServiceLifetime.Scoped);
         services.AddScoped<ModelJobQueue>();
         services.AddScoped<IModelJobHandler>(sp => new RecordingEmbedHandler(sp.GetRequiredService<IEmbeddingClient>()));
@@ -64,7 +67,8 @@ public sealed class ModelTestHost : IDisposable
         RecordingEmbedHandler.Processed.Clear();
     }
 
-    public ModelCircuitBreaker Breaker => Services.GetRequiredService<ModelCircuitBreaker>();
+    public ModelBreakers Breakers => Services.GetRequiredService<ModelBreakers>();
+    public ModelCircuitBreaker Breaker => Breakers.For(ModelBackend.Gateway);
 
     public async Task<T> WithDb<T>(Func<SavvoriDbContext, ModelJobQueue, Task<T>> action)
     {

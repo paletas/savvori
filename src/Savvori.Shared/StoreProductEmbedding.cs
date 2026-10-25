@@ -74,6 +74,8 @@ public class MatchCandidate
     public string? Suggestion { get; set; }
     public JudgeVerdict? JudgeVerdict { get; set; }
     public string? JudgeModel { get; set; }
+    /// <summary>The pair judge's raw "same product" score in 0..1 (Jev noul); null when never judged or when the judge job dead-lettered.</summary>
+    public double? JudgeScore { get; set; }
     public DateTime? DecidedAt { get; set; }
     /// <summary>Human-readable reason, e.g. why a merge was blocked.</summary>
     public string? Note { get; set; }

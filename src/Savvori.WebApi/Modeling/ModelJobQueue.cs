@@ -167,6 +167,20 @@ public sealed class ModelJobQueue(SavvoriDbContext db, IOptions<ModelOptions> op
         await db.SaveChangesAsync(ct);
     }
 
+    /// <summary>429 deferral; never dead-letters. Undoes the claim's attempt increment, so Attempts is net unchanged.</summary>
+    public async Task DeferAsync(Guid id, DateTime until, string reason, CancellationToken ct = default)
+    {
+        var job = await GetAsync(id, ct);
+        if (job is null) return;
+        job.Status = ModelJobStatus.Pending;
+        job.LeaseExpiresAt = null;
+        job.Attempts = Math.Max(0, job.Attempts - 1);
+        job.NextAttemptAt = until;
+        job.LastError = Truncate(reason);
+        job.UpdatedAt = Now;
+        await db.SaveChangesAsync(ct);
+    }
+
     /// <summary>Puts a claimed job back untouched (e.g. the breaker opened before it ran).</summary>
     public Task ReleaseAsync(Guid id, DateTime? retryAt, CancellationToken ct = default) =>
         FailAsync(id, "Released: model unavailable.", countAttempt: false, retryAt, ct);

@@ -4,14 +4,14 @@ These instructions help AI coding agents work productively in this codebase. Kee
 
 ## Repo snapshot
 - Solution: `Savvori.sln`
-- SDK: .NET 10.0.200 (pinned via `global.json`, rolls forward to latest patch)
+- SDK: .NET 10.0.303 (pinned via `global.json`, rolls forward to latest feature band)
 - Projects:
    - App Host: `src/Savvori.AppHost/Savvori.AppHost.csproj` (Aspire orchestration, Aspire SDK 13.2.1)
    - Service Defaults: `src/Savvori.ServiceDefaults/Savvori.ServiceDefaults.csproj` (OpenTelemetry, health checks, resilience)
    - Web API: `src/Savvori.WebApi/Savvori.WebApi.csproj` (ASP.NET Core minimal API, .NET 10)
    - Web App: `src/Savvori.WebApp/Savvori.WebApp.csproj` (Razor Pages, .NET 10)
    - Shared: `src/Savvori.Shared/Savvori.Shared.csproj` (EF Core models/DbContext)
-   - Tests: `tests/Savvori.Web.Tests/Savvori.Web.Tests.csproj` (xUnit)
+   - Tests: `tests/Savvori.Web.Tests` (unit), `tests/Savvori.Api.Tests` (API integration), `tests/Savvori.E2E.Tests` (end-to-end), xUnit
 
 ## First steps for any task
 1. Operate via the solution: prefer `Savvori.sln` for adds/refs/builds.
@@ -24,14 +24,14 @@ These instructions help AI coding agents work productively in this codebase. Kee
    - `dotnet build Savvori.sln`
 - Run with Aspire (recommended — starts the dashboard and all services):
    - `aspire run` (from repo root, or `& "$env:USERPROFILE\.dotnet\tools\aspire.exe" run`)
-   - Aspire dashboard: http://localhost:15888 (auto-opens)
+   - Aspire dashboard: http://localhost:15217 (auto-opens)
    - WebApi URL injected by Aspire
 - Run the web API directly (creates the SQLite file at `ConnectionStrings:savvori`, default `data/savvori.db`):
    - `dotnet run --project src/Savvori.WebApi/Savvori.WebApi.csproj`
    - Development endpoints:
-      - GET http://localhost:5000/weatherforecast
-      - OpenAPI (dev): http://localhost:5000/openapi/v1.json
-      - Health: http://localhost:5000/health
+      - GET http://localhost:5242/weatherforecast
+      - OpenAPI (dev): http://localhost:5242/openapi/v1.json
+      - Health: http://localhost:5242/health
 - Run tests:
    - `dotnet test Savvori.sln`
 

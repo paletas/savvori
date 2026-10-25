@@ -59,6 +59,21 @@ public sealed class ModelCircuitBreaker(IOptions<ModelOptions> options, TimeProv
         }
     }
 
+    /// <summary>
+    /// A half-open probe ended in a 429, which says nothing about health: put the breaker back to Open with the
+    /// cool-down already elapsed so the next caller may probe at once. Counts and last error are unchanged.
+    /// No-op when Closed or Open.
+    /// </summary>
+    public void ReleaseProbe()
+    {
+        lock (_gate)
+        {
+            if (_state != BreakerState.HalfOpen) return;
+            _state = BreakerState.Open;
+            _openedAt = Now - Cooldown;
+        }
+    }
+
     public void RecordSuccess()
     {
         lock (_gate)

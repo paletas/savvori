@@ -42,11 +42,12 @@ public sealed class FakeEmbeddingClient : IEmbeddingClient
     }
 }
 
-public sealed class FakePairJudge(JudgeVerdict verdict = JudgeVerdict.Yes) : IPairJudge
+public sealed class FakePairJudge(JudgeVerdict verdict = JudgeVerdict.Yes, double? score = null) : IPairJudge
 {
     public JudgeVerdict Verdict { get; set; } = verdict;
-    public Task<JudgeVerdict> JudgeAsync(JudgeItem a, JudgeItem b, CancellationToken ct = default) =>
-        Task.FromResult(Verdict);
+    public double? Score { get; set; } = score;
+    public Task<PairJudgement> JudgeAsync(JudgeItem a, JudgeItem b, CancellationToken ct = default) =>
+        Task.FromResult(new PairJudgement(Verdict, Score));
 }
 
 public sealed class FakeCategoryJudge(JudgeVerdict verdict = JudgeVerdict.Yes) : ICategoryJudge
@@ -56,7 +57,7 @@ public sealed class FakeCategoryJudge(JudgeVerdict verdict = JudgeVerdict.Yes) :
         Task.FromResult(Verdict);
 }
 
-public enum FaultMode { None, Timeout, ServerError, BadResponse }
+public enum FaultMode { None, Timeout, ServerError, BadResponse, Throttled }
 
 /// <summary>
 /// Shared switchboard for the flaky wrappers: fail always, fail until a moment in (fake) time
@@ -68,6 +69,9 @@ public sealed class FaultPlan(TimeProvider time)
     /// <summary>When set, <see cref="Mode"/> only applies until this instant.</summary>
     public DateTimeOffset? DownUntil { get; set; }
     public TimeSpan Delay { get; set; }
+    /// <summary>Retry-After carried by the <see cref="FaultMode.Throttled"/> failure.</summary>
+    public TimeSpan ThrottleRetryAfter { get; set; } = TimeSpan.FromSeconds(30);
+    public ThrottleKind ThrottleKind { get; set; } = ThrottleKind.Routing;
     public int Calls { get; private set; }
 
     public void GoDown(FaultMode mode = FaultMode.ServerError, TimeSpan? forHowLong = null)
@@ -88,9 +92,19 @@ public sealed class FaultPlan(TimeProvider time)
         {
             FaultMode.Timeout => new ModelUnavailableException("simulated timeout"),
             FaultMode.ServerError => new ModelUnavailableException("simulated 503"),
+            FaultMode.Throttled => new ModelThrottledException(ThrottleRetryAfter, ThrottleKind, "throttled"),
             _ => new ModelResponseException("simulated malformed response")
         };
     }
+}
+
+/// <summary>Stands in for the OpenRouter probe: the same fault plan as the pair judge, under the same breaker.</summary>
+public sealed class FaultProbe(ModelBackend backend, FaultPlan plan, ModelCircuitBreaker breaker) : IModelProbe
+{
+    public ModelBackend Backend => backend;
+
+    public Task PingAsync(CancellationToken ct) =>
+        BreakerGuard.RunAsync(breaker, async () => { await plan.ApplyAsync(ct); return true; });
 }
 
 public sealed class FlakyEmbeddingClient(IEmbeddingClient inner, FaultPlan plan) : IEmbeddingClient
@@ -116,7 +130,7 @@ public sealed class FlakyEmbeddingClient(IEmbeddingClient inner, FaultPlan plan)
 
 public sealed class FlakyPairJudge(IPairJudge inner, FaultPlan plan) : IPairJudge
 {
-    public async Task<JudgeVerdict> JudgeAsync(JudgeItem a, JudgeItem b, CancellationToken ct = default)
+    public async Task<PairJudgement> JudgeAsync(JudgeItem a, JudgeItem b, CancellationToken ct = default)
     {
         await plan.ApplyAsync(ct);
         return await inner.JudgeAsync(a, b, ct);
@@ -132,7 +146,7 @@ public sealed class FlakyCategoryJudge(ICategoryJudge inner, FaultPlan plan) : I
     }
 }
 
-/// <summary>HttpMessageHandler driven by a lambda, for testing the Ollama clients without a server.</summary>
+/// <summary>HttpMessageHandler driven by a lambda, for testing the gateway and Jev clients without a server.</summary>
 public sealed class StubHttpHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
 {
     public List<(HttpMethod Method, string Path, string Body)> Requests { get; } = [];

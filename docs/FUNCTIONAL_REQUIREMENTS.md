@@ -125,7 +125,7 @@ The `/api/shoppinglists/{id}/optimize` endpoint supports four modes via `?mode=`
 - The Web App admin area (`/Admin/Mapping`) provides a UI over this same API.
 
 ### Model backend status (optional feature)
-- Admin/Mapping shows whether the optional model backend is enabled, its circuit-breaker state, queue depth, oldest pending job, dead-lettered jobs and stale embeddings. All model features are off by default and every existing feature works unchanged when the model is disabled or unreachable.
+- Admin/Mapping shows whether the optional model backend is enabled, its circuit-breaker state per backend (gateway, openrouter), the models used per task, model spend (today, last 30 days and per task), queue depth, oldest pending job, dead-lettered jobs and stale embeddings. All model features are off by default and every existing feature works unchanged when the model is disabled or unreachable.
 
 ### Match review (optional feature)
 - Bulk apply: a "Bulk apply" tab takes every confident suggestion above a chosen cosine in one undoable run, after you spot-check a random sample. The judge's answers are never bulk-applied. Category suggestions have the same bulk tab.
