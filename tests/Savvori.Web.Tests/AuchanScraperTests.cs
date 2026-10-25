@@ -27,7 +27,26 @@ public class AuchanScraperTests
         factory.CreateClient("auchan").Returns(httpClient);
 
         var logger = Substitute.For<ILogger<AuchanScraper>>();
-        return (new AuchanScraper(factory, logger), handler);
+        return (new AuchanScraper(factory, logger) { ReattemptDelay = TimeSpan.Zero }, handler);
+    }
+
+    [Fact]
+    public async Task Auchan_Probe_Ok()
+    {
+        var (scraper, handler) = CreateScraper();
+        var r = await scraper.ProbeAsync(CancellationToken.None);
+        Assert.True(r.Ok);
+        Assert.Equal(1, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task Auchan_Probe_410_NotOk()
+    {
+        var (scraper, handler) = CreateScraper();
+        handler.SetupRoute("start=0", "gone", HttpStatusCode.Gone);
+        var r = await scraper.ProbeAsync(CancellationToken.None);
+        Assert.False(r.Ok);
+        Assert.Equal(1, handler.RequestCount);
     }
 
     [Fact]

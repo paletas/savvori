@@ -26,8 +26,39 @@ public class PingoDoceScraperTests
         factory.CreateClient("pingodoce").Returns(httpClient);
 
         var logger = Substitute.For<ILogger<PingoDoceScraper>>();
-        var scraper = new PingoDoceScraper(factory, logger);
+        var scraper = new PingoDoceScraper(factory, logger) { ReattemptDelay = TimeSpan.Zero };
         return (scraper, handler);
+    }
+
+    [Fact]
+    public async Task PingoDoce_Probe_Ok()
+    {
+        var (scraper, handler) = CreateScraper();
+        handler.SetupRoute("cgid=ec_frutasevegetais_100", LoadFixture("pingodoce_products.html"));
+        var r = await scraper.ProbeAsync(CancellationToken.None);
+        Assert.True(r.Ok);
+        Assert.Equal(1, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task PingoDoce_Probe_410_NotOk()
+    {
+        var (scraper, handler) = CreateScraper();
+        handler.SetupRoute("start=0", "gone", HttpStatusCode.Gone);
+        var r = await scraper.ProbeAsync(CancellationToken.None);
+        Assert.False(r.Ok);
+    }
+
+    [Fact]
+    public async Task PingoDoce_FailedCategory_RecoveredAtEnd()
+    {
+        var (scraper, handler) = CreateScraper();
+        handler.SetupRouteSequence("cgid=leite&format=ajax&start=0",
+            (HttpStatusCode.Gone, "gone"), (HttpStatusCode.OK, LoadFixture("pingodoce_products.html")));
+        var result = await scraper.ScrapeProductsAsync("leite", CancellationToken.None);
+        var o = Assert.Single(result.Outcomes);
+        Assert.Equal(OutcomeResult.Recovered, o.Result);
+        Assert.NotEmpty(result.Products);
     }
 
     [Fact]

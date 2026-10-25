@@ -77,9 +77,48 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
             await Task.Delay(300, ct);
         }
 
+        await ReattemptAsync(outcomes, async old =>
+        {
+            var tmp = new List<ScrapeOutcome>();
+            await ScrapeCategory(old.Key, seen, products, tmp, ct);
+            return tmp[0];
+        }, ct);
+
         Logger.LogInformation("Continente: scraped {Count} distinct products across {Cats} categories",
             products.Count, categories.Count);
         return new ScrapeRunResult(products, outcomes, Array.Empty<string>(), DiscoveryFallbackUsed: discoveryFallback);
+    }
+
+    public override async Task<CanaryResult> ProbeAsync(CancellationToken ct = default)
+    {
+        var o = new ScrapeOutcome { Url = SitemapIndexUrl };
+        var xml = await GetStringAsync(SitemapIndexUrl, o, ct);
+        var requests = o.StatusCounts.Values.Sum();
+        if (xml is null)
+            return new CanaryResult(false, $"{SitemapIndexUrl}: {o.Result} {o.FirstError}".Trim(), requests);
+
+        try
+        {
+            var index = XDocument.Parse(xml);
+            var ns = index.Root?.GetDefaultNamespace() ?? XNamespace.None;
+            var hasCategorySitemap = index.Descendants(ns + "loc").Any(e =>
+                e.Value.Contains("categor", StringComparison.OrdinalIgnoreCase) &&
+                !e.Value.Contains("refinement", StringComparison.OrdinalIgnoreCase));
+            if (!hasCategorySitemap)
+                return new CanaryResult(false, $"{SitemapIndexUrl}: no category sitemap", requests);
+        }
+        catch (Exception)
+        {
+            return new CanaryResult(false, $"{SitemapIndexUrl}: unparseable response", requests);
+        }
+
+        var page = await ProbeHtmlAsync(
+            $"{BaseUrl}/{FallbackCategories[0]}/?start=0&sz={PageSize}&srule=Continente", d =>
+            {
+                var t = d.QuerySelectorAll(".product-tile").ToList();
+                return (t.Count, t.Count(x => ParseTile(x) is not null));
+            }, ct);
+        return page with { Requests = page.Requests + requests };
     }
 
     public override async Task<IReadOnlyList<ScrapedStoreLocation>> ScrapeStoreLocationsAsync(

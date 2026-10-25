@@ -49,9 +49,23 @@ public sealed partial class AuchanScraper : BaseHttpScraper
             await Task.Delay(800, ct);
         }
 
+        await ReattemptAsync(outcomes, async old =>
+        {
+            var tmp = new List<ScrapeOutcome>();
+            await ScrapeSearch(old.Key, seen, products, tmp, ct);
+            return tmp[0];
+        }, ct);
+
         Logger.LogInformation("Auchan: scraped {Count} distinct products", products.Count);
         return new ScrapeRunResult(products, outcomes, Array.Empty<string>());
     }
+
+    public override Task<CanaryResult> ProbeAsync(CancellationToken ct = default)
+        => ProbeHtmlAsync($"{SearchBase}?q=leite&start=0", d =>
+        {
+            var t = d.QuerySelectorAll(".product-tile").ToList();
+            return (t.Count, t.Count(x => ParseTile(x) is not null));
+        }, ct);
 
     public override Task<IReadOnlyList<ScrapedStoreLocation>> ScrapeStoreLocationsAsync(
         CancellationToken ct = default)

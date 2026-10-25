@@ -24,7 +24,35 @@ public class CeleiroScraperTests
         var factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient("celeiro").Returns(new HttpClient(handler));
 
-        return new CeleiroScraper(factory, Substitute.For<ILogger<CeleiroScraper>>());
+        return new CeleiroScraper(factory, Substitute.For<ILogger<CeleiroScraper>>()) { ReattemptDelay = TimeSpan.Zero };
+    }
+
+    [Fact]
+    public async Task Celeiro_Probe_Ok()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.SetupRoute("produtos/alimentacao", LoadFixture("celeiro_products.html"));
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient("celeiro").Returns(new HttpClient(handler));
+        var scraper = new CeleiroScraper(factory, Substitute.For<ILogger<CeleiroScraper>>());
+
+        var r = await scraper.ProbeAsync(CancellationToken.None);
+
+        Assert.True(r.Ok);
+        Assert.Equal(1, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task Celeiro_Probe_NoTiles_NotOk()
+    {
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient("celeiro").Returns(new HttpClient(new FakeHttpMessageHandler()));
+        var scraper = new CeleiroScraper(factory, Substitute.For<ILogger<CeleiroScraper>>());
+
+        var r = await scraper.ProbeAsync(CancellationToken.None);
+
+        Assert.False(r.Ok);
+        Assert.Contains("no product tiles", r.Message);
     }
 
     [Fact]
@@ -34,7 +62,7 @@ public class CeleiroScraperTests
         handler.SetupRoute("alimentacao", "gone", HttpStatusCode.Gone);
         var factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient("celeiro").Returns(new HttpClient(handler));
-        var scraper = new CeleiroScraper(factory, Substitute.For<ILogger<CeleiroScraper>>());
+        var scraper = new CeleiroScraper(factory, Substitute.For<ILogger<CeleiroScraper>>()) { ReattemptDelay = TimeSpan.Zero };
 
         var result = await scraper.ScrapeProductsAsync("alimentacao", CancellationToken.None);
 

@@ -68,9 +68,23 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
             }
         }
 
+        await ReattemptAsync(outcomes, async old =>
+        {
+            var tmp = new List<ScrapeOutcome>();
+            await ScrapeCategory(old.Key, seen, products, tmp, ct);
+            return tmp[0];
+        }, ct);
+
         Logger.LogInformation("PingoDoce: scraped {Count} distinct products", products.Count);
         return new ScrapeRunResult(products, outcomes, Array.Empty<string>());
     }
+
+    public override Task<CanaryResult> ProbeAsync(CancellationToken ct = default)
+        => ProbeHtmlAsync($"{SearchUrl}?cgid={Uri.EscapeDataString(GroceryCategories[0])}&format=ajax&start=0&sz={PageSize}", d =>
+        {
+            var t = d.QuerySelectorAll(".product-tile-pd").ToList();
+            return (t.Count, t.Count(x => ParseTile(x) is not null));
+        }, ct);
 
     public override async Task<IReadOnlyList<ScrapedStoreLocation>> ScrapeStoreLocationsAsync(
         CancellationToken ct = default)

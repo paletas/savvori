@@ -8,6 +8,58 @@ namespace Savvori.Web.Tests;
 
 public class LidlScraperTests
 {
+    private static LidlScraper NewScraper(FakeHttpMessageHandler handler)
+    {
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient("lidl").Returns(new HttpClient(handler));
+        return new LidlScraper(factory, Substitute.For<ILogger<LidlScraper>>()) { ReattemptDelay = TimeSpan.Zero };
+    }
+
+    private static string Fixture() =>
+        File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "lidl_search.json"));
+
+    [Fact]
+    public async Task Lidl_Probe_Ok()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.SetupRoute("q/api/search", Fixture());
+        var r = await NewScraper(handler).ProbeAsync(CancellationToken.None);
+        Assert.True(r.Ok);
+        Assert.Equal(1, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task Lidl_Probe_NoItems_NotOk()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.SetupRoute("q/api/search", "{\"items\":[]}");
+        var r = await NewScraper(handler).ProbeAsync(CancellationToken.None);
+        Assert.False(r.Ok);
+        Assert.Contains("no product tiles", r.Message);
+    }
+
+    [Fact]
+    public async Task Lidl_Probe_NotJson_NotOk()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.SetupRoute("q/api/search", "not json");
+        var r = await NewScraper(handler).ProbeAsync(CancellationToken.None);
+        Assert.False(r.Ok);
+        Assert.Contains("unparseable", r.Message);
+    }
+
+    [Fact]
+    public async Task Lidl_FailedQuery_RecoveredAtEnd()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.SetDefaultResponse(Fixture());
+        handler.SetupRouteSequence("q=leite&offset=0", (HttpStatusCode.Gone, "gone"), (HttpStatusCode.OK, Fixture()));
+        var result = await NewScraper(handler).ScrapeProductsAsync("leite", CancellationToken.None);
+        var o = Assert.Single(result.Outcomes);
+        Assert.Equal(OutcomeResult.Recovered, o.Result);
+        Assert.NotEmpty(result.Products);
+    }
+
     private static LidlScraper CreateScraper()
     {
         var json = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "lidl_search.json"));
@@ -17,14 +69,14 @@ public class LidlScraperTests
         var factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient("lidl").Returns(new HttpClient(handler));
 
-        return new LidlScraper(factory, Substitute.For<ILogger<LidlScraper>>());
+        return new LidlScraper(factory, Substitute.For<ILogger<LidlScraper>>()) { ReattemptDelay = TimeSpan.Zero };
     }
 
     private static LidlScraper CreateScraper(FakeHttpMessageHandler handler)
     {
         var factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient("lidl").Returns(new HttpClient(handler));
-        return new LidlScraper(factory, Substitute.For<ILogger<LidlScraper>>());
+        return new LidlScraper(factory, Substitute.For<ILogger<LidlScraper>>()) { ReattemptDelay = TimeSpan.Zero };
     }
 
     [Fact]

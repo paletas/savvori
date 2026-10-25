@@ -52,9 +52,27 @@ public sealed partial class CeleiroScraper : BaseHttpScraper
             }
         }
 
+        await ReattemptAsync(outcomes, async old =>
+        {
+            var tmp = new List<ScrapeOutcome>();
+            if (category is not null)
+                await ScrapeListing(p => $"{BaseUrl}/catalogsearch/result/?q={Uri.EscapeDataString(old.Key)}&p={p}",
+                    null, old.Key, seen, products, tmp, ct);
+            else
+                await ScrapeListing(p => $"{BaseUrl}/produtos/{old.Key}?p={p}", old.Key, old.Key, seen, products, tmp, ct);
+            return tmp[0];
+        }, ct);
+
         Logger.LogInformation("Celeiro: scraped {Count} distinct products", products.Count);
         return new ScrapeRunResult(products, outcomes, Array.Empty<string>());
     }
+
+    public override Task<CanaryResult> ProbeAsync(CancellationToken ct = default)
+        => ProbeHtmlAsync($"{BaseUrl}/produtos/alimentacao?p=1", d =>
+        {
+            var i = d.QuerySelectorAll(".product-item-info").ToList();
+            return (i.Count, i.Count(x => ParseItem(x, "alimentacao") is not null));
+        }, ct);
 
     public override Task<IReadOnlyList<ScrapedStoreLocation>> ScrapeStoreLocationsAsync(
         CancellationToken ct = default)

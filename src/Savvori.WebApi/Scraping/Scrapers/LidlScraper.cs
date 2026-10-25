@@ -49,9 +49,25 @@ public sealed partial class LidlScraper : BaseHttpScraper
             await ScrapeQuery(query, seen, products, outcomes, ct);
         }
 
+        await ReattemptAsync(outcomes, async old =>
+        {
+            var tmp = new List<ScrapeOutcome>();
+            await ScrapeQuery(old.Key == "(empty)" ? "" : old.Key, seen, products, tmp, ct);
+            return tmp[0];
+        }, ct);
+
         Logger.LogInformation("Lidl: scraped {Count} distinct food products", products.Count);
         return new ScrapeRunResult(products, outcomes, Array.Empty<string>());
     }
+
+    public override Task<CanaryResult> ProbeAsync(CancellationToken ct = default)
+        => ProbeStringAsync(SearchUrl("", 0), body =>
+        {
+            using var doc = JsonDocument.Parse(body);
+            if (!doc.RootElement.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
+                return (0, 0);
+            return (items.GetArrayLength(), items.EnumerateArray().Count(HasCoreFields));
+        }, ct);
 
     private async Task ScrapeQuery(
         string query, HashSet<string> seen, List<ScrapedProduct> products,

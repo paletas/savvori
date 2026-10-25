@@ -114,7 +114,17 @@ public sealed class StoreScrapeJob : IJob
             // Product scraping phase
             using var prodActivity = _telemetry.StartPhaseActivity("products", slug);
             _logger.LogInformation("Scraping products for {Slug}", slug);
-            var result = await scraper.ScrapeProductsAsync(ct: context.CancellationToken);
+            var canary = await scraper.ProbeAsync(context.CancellationToken);
+            ScrapeRunResult result;
+            if (!canary.Ok)
+            {
+                _logger.LogWarning("Canary failed for {Slug}: {Message}", slug, canary.Message);
+                result = new ScrapeRunResult([], [], [], Canary: canary);
+            }
+            else
+            {
+                result = (await scraper.ScrapeProductsAsync(ct: context.CancellationToken)) with { Canary = canary };
+            }
             var products = result.Products;
             var health = ScrapeHealthEvaluator.Evaluate(result);
             var graceDays = _config?.GetSection("Scraping:Chains").Get<List<ScrapingChainConfig>>()
@@ -137,7 +147,10 @@ public sealed class StoreScrapeJob : IJob
 
             sw.Stop();
             await MarkCompletedAsync(job.Id, chain.Id, count, products.Count, health, processResult);
-            await PersistOutcomesAsync(job, result, health);
+            await PersistOutcomesAsync(job, canary.Ok ? result : result with
+            {
+                Outcomes = [new ScrapeOutcome { Kind = OutcomeKind.Canary, Key = "canary", Url = slug, Result = OutcomeResult.Failed, FirstError = canary.Message }]
+            }, health);
             await PruneOutcomesAsync();
 
             jobActivity?.SetTag("scraping.products.count", count);

@@ -14,7 +14,8 @@ public class BaseHttpScraperRetryTests
     private sealed class TestScraper : BaseHttpScraper
     {
         public TestScraper(IHttpClientFactory factory)
-            : base(factory, Substitute.For<ILogger>(), "test", retryBaseDelay: TimeSpan.FromMilliseconds(1)) { }
+            : base(factory, Substitute.For<ILogger>(), "test", retryBaseDelay: TimeSpan.FromMilliseconds(1))
+            => ReattemptDelay = TimeSpan.Zero;
 
         public override string StoreChainSlug => "test";
 
@@ -25,6 +26,10 @@ public class BaseHttpScraperRetryTests
             => throw new NotImplementedException();
 
         public Task<IDocument?> Html(string url, ScrapeOutcome o, CancellationToken ct = default) => GetHtmlAsync(url, o, ct);
+        public Task<CanaryResult> ProbeHtml(string url, Func<IDocument, (int, int)> inspect) => ProbeHtmlAsync(url, inspect, default);
+        public Task<CanaryResult> ProbeStr(string url, Func<string, (int, int)> inspect) => ProbeStringAsync(url, inspect, default);
+        public Task Reattempt(List<ScrapeOutcome> outcomes, Func<ScrapeOutcome, Task<ScrapeOutcome>> rerun)
+            => ReattemptAsync(outcomes, rerun, default);
         public Task<string?> Str(string url, ScrapeOutcome o, CancellationToken ct = default) => GetStringAsync(url, o, ct);
     }
 
@@ -86,6 +91,81 @@ public class BaseHttpScraperRetryTests
         var doc = await s.Html(Url, o);
         Assert.Null(doc);
         Assert.Equal(OutcomeResult.Redirected, o.Result);
+    }
+
+    [Fact]
+    public async Task ProbeHtml_Ok()
+    {
+        var (s, h) = Create();
+        h.SetupRoute("cat/page", "<html><body>x</body></html>");
+        var r = await s.ProbeHtml(Url, _ => (2, 2));
+        Assert.True(r.Ok);
+        Assert.Equal(1, h.RequestCount);
+    }
+
+    [Fact]
+    public async Task ProbeHtml_410_NotOk()
+    {
+        var (s, h) = Create();
+        h.SetupRoute("cat/page", "gone", HttpStatusCode.Gone);
+        var r = await s.ProbeHtml(Url, _ => (2, 2));
+        Assert.False(r.Ok);
+        Assert.Contains(Url, r.Message);
+        Assert.Contains("Failed", r.Message);
+        Assert.Equal(1, h.RequestCount);
+    }
+
+    [Fact]
+    public async Task ProbeHtml_NoTiles_NotOk()
+    {
+        var (s, h) = Create();
+        h.SetupRoute("cat/page", "<html><body>x</body></html>");
+        var r = await s.ProbeHtml(Url, _ => (0, 0));
+        Assert.False(r.Ok);
+        Assert.Contains("no product tiles", r.Message);
+    }
+
+    [Fact]
+    public async Task ProbeHtml_MissingFields_NotOk()
+    {
+        var (s, h) = Create();
+        h.SetupRoute("cat/page", "<html><body>x</body></html>");
+        var r = await s.ProbeHtml(Url, _ => (3, 0));
+        Assert.False(r.Ok);
+        Assert.Contains("missing name, price or id", r.Message);
+    }
+
+    [Fact]
+    public async Task Reattempt_Failed_BecomesRecovered()
+    {
+        var (s, _) = Create();
+        var old = new ScrapeOutcome { Key = "k", Result = OutcomeResult.Failed, FirstError = "HTTP 410" };
+        var list = new List<ScrapeOutcome> { old };
+        await s.Reattempt(list, _ => Task.FromResult(new ScrapeOutcome { Key = "k" }));
+        Assert.Single(list);
+        Assert.Equal(OutcomeResult.Recovered, list[0].Result);
+        Assert.Equal("HTTP 410", list[0].FirstError);
+        Assert.NotSame(old, list[0]);
+    }
+
+    [Fact]
+    public async Task Reattempt_StillFailing_KeepsOriginal()
+    {
+        var (s, _) = Create();
+        var old = new ScrapeOutcome { Key = "k", Result = OutcomeResult.Failed };
+        var list = new List<ScrapeOutcome> { old };
+        await s.Reattempt(list, _ => Task.FromResult(new ScrapeOutcome { Key = "k", Result = OutcomeResult.Failed }));
+        Assert.Same(old, list[0]);
+    }
+
+    [Fact]
+    public async Task Reattempt_AllOk_NoRerun()
+    {
+        var (s, _) = Create();
+        var list = new List<ScrapeOutcome> { new() { Key = "k" } };
+        var called = false;
+        await s.Reattempt(list, o => { called = true; return Task.FromResult(o); });
+        Assert.False(called);
     }
 
     [Theory]

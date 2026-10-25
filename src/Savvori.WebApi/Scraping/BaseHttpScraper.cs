@@ -68,6 +68,9 @@ public abstract class BaseHttpScraper : IStoreScraper
 
     public abstract string StoreChainSlug { get; }
 
+    /// <summary>Pause before the end-of-run re-attempt of failed targets.</summary>
+    public TimeSpan ReattemptDelay { get; set; } = TimeSpan.FromSeconds(5);
+
     public abstract Task<ScrapeRunResult> ScrapeProductsAsync(
         string? category = null, CancellationToken ct = default);
 
@@ -218,6 +221,67 @@ public abstract class BaseHttpScraper : IStoreScraper
             if (outcome.Result == OutcomeResult.Ok) outcome.Result = OutcomeResult.Failed;
             outcome.FirstError ??= ex.Message;
             return default;
+        }
+    }
+
+    private static int Requests(ScrapeOutcome o) => o.StatusCounts.Values.Sum();
+
+    protected async Task<CanaryResult> ProbeHtmlAsync(
+        string url, Func<IDocument, (int Tiles, int Valid)> inspect, CancellationToken ct)
+    {
+        var o = new ScrapeOutcome { Url = url };
+        var doc = await GetHtmlAsync(url, o, ct);
+        if (doc is null)
+            return new CanaryResult(false, $"{url}: {o.Result} {o.FirstError}".Trim(), Requests(o));
+        try
+        {
+            return ProbeVerdict(url, inspect(doc), Requests(o));
+        }
+        catch (Exception)
+        {
+            return new CanaryResult(false, $"{url}: unparseable response", Requests(o));
+        }
+    }
+
+    protected async Task<CanaryResult> ProbeStringAsync(
+        string url, Func<string, (int Tiles, int Valid)> inspect, CancellationToken ct)
+    {
+        var o = new ScrapeOutcome { Url = url };
+        var body = await GetStringAsync(url, o, ct);
+        if (body is null)
+            return new CanaryResult(false, $"{url}: {o.Result} {o.FirstError}".Trim(), Requests(o));
+        try
+        {
+            return ProbeVerdict(url, inspect(body), Requests(o));
+        }
+        catch (Exception)
+        {
+            return new CanaryResult(false, $"{url}: unparseable response", Requests(o));
+        }
+    }
+
+    private static CanaryResult ProbeVerdict(string url, (int Tiles, int Valid) r, int requests)
+        => r.Tiles == 0 ? new CanaryResult(false, $"{url}: no product tiles", requests)
+         : r.Valid == 0 ? new CanaryResult(false, $"{url}: tiles missing name, price or id", requests)
+         : new CanaryResult(true, "ok", requests);
+
+    /// <summary>Re-runs failed targets once after a pause; successes replace the original as Recovered.</summary>
+    protected async Task ReattemptAsync(
+        List<ScrapeOutcome> outcomes, Func<ScrapeOutcome, Task<ScrapeOutcome>> rerun, CancellationToken ct)
+    {
+        var failed = outcomes.Where(o => o.Kind != OutcomeKind.Discovery &&
+            o.Result != OutcomeResult.Ok && o.Result != OutcomeResult.Recovered).ToList();
+        if (failed.Count == 0) return;
+        await Task.Delay(ReattemptDelay, ct);
+        foreach (var old in failed)
+        {
+            var fresh = await rerun(old);
+            if (fresh.Result == OutcomeResult.Ok)
+            {
+                fresh.Result = OutcomeResult.Recovered;
+                fresh.FirstError = old.FirstError;
+                outcomes[outcomes.IndexOf(old)] = fresh;
+            }
         }
     }
 

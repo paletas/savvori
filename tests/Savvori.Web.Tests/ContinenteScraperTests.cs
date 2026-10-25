@@ -27,8 +27,54 @@ public class ContinenteScraperTests
         factory.CreateClient("continente").Returns(httpClient);
 
         var logger = Substitute.For<ILogger<ContinenteScraper>>();
-        var scraper = new ContinenteScraper(factory, logger);
+        var scraper = new ContinenteScraper(factory, logger) { ReattemptDelay = TimeSpan.Zero };
         return (scraper, handler);
+    }
+
+    private const string SitemapIndexXml =
+        "<sitemapindex xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"><sitemap><loc>https://www.continente.pt/sitemap-categories.xml</loc></sitemap></sitemapindex>";
+
+    [Fact]
+    public async Task Continente_Probe_Ok()
+    {
+        var (scraper, handler) = CreateScraper();
+        handler.SetupRoute("sitemap_index.xml", SitemapIndexXml);
+        var r = await scraper.ProbeAsync(CancellationToken.None);
+        Assert.True(r.Ok);
+        Assert.Equal(2, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task Continente_Probe_SitemapGone_NotOk_OneRequest()
+    {
+        var (scraper, handler) = CreateScraper();
+        handler.SetupRoute("sitemap_index.xml", "gone", HttpStatusCode.Gone);
+        var r = await scraper.ProbeAsync(CancellationToken.None);
+        Assert.False(r.Ok);
+        Assert.Equal(1, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task Continente_Probe_CategoryNoTiles_NotOk()
+    {
+        var (scraper, handler) = CreateScraper();
+        handler.SetupRoute("sitemap_index.xml", SitemapIndexXml);
+        handler.SetupRoute("start=0", "<html><body></body></html>");
+        var r = await scraper.ProbeAsync(CancellationToken.None);
+        Assert.False(r.Ok);
+        Assert.Equal(2, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task Continente_FailedCategory_RecoveredAtEnd()
+    {
+        var (scraper, handler) = CreateScraper();
+        handler.SetupRouteSequence("start=0",
+            (HttpStatusCode.Gone, "gone"), (HttpStatusCode.OK, LoadFixture("continente_products.html")));
+        var result = await scraper.ScrapeProductsAsync("frescos", CancellationToken.None);
+        var o = Assert.Single(result.Outcomes);
+        Assert.Equal(OutcomeResult.Recovered, o.Result);
+        Assert.NotEmpty(result.Products);
     }
 
     [Fact]

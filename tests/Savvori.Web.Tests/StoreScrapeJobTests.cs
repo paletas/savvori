@@ -132,6 +132,46 @@ public sealed class StoreScrapeJobTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task CanaryFailed_SkipsScrape_DegradedNoDeactivation()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var staleId = Guid.NewGuid();
+        _db.StoreProducts.Add(new StoreProduct
+        {
+            Id = staleId, StoreChainId = ChainId, ExternalId = "old-1", Name = "Old", IsActive = true,
+            LastScraped = DateTime.UtcNow.AddDays(-30)
+        });
+        await _db.SaveChangesAsync(ct);
+
+        var scraper = new FakeStoreScraper(canary: new CanaryResult(false, "https://e/x: no product tiles", 1));
+        await MakeJob(scraper).Execute(MakeContext(ct), CancellationToken.None);
+
+        Assert.Equal(0, scraper.ScrapeCalls);
+        var saved = await _db.ScrapingJobs.AsNoTracking().SingleAsync(ct);
+        Assert.Equal(ScrapingJobStatus.Degraded, saved.Status);
+        Assert.Equal("Canary: https://e/x: no product tiles", saved.HealthReason);
+        Assert.True(saved.StaleMarkingSkipped);
+        Assert.True((await _db.StoreProducts.AsNoTracking().SingleAsync(p => p.Id == staleId, ct)).IsActive);
+
+        var row = await _db.ScrapingRunOutcomes.AsNoTracking().SingleAsync(ct);
+        Assert.Equal(OutcomeKind.Canary, row.Kind);
+        Assert.Equal(OutcomeResult.Failed, row.Result);
+        Assert.Equal("https://e/x: no product tiles", row.FirstError);
+    }
+
+    [Fact]
+    public async Task CanaryOk_RunsScrapeNormally()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var scraper = new FakeStoreScraper();
+        await MakeJob(scraper).Execute(MakeContext(ct), CancellationToken.None);
+
+        Assert.Equal(1, scraper.ScrapeCalls);
+        var saved = await _db.ScrapingJobs.AsNoTracking().SingleAsync(ct);
+        Assert.Equal(ScrapingJobStatus.Completed, saved.Status);
+    }
+
+    [Fact]
     public async Task CountDrop_AdvisoryOnly_StatusCompleted_DropRatioSet()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -151,14 +191,16 @@ public sealed class StoreScrapeJobTests : IAsyncLifetime
         Assert.Equal(1, saved.ProductsReturned);
     }
 
-    private sealed class FakeStoreScraper(IReadOnlyList<ScrapeOutcome>? outcomes = null) : IStoreScraper
+    private sealed class FakeStoreScraper(IReadOnlyList<ScrapeOutcome>? outcomes = null, CanaryResult? canary = null) : IStoreScraper
     {
+        public int ScrapeCalls { get; private set; }
         public string StoreChainSlug => "pingodoce";
 
         public Task<ScrapeRunResult> ScrapeProductsAsync(
             string? category = null,
             CancellationToken ct = default)
         {
+            ScrapeCalls++;
             IReadOnlyList<ScrapedProduct> products =
             [
                 new ScrapedProduct(
@@ -180,7 +222,7 @@ public sealed class StoreScrapeJobTests : IAsyncLifetime
             return Task.FromResult(new ScrapeRunResult(products, outcomes ?? [], []));
         }
 
-        public Task<CanaryResult> ProbeAsync(CancellationToken ct = default) => Task.FromResult(new CanaryResult(true, "ok", 0));
+        public Task<CanaryResult> ProbeAsync(CancellationToken ct = default) => Task.FromResult(canary ?? new CanaryResult(true, "ok", 0));
 
         public Task<IReadOnlyList<ScrapedStoreLocation>> ScrapeStoreLocationsAsync(CancellationToken ct = default)
         {
