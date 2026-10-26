@@ -90,6 +90,9 @@ public class AdminPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savvo
         Assert.Contains("alert-error", html);
         Assert.Contains("Scraping degraded", html);
         Assert.Contains("Pingo Doce", html);
+        // A chain whose last run Failed on discovery is listed too.
+        Assert.Contains("Lidl", html);
+        Assert.Contains("Discovery failed: https://x/sitemap.xml", html);
     }
 
     [Fact]

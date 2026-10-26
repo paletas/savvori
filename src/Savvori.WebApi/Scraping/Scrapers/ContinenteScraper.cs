@@ -53,7 +53,7 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
         string? category = null, CancellationToken ct = default)
     {
         IReadOnlyList<string> categories;
-        var discoveryFallback = false;
+        string? discoveryFailure = null;
         IReadOnlyList<string> discoveryWarnings = [];
         if (category is not null)
         {
@@ -61,7 +61,8 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
         }
         else
         {
-            (categories, discoveryFallback, discoveryWarnings) = await DiscoverCategoryPathsAsync(ct);
+            (categories, discoveryFailure, discoveryWarnings) = await DiscoverCategoryPathsAsync(ct);
+            if (discoveryFailure is not null) return DiscoveryFailed(SitemapIndexUrl, discoveryFailure);
             await Task.Delay(500, ct);
         }
 
@@ -85,7 +86,7 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
 
         Logger.LogInformation("Continente: scraped {Count} distinct products across {Cats} categories",
             products.Count, categories.Count);
-        return new ScrapeRunResult(products, outcomes, discoveryWarnings, DiscoveryFallbackUsed: discoveryFallback);
+        return new ScrapeRunResult(products, outcomes, discoveryWarnings);
     }
 
     public override async Task<CanaryResult> ProbeAsync(CancellationToken ct = default)
@@ -172,11 +173,11 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
     /// Discovers category paths from the Continente sitemap.
     /// Fetches the sitemap index, locates the category sitemap (excluding refinement sitemaps),
     /// parses category URLs, filters to allowed top-level slugs, and prunes parent paths so only
-    /// leaf categories are scraped. On failure returns no paths and <c>FallbackUsed = true</c>
+    /// leaf categories are scraped. On failure returns no paths and a <c>FailureReason</c>
     /// (the run is then reported as failed discovery). Top-level segments that are neither allowed
     /// nor excluded are returned as warnings.
     /// </summary>
-    private async Task<(IReadOnlyList<string> Paths, bool FallbackUsed, IReadOnlyList<string> Warnings)> DiscoverCategoryPathsAsync(CancellationToken ct)
+    private async Task<(IReadOnlyList<string> Paths, string? FailureReason, IReadOnlyList<string> Warnings)> DiscoverCategoryPathsAsync(CancellationToken ct)
     {
         try
         {
@@ -195,7 +196,7 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
             if (categorySitemapUrls.Count == 0)
             {
                 Logger.LogWarning("Continente: no category sitemap found in {Url}, discovery failed", SitemapIndexUrl);
-                return ([], true, []);
+                return ([], "no category sitemap found in index", []);
             }
 
             // Step 2: Parse each category sitemap and collect matching paths.
@@ -241,7 +242,7 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
             if (discovered.Count == 0)
             {
                 Logger.LogWarning("Continente: category sitemaps yielded no matching paths, discovery failed");
-                return ([], true, []);
+                return ([], "category sitemaps yielded no matching paths", []);
             }
 
             // Step 3: Prune parent paths — only scrape leaves to avoid duplicate products.
@@ -262,12 +263,12 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
                 .Select(kv => $"Continente: uncovered top-level category '{kv.Key}' ({kv.Value} URLs)")
                 .ToList();
 
-            return (leaves, false, warnings);
+            return (leaves, null, warnings);
         }
         catch (Exception ex)
         {
             Logger.LogWarning(ex, "Continente: sitemap category discovery failed");
-            return ([], true, []);
+            return ([], ex.Message, []);
         }
     }
 

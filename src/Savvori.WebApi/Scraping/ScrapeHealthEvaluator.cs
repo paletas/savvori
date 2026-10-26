@@ -7,8 +7,20 @@ public record RunHealth(ScrapingJobStatus Status, IReadOnlyList<string> Reasons,
 /// <summary>Pure, binary health verdict from what the scraper saw (statuses, page structure); product count is not an input.</summary>
 public static class ScrapeHealthEvaluator
 {
+    /// <summary>Whole run: one trip anywhere (non-clean status or Incomplete) blocks all stale marking.</summary>
+    public static bool StaleMarkingAllowed(ScrapeRunResult r, RunHealth h) =>
+        (h.Status == ScrapingJobStatus.Completed || h.Status == ScrapingJobStatus.CompletedWithWarnings) && !r.Incomplete;
+
     public static RunHealth Evaluate(ScrapeRunResult r)
     {
+        var d = r.Outcomes.FirstOrDefault(o => o.Kind == OutcomeKind.Discovery && o.Result == OutcomeResult.Failed);
+        if (d is not null)
+        {
+            var why = $"Discovery failed: {d.Url}";
+            if (!string.IsNullOrEmpty(d.FirstError)) why += $" ({d.FirstError})";
+            return new RunHealth(ScrapingJobStatus.Failed, [why], [.. r.Warnings]);
+        }
+
         var reasons = new List<string>();
         var warnings = new List<string>();
 
@@ -31,13 +43,11 @@ public static class ScrapeHealthEvaluator
             }
         }
 
-        if (r.DiscoveryFallbackUsed)
-            reasons.Add("Category discovery failed");
-
         if (r.Canary is { Ok: false })
             reasons.Add($"Canary: {r.Canary.Message}");
 
         warnings.AddRange(r.Warnings);
+        warnings.AddRange(CoverageCheck.Evaluate(r.Outcomes));
 
         var status = reasons.Count > 0 ? ScrapingJobStatus.Degraded
             : warnings.Count > 0 ? ScrapingJobStatus.CompletedWithWarnings

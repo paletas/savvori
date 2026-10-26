@@ -59,7 +59,7 @@ public class ContinenteDiscoveryTests
         Assert.Contains(keys, k => k.StartsWith("supermercado/"));
         Assert.DoesNotContain(keys, k => k.StartsWith("marcas"));
         Assert.All(keys, k => Assert.DoesNotContain(keys, o => o != k && o.StartsWith(k + "/")));
-        Assert.False(result.DiscoveryFallbackUsed);
+        Assert.DoesNotContain(result.Outcomes, o => o.Kind == OutcomeKind.Discovery);
     }
 
     [Fact]
@@ -78,17 +78,18 @@ public class ContinenteDiscoveryTests
     }
 
     [Fact]
-    public async Task SitemapFailure_FallbackFlag_Degraded()
+    public async Task SitemapFailure_DiscoveryFailed()
     {
         var (scraper, handler) = CreateScraper();
         handler.SetupRoute("sitemap_index.xml", "error", HttpStatusCode.InternalServerError);
 
         var result = await scraper.ScrapeProductsAsync(null);
 
-        Assert.True(result.DiscoveryFallbackUsed);
+        var o = Assert.Single(result.Outcomes);
+        Assert.Equal(OutcomeKind.Discovery, o.Kind);
+        Assert.Equal(OutcomeResult.Failed, o.Result);
+        Assert.Equal(ScrapingJobStatus.Failed, ScrapeHealthEvaluator.Evaluate(result).Status);
         Assert.Empty(result.Products);
-        Assert.Empty(result.Outcomes);
-        Assert.Equal(ScrapingJobStatus.Degraded, ScrapeHealthEvaluator.Evaluate(result).Status);
     }
 
     [Fact]

@@ -285,6 +285,10 @@ public abstract class BaseHttpScraper : IStoreScraper
         }
     }
 
+    /// <summary>Run result for a scraper whose category discovery failed: no products, one failed Discovery outcome.</summary>
+    protected static ScrapeRunResult DiscoveryFailed(string url, string reason) =>
+        new([], [new ScrapeOutcome { Kind = OutcomeKind.Discovery, Key = "discovery", Url = url, Result = OutcomeResult.Failed, FirstError = reason }], []);
+
     protected static void MarkFirstPage(ScrapeOutcome o, int tilesSeen, int validTiles)
     {
         if (o.Result != OutcomeResult.Ok) return;
