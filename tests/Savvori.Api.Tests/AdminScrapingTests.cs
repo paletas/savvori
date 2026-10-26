@@ -89,6 +89,42 @@ public class AdminScrapingTests : IClassFixture<SavvoriWebApiFactory>
             $"Unexpected status: {response.StatusCode}");
     }
 
+    [Fact]
+    public async Task Status_ReturnsHealthFields()
+    {
+        var chainId = Guid.NewGuid();
+        var slug = $"health-adm-{Guid.NewGuid():N}";
+        _factory.SeedData(db =>
+        {
+            var chain = TestDataSeeder.CreateTestStoreChain("HealthChain", slug);
+            chain.Id = chainId;
+            db.StoreChains.Add(chain);
+            var job = TestDataSeeder.CreateTestScrapingJob(chainId, ScrapingJobStatus.Degraded);
+            job.HealthReason = "x: Failed u";
+            job.WarningCount = 0;
+            job.StaleMarkingSkipped = true;
+            job.DropRatio = 0.4;
+            db.ScrapingJobs.Add(job);
+            db.ScrapingRunOutcomes.Add(new ScrapingRunOutcome
+            {
+                Id = Guid.NewGuid(), ScrapingJobId = job.Id, Kind = OutcomeKind.Category,
+                Key = "cat-1", Url = "https://x/u", Result = OutcomeResult.Failed
+            });
+        });
+
+        using var client = _factory.CreateClient();
+        var response = await client.GetAsync("/api/admin/scraping/status", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        var item = body.EnumerateArray().Single(e => e.GetProperty("chainSlug").GetString() == slug);
+
+        Assert.Equal(5, item.GetProperty("lastStatus").GetInt32());
+        Assert.Equal("x: Failed u", item.GetProperty("healthReason").GetString());
+        Assert.True(item.GetProperty("staleMarkingSkipped").GetBoolean());
+        Assert.Equal(0.4, item.GetProperty("dropRatio").GetDouble(), 3);
+        Assert.Equal(["cat-1"], item.GetProperty("failedKeys").EnumerateArray().Select(k => k.GetString()).ToArray());
+    }
+
     private async Task<string> GetSeededChainSlug()
     {
         using var client = _factory.CreateClient();

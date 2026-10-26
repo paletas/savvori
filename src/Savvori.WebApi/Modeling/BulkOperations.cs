@@ -68,7 +68,8 @@ public sealed class MatchBulkService(SavvoriDbContext db, MatchApplier applier, 
     /// </summary>
     public IQueryable<MatchCandidate> Eligible(double minCosine) =>
         db.MatchCandidates.Where(c => c.Status == CandidateStatus.NeedsReview && c.Suggestion == CosineMethod &&
-                                      c.Cosine >= minCosine && c.BrandCheck == CandidateBrandCheck.Ok && c.Note == null);
+                                      c.Cosine >= minCosine && c.BrandCheck == CandidateBrandCheck.Ok && c.Note == null)
+            .ExcludingInactiveUndecided(db);
 
     public const string ExactMethod = "embedding-exact-name";
 
@@ -89,6 +90,7 @@ public sealed class MatchBulkService(SavvoriDbContext db, MatchApplier applier, 
             ? await db.MatchCandidates.Where(c =>
                     c.Status == CandidateStatus.NeedsReview && c.Note == null && c.BrandCheck == CandidateBrandCheck.Ok &&
                     c.SizeKnown && c.Cosine >= floor && c.Cosine < minCosine && c.JudgeVerdict != JudgeVerdict.No)
+                .ExcludingInactiveUndecided(db)
                 .Select(c => new { c.Id, c.Cosine, c.StoreProductAId, c.StoreProductBId }).ToListAsync(ct)
             : [];
 

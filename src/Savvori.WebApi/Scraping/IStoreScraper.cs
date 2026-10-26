@@ -6,8 +6,10 @@ public interface IStoreScraper
 {
     string StoreChainSlug { get; }
 
-    Task<IReadOnlyList<ScrapedProduct>> ScrapeProductsAsync(
+    Task<ScrapeRunResult> ScrapeProductsAsync(
         string? category = null, CancellationToken ct = default);
+
+    Task<CanaryResult> ProbeAsync(CancellationToken ct = default);
 
     Task<IReadOnlyList<ScrapedStoreLocation>> ScrapeStoreLocationsAsync(
         CancellationToken ct = default);

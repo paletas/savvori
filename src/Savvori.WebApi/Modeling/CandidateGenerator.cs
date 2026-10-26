@@ -89,8 +89,10 @@ public sealed class CandidateGenerator(
         }
         // Whatever is left no longer qualifies (text/size/brand/embedding changed, or already merged). Only undecided
         // proposals are removed: decisions (and above all rejections) must survive so a pair is never proposed again.
+        // Leftovers with an inactive side (not in `facts`) are kept for the "inactive" review filter.
         var stale = existing.Values.Where(c =>
-            c.Status is CandidateStatus.Proposed or CandidateStatus.PendingJudge or CandidateStatus.NeedsReview).ToList();
+            c.Status is CandidateStatus.Proposed or CandidateStatus.PendingJudge or CandidateStatus.NeedsReview &&
+            facts.ContainsKey(c.StoreProductAId) && facts.ContainsKey(c.StoreProductBId)).ToList();
         db.MatchCandidates.RemoveRange(stale);
         await db.SaveChangesAsync(ct);
 

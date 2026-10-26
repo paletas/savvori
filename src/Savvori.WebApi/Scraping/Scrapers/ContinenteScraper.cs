@@ -26,23 +26,21 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
     private const int MaxPagesPerCategory = 50;  // safety cap (~2,400 products per category)
     private const string SitemapIndexUrl = $"{BaseUrl}/sitemap_index.xml";
 
-    // Top-level slugs to include when discovering categories.
-    // Extend this list to capture non-grocery departments as well.
+    // Top-level slugs to include when discovering categories (sitemap first path segment).
+    // Any other top level in the sitemap is reported as a run warning, not scraped silently.
     private static readonly HashSet<string> AllowedTopSlugs = new(StringComparer.OrdinalIgnoreCase)
     {
-        "frescos", "laticinios-e-ovos", "mercearia", "congelados",
-        "peixaria-e-talho", "bebidas-e-garrafeira", "bio-e-saudavel",
-        "padaria-e-pastelaria", "higiene-e-beleza", "limpeza-e-casa",
-        "pet", "bebe"
+        "supermercado", "bebe", "animais", "beleza"
     };
 
-    // Last-resort fallback: top-level slugs used when all discovery mechanisms fail.
-    private static readonly string[] FallbackCategories =
-    [
-        "frescos", "laticinios-e-ovos", "mercearia", "congelados",
-        "peixaria-e-talho", "bebidas-e-garrafeira", "bio-e-saudavel",
-        "padaria-e-pastelaria"
-    ];
+    // Brands pages repeat products already listed under the departments.
+    private static readonly HashSet<string> ExcludedTopSlugs = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "marcas"
+    };
+
+    // Real leaf category requested by the canary probe.
+    private const string ProbeCategory = "supermercado/frutas-e-legumes/frutas/banana";
 
     public ContinenteScraper(
         IHttpClientFactory httpClientFactory,
@@ -51,33 +49,75 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
     {
     }
 
-    public override async Task<IReadOnlyList<ScrapedProduct>> ScrapeProductsAsync(
+    public override async Task<ScrapeRunResult> ScrapeProductsAsync(
         string? category = null, CancellationToken ct = default)
     {
         IReadOnlyList<string> categories;
+        var discoveryFallback = false;
+        IReadOnlyList<string> discoveryWarnings = [];
         if (category is not null)
         {
             categories = [category];
         }
         else
         {
-            categories = await DiscoverCategoryPathsAsync(ct);
+            (categories, discoveryFallback, discoveryWarnings) = await DiscoverCategoryPathsAsync(ct);
             await Task.Delay(500, ct);
         }
 
         var seen = new HashSet<string>();
         var products = new List<ScrapedProduct>();
+        var outcomes = new List<ScrapeOutcome>();
 
         foreach (var cat in categories)
         {
             ct.ThrowIfCancellationRequested();
-            await ScrapeCategory(cat, seen, products, ct);
+            await ScrapeCategory(cat, seen, products, outcomes, ct);
             await Task.Delay(300, ct);
         }
 
+        await ReattemptAsync(outcomes, async old =>
+        {
+            var tmp = new List<ScrapeOutcome>();
+            await ScrapeCategory(old.Key, seen, products, tmp, ct);
+            return tmp[0];
+        }, ct);
+
         Logger.LogInformation("Continente: scraped {Count} distinct products across {Cats} categories",
             products.Count, categories.Count);
-        return products;
+        return new ScrapeRunResult(products, outcomes, discoveryWarnings, DiscoveryFallbackUsed: discoveryFallback);
+    }
+
+    public override async Task<CanaryResult> ProbeAsync(CancellationToken ct = default)
+    {
+        var o = new ScrapeOutcome { Url = SitemapIndexUrl };
+        var xml = await GetStringAsync(SitemapIndexUrl, o, ct);
+        var requests = o.StatusCounts.Values.Sum();
+        if (xml is null)
+            return new CanaryResult(false, $"{SitemapIndexUrl}: {o.Result} {o.FirstError}".Trim(), requests);
+
+        try
+        {
+            var index = XDocument.Parse(xml);
+            var ns = index.Root?.GetDefaultNamespace() ?? XNamespace.None;
+            var hasCategorySitemap = index.Descendants(ns + "loc").Any(e =>
+                e.Value.Contains("categor", StringComparison.OrdinalIgnoreCase) &&
+                !e.Value.Contains("refinement", StringComparison.OrdinalIgnoreCase));
+            if (!hasCategorySitemap)
+                return new CanaryResult(false, $"{SitemapIndexUrl}: no category sitemap", requests);
+        }
+        catch (Exception)
+        {
+            return new CanaryResult(false, $"{SitemapIndexUrl}: unparseable response", requests);
+        }
+
+        var page = await ProbeHtmlAsync(
+            $"{BaseUrl}/{ProbeCategory}/?start=0&sz={PageSize}&srule=Continente", d =>
+            {
+                var t = d.QuerySelectorAll(".product-tile").ToList();
+                return (t.Count, t.Count(x => ParseTile(x) is not null));
+            }, ct);
+        return page with { Requests = page.Requests + requests };
     }
 
     public override async Task<IReadOnlyList<ScrapedStoreLocation>> ScrapeStoreLocationsAsync(
@@ -132,9 +172,11 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
     /// Discovers category paths from the Continente sitemap.
     /// Fetches the sitemap index, locates the category sitemap (excluding refinement sitemaps),
     /// parses category URLs, filters to allowed top-level slugs, and prunes parent paths so only
-    /// leaf categories are scraped. Falls back to <see cref="FallbackCategories"/> on failure.
+    /// leaf categories are scraped. On failure returns no paths and <c>FallbackUsed = true</c>
+    /// (the run is then reported as failed discovery). Top-level segments that are neither allowed
+    /// nor excluded are returned as warnings.
     /// </summary>
-    private async Task<IReadOnlyList<string>> DiscoverCategoryPathsAsync(CancellationToken ct)
+    private async Task<(IReadOnlyList<string> Paths, bool FallbackUsed, IReadOnlyList<string> Warnings)> DiscoverCategoryPathsAsync(CancellationToken ct)
     {
         try
         {
@@ -152,12 +194,13 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
 
             if (categorySitemapUrls.Count == 0)
             {
-                Logger.LogWarning("Continente: no category sitemap found in {Url}, using fallback", SitemapIndexUrl);
-                return FallbackCategories;
+                Logger.LogWarning("Continente: no category sitemap found in {Url}, discovery failed", SitemapIndexUrl);
+                return ([], true, []);
             }
 
             // Step 2: Parse each category sitemap and collect matching paths.
             var discovered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var topSegments = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var sitemapUrl in categorySitemapUrls)
             {
@@ -177,6 +220,7 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
                         if (string.IsNullOrEmpty(path)) continue;
 
                         var firstSegment = path.Split('/')[0];
+                        topSegments[firstSegment] = topSegments.GetValueOrDefault(firstSegment) + 1;
                         if (!AllowedTopSlugs.Contains(firstSegment)) continue;
 
                         discovered.Add(path);
@@ -196,8 +240,8 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
 
             if (discovered.Count == 0)
             {
-                Logger.LogWarning("Continente: category sitemaps yielded no matching paths, using fallback");
-                return FallbackCategories;
+                Logger.LogWarning("Continente: category sitemaps yielded no matching paths, discovery failed");
+                return ([], true, []);
             }
 
             // Step 3: Prune parent paths — only scrape leaves to avoid duplicate products.
@@ -212,12 +256,18 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
                 "Continente: {Total} category paths in sitemap → {Leaves} leaf categories to scrape",
                 paths.Count, leaves.Count);
 
-            return leaves;
+            var warnings = topSegments
+                .Where(kv => !AllowedTopSlugs.Contains(kv.Key) && !ExcludedTopSlugs.Contains(kv.Key))
+                .OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(kv => $"Continente: uncovered top-level category '{kv.Key}' ({kv.Value} URLs)")
+                .ToList();
+
+            return (leaves, false, warnings);
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "Continente: sitemap category discovery failed, using fallback list");
-            return FallbackCategories;
+            Logger.LogWarning(ex, "Continente: sitemap category discovery failed");
+            return ([], true, []);
         }
     }
 
@@ -225,8 +275,17 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
         string categorySlug,
         HashSet<string> seen,
         List<ScrapedProduct> products,
+        List<ScrapeOutcome> outcomes,
         CancellationToken ct)
     {
+        var outcome = new ScrapeOutcome
+        {
+            Kind = OutcomeKind.Category,
+            Key = categorySlug,
+            Url = $"{BaseUrl}/{categorySlug}/?start=0&sz={PageSize}&srule=Continente"
+        };
+        outcomes.Add(outcome);
+        var firstPage = true;
         var start = 0;
         int? total = null;
         var pageCount = 0;
@@ -234,19 +293,20 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
         do
         {
             var url = $"{BaseUrl}/{categorySlug}/?start={start}&sz={PageSize}&srule=Continente";
-            IDocument document;
-
-            try
+            var document = await GetHtmlAsync(url, outcome, ct);
+            if (document is null)
             {
-                document = await GetHtmlAsync(url, ct);
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError(ex, "Continente: failed to fetch category '{Cat}' start={Start}", categorySlug, start);
+                Logger.LogError("Continente: failed to fetch category '{Cat}' start={Start}: {Err}",
+                    categorySlug, start, outcome.FirstError);
                 break;
             }
 
             var tiles = document.QuerySelectorAll(".product-tile").ToList();
+            if (firstPage)
+            {
+                firstPage = false;
+                MarkFirstPage(outcome, tiles.Count, tiles.Count(t => ParseTile(t) is not null));
+            }
             if (tiles.Count == 0) break;
 
             var newOnThisPage = 0;
@@ -257,6 +317,7 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
                 if (seen.Add(product.ExternalId))
                 {
                     products.Add(product);
+                    outcome.ProductsFound++;
                     newOnThisPage++;
                 }
             }

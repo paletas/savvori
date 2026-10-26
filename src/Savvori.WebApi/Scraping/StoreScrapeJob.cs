@@ -21,14 +21,17 @@ public sealed class StoreScrapeJob : IJob
     private readonly SavvoriDbContext _db;
     private readonly ScrapingTelemetry _telemetry;
     private readonly ILogger<StoreScrapeJob> _logger;
+    private readonly IConfiguration? _config;
 
     public StoreScrapeJob(
         IEnumerable<IStoreScraper> scrapers,
         ScraperResultProcessor processor,
         SavvoriDbContext db,
         ScrapingTelemetry telemetry,
-        ILogger<StoreScrapeJob> logger)
+        ILogger<StoreScrapeJob> logger,
+        IConfiguration? config = null)
     {
+        _config = config;
         _scrapers = scrapers;
         _processor = processor;
         _db = db;
@@ -111,14 +114,46 @@ public sealed class StoreScrapeJob : IJob
             // Product scraping phase
             using var prodActivity = _telemetry.StartPhaseActivity("products", slug);
             _logger.LogInformation("Scraping products for {Slug}", slug);
-            var products = await scraper.ScrapeProductsAsync(ct: context.CancellationToken);
-            var count = await _processor.ProcessProductsAsync(slug, products, context.CancellationToken);
+            var canary = await scraper.ProbeAsync(context.CancellationToken);
+            ScrapeRunResult result;
+            if (!canary.Ok)
+            {
+                _logger.LogWarning("Canary failed for {Slug}: {Message}", slug, canary.Message);
+                result = new ScrapeRunResult([], [], [], Canary: canary);
+            }
+            else
+            {
+                result = (await scraper.ScrapeProductsAsync(ct: context.CancellationToken)) with { Canary = canary };
+            }
+            var products = result.Products;
+            var health = ScrapeHealthEvaluator.Evaluate(result);
+            var graceDays = _config?.GetSection("Scraping:Chains").Get<List<ScrapingChainConfig>>()
+                ?.FirstOrDefault(c => c.Slug == slug)?.EffectiveGraceDays
+                ?? new ScrapingChainConfig { Slug = slug }.EffectiveGraceDays;
+            var since = DateTime.UtcNow.AddDays(-60);
+            var starts = await _db.ScrapingJobs
+                .Where(j => j.StoreChainId == chain.Id && j.Id != job.Id &&
+                            (j.Status == ScrapingJobStatus.Completed || j.Status == ScrapingJobStatus.CompletedWithWarnings) &&
+                            j.StartedAt >= since)
+                .Select(j => j.StartedAt)
+                .ToListAsync(CancellationToken.None);
+            if (health.Status != ScrapingJobStatus.Degraded) starts.Add(job.StartedAt);
+            var policy = new StalePolicy(health.Status != ScrapingJobStatus.Degraded, TimeSpan.FromDays(graceDays), starts);
+            var processResult = await _processor.ProcessProductsAsync(slug, products, policy, context.CancellationToken);
+            var count = processResult.Processed;
 
             prodActivity?.SetTag("scraping.result.count", count);
             prodActivity?.SetStatus(ActivityStatusCode.Ok);
 
             sw.Stop();
-            await MarkCompletedAsync(job.Id, count);
+            await MarkCompletedAsync(job.Id, chain.Id, count, products.Count, health, processResult);
+            var persisted = canary.Ok ? result : result with
+            {
+                Outcomes = [new ScrapeOutcome { Kind = OutcomeKind.Canary, Key = "canary", Url = slug, Result = OutcomeResult.Failed, FirstError = canary.Message }]
+            };
+            await PersistOutcomesAsync(job, persisted, health);
+            await PruneOutcomesAsync();
+            _telemetry.RecordRun(slug, persisted, health, processResult);
 
             jobActivity?.SetTag("scraping.products.count", count);
             jobActivity?.SetTag("scraping.locations.count", locationCount);
@@ -166,7 +201,8 @@ public sealed class StoreScrapeJob : IJob
         await _db.SaveChangesAsync(CancellationToken.None);
     }
 
-    private async Task MarkCompletedAsync(Guid jobId, int productsScraped)
+    private async Task MarkCompletedAsync(
+        Guid jobId, Guid chainId, int productsScraped, int productsReturned, RunHealth health, ProcessResult processResult)
     {
         var persistedJob = await _db.ScrapingJobs
             .FirstOrDefaultAsync(j => j.Id == jobId, CancellationToken.None);
@@ -174,11 +210,70 @@ public sealed class StoreScrapeJob : IJob
         if (persistedJob is null)
             return;
 
+        var previous = await _db.ScrapingJobs
+            .Where(j => j.StoreChainId == chainId && j.Id != jobId && j.StartedAt < persistedJob.StartedAt &&
+                        (j.Status == ScrapingJobStatus.Completed || j.Status == ScrapingJobStatus.CompletedWithWarnings))
+            .OrderByDescending(j => j.StartedAt)
+            .Select(j => (int?)j.ProductsScraped)
+            .FirstOrDefaultAsync(CancellationToken.None);
+
+        persistedJob.Status = health.Status;
         persistedJob.ProductsScraped = productsScraped;
-        persistedJob.Status = ScrapingJobStatus.Completed;
+        persistedJob.ProductsReturned = productsReturned;
+        persistedJob.HealthReason = health.Reasons.Count > 0 ? string.Join("; ", health.Reasons) : null;
+        persistedJob.WarningCount = health.Warnings.Count;
+        persistedJob.StaleMarked = processResult.StaleMarked;
+        persistedJob.StaleMarkingSkipped = health.Status == ScrapingJobStatus.Degraded;
+        persistedJob.PreviousHealthyCount = previous;
+        persistedJob.DropRatio = previous > 0 ? productsReturned / (double)previous : null;
         persistedJob.CompletedAt = DateTime.UtcNow;
         persistedJob.ErrorMessage = null;
 
+        // Advisory only: never used for status.
+        _logger.LogInformation("Scrape {JobId} returned {Returned} products, previous healthy {Previous}, drop ratio {DropRatio}.",
+            jobId, productsReturned, previous, persistedJob.DropRatio);
+
+        await _db.SaveChangesAsync(CancellationToken.None);
+    }
+
+    private async Task PersistOutcomesAsync(ScrapingJob job, ScrapeRunResult result, RunHealth health)
+    {
+        static string Trunc(string s) => s.Length > 500 ? s[..500] : s;
+
+        foreach (var o in result.Outcomes)
+        {
+            _db.ScrapingRunOutcomes.Add(new ScrapingRunOutcome
+            {
+                Id = Guid.NewGuid(),
+                ScrapingJobId = job.Id,
+                Kind = o.Kind,
+                Key = o.Key,
+                Url = Trunc(o.Url),
+                Result = o.Result,
+                PagesFetched = o.PagesFetched,
+                ProductsFound = o.ProductsFound,
+                TilesSeen = o.TilesSeen,
+                Retries = o.Retries,
+                StatusCounts = string.Join(",", o.StatusCounts.OrderBy(k => k.Key).Select(k => $"{k.Key}:{k.Value}")),
+                FirstError = o.FirstError is null ? null : Trunc(o.FirstError)
+            });
+        }
+        await _db.SaveChangesAsync(CancellationToken.None);
+
+        foreach (var reason in health.Reasons)
+            await AddLogAsync(job, ScrapingLogLevel.Error, reason);
+        foreach (var warning in health.Warnings)
+            await AddLogAsync(job, ScrapingLogLevel.Warning, warning);
+    }
+
+    private async Task PruneOutcomesAsync()
+    {
+        var cutoff = DateTime.UtcNow.AddDays(-90);
+        var old = await _db.ScrapingRunOutcomes
+            .Where(o => o.ScrapingJob.StartedAt < cutoff)
+            .ToListAsync(CancellationToken.None);
+        if (old.Count == 0) return;
+        _db.ScrapingRunOutcomes.RemoveRange(old);
         await _db.SaveChangesAsync(CancellationToken.None);
     }
 

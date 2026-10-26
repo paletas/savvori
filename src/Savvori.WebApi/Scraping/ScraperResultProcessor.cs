@@ -3,6 +3,11 @@ using Savvori.Shared;
 
 namespace Savvori.WebApi.Scraping;
 
+/// <summary>Whether a run may deactivate unseen products, and the grace window that must have elapsed since the first healthy run that missed them.</summary>
+public record StalePolicy(bool AllowDeactivation, TimeSpan Grace, IReadOnlyList<DateTime> HealthyRunStarts);
+
+public record ProcessResult(int Processed, int StaleMarked);
+
 /// <summary>
 /// Normalizes scraped data and upserts StoreProducts, StoreProductPrices,
 /// and canonical Products into the database.
@@ -35,16 +40,17 @@ public sealed class ScraperResultProcessor
     /// Upserts StoreProduct records, adds StoreProductPrice history,
     /// and runs canonical product matching.
     /// </summary>
-    public async Task<int> ProcessProductsAsync(
+    public async Task<ProcessResult> ProcessProductsAsync(
         string storeChainSlug,
         IReadOnlyList<ScrapedProduct> scraped,
+        StalePolicy? policy = null,
         CancellationToken ct = default)
     {
         var chain = await _db.StoreChains.FirstOrDefaultAsync(sc => sc.Slug == storeChainSlug, ct);
         if (chain is null)
         {
             _logger.LogError("StoreChain '{Slug}' not found. Cannot process products.", storeChainSlug);
-            return 0;
+            return new ProcessResult(0, 0);
         }
 
         // Cache category slugs for fast lookup during this processing run
@@ -96,8 +102,21 @@ public sealed class ScraperResultProcessor
                          sp.IsActive &&
                          !scrapedExternalIds.Contains(sp.ExternalId))
             .ToListAsync(ct);
-        foreach (var stale in staleProducts)
-            stale.IsActive = false;
+        var staleCount = 0;
+        if (policy is { AllowDeactivation: true })
+        {
+            var cutoff = DateTime.UtcNow - policy.Grace;
+            foreach (var stale in staleProducts)
+            {
+                var first = policy.HealthyRunStarts.Where(s => s > stale.LastScraped)
+                    .OrderBy(s => s).Cast<DateTime?>().FirstOrDefault();
+                if (first is not null && first <= cutoff)
+                {
+                    stale.IsActive = false;
+                    staleCount++;
+                }
+            }
+        }
 
         await _db.SaveChangesAsync(ct);
 
@@ -114,8 +133,8 @@ public sealed class ScraperResultProcessor
         _logger.LogInformation(
             "Processed {Count}/{Total} products for {Chain}. Skipped {Skipped}. Marked {Stale} inactive. " +
             "Size/unit-price disagreements: {SizeDisagreements}.",
-            processedCount, scraped.Count, storeChainSlug, skippedCount, staleProducts.Count, SizeDisagreements);
-        return processedCount;
+            processedCount, scraped.Count, storeChainSlug, skippedCount, staleCount, SizeDisagreements);
+        return new ProcessResult(processedCount, staleCount);
     }
 
     /// <summary>

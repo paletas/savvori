@@ -20,7 +20,7 @@ public class MatchingAdminController(
     [HttpGet("summary")]
     public async Task<IActionResult> Summary(CancellationToken ct = default)
     {
-        var byStatus = await db.MatchCandidates.GroupBy(c => c.Status)
+        var byStatus = await db.MatchCandidates.ExcludingInactiveUndecided(db).GroupBy(c => c.Status)
             .Select(g => new { Status = g.Key, Count = g.Count() }).ToListAsync(ct);
         var byMethod = await db.MatchCandidates.Where(c => c.Method != null && c.Status == CandidateStatus.Applied)
             .GroupBy(c => c.Method!).Select(g => new { Method = g.Key, Count = g.Count() }).ToListAsync(ct);
@@ -28,6 +28,7 @@ public class MatchingAdminController(
         {
             ByStatus = byStatus.OrderBy(x => x.Status).Select(x => new { Status = x.Status.ToString(), x.Count }),
             AppliedByMethod = byMethod,
+            InactiveUndecided = await db.MatchCandidates.OnlyInactiveUndecided(db).CountAsync(ct),
             MultiChainCanonicals = await MultiChainCanonicalsAsync(db, ct)
         });
     }
@@ -89,7 +90,7 @@ public class MatchingAdminController(
     }
 
     /// <summary>
-    /// GET /api/admin/matching/review?filter=all|suggested|blocked|judge&amp;sort=default|score&amp;page=1&amp;pageSize=10
+    /// GET /api/admin/matching/review?filter=all|suggested|blocked|judge|inactive&amp;sort=default|score&amp;page=1&amp;pageSize=10
     /// Candidates needing a human, best first: suggestions from a dry run and judge "yes" first.
     /// sort=score lists the judge's score first, highest first, unscored last.
     /// </summary>
@@ -101,7 +102,10 @@ public class MatchingAdminController(
         if (pageSize is < 1 or > 50) pageSize = 10;
 
         var wanted = filter == "applied" ? CandidateStatus.Applied : CandidateStatus.NeedsReview;
-        var q = db.MatchCandidates.Where(c => c.Status == wanted);
+        // "inactive": undecided candidates with a no-longer-sold side; every other filter hides them.
+        var q = filter == "inactive"
+            ? db.MatchCandidates.OnlyInactiveUndecided(db)
+            : db.MatchCandidates.Where(c => c.Status == wanted).ExcludingInactiveUndecided(db);
         q = filter switch
         {
             "suggested" => q.Where(c => c.Suggestion != null),
@@ -125,24 +129,30 @@ public class MatchingAdminController(
         var items = new List<object>();
         foreach (var r in rows)
         {
+            var a = await ListingAsync(r.A, ct);
+            var b = await ListingAsync(r.B, ct);
             items.Add(new
             {
                 r.Id, r.Cosine, r.SizeKnown, r.BrandCheck, r.Status, r.Suggestion, r.Verdict, r.JudgeScore, r.Note, r.Method,
+                Inactive = (r.Status is "Proposed" or "PendingJudge" or "NeedsReview") && (!(a?.IsActive ?? false) || !(b?.IsActive ?? false)),
                 Warning = await applier.PreviewConflictAsync(r.A, r.B, ct),
-                A = await ListingAsync(r.A, ct),
-                B = await ListingAsync(r.B, ct)
+                A = a,
+                B = b
             });
         }
         return Ok(new { Page = page, PageSize = pageSize, Total = total, TotalPages = (int)Math.Ceiling((double)total / pageSize), Items = items });
     }
 
-    private async Task<object?> ListingAsync(Guid id, CancellationToken ct) =>
-        await db.StoreProducts.Where(sp => sp.Id == id).Select(sp => new
-        {
-            sp.Id, sp.Name, sp.Brand, sp.SizeValue, Unit = sp.Unit.ToString(), sp.ImageUrl, sp.SourceUrl,
-            Chain = sp.StoreChain.Name, sp.CanonicalProductId,
-            Price = sp.Prices.Where(p => p.IsLatest).Select(p => (decimal?)p.Price).FirstOrDefault()
-        }).FirstOrDefaultAsync(ct);
+    private sealed record ListingDto(
+        Guid Id, string Name, string? Brand, decimal? SizeValue, string Unit, string? ImageUrl, string? SourceUrl,
+        string Chain, Guid? CanonicalProductId, decimal? Price, bool IsActive, DateTime LastScraped);
+
+    private async Task<ListingDto?> ListingAsync(Guid id, CancellationToken ct) =>
+        await db.StoreProducts.Where(sp => sp.Id == id).Select(sp => new ListingDto(
+            sp.Id, sp.Name, sp.Brand, sp.SizeValue, sp.Unit.ToString(), sp.ImageUrl, sp.SourceUrl,
+            sp.StoreChain.Name, sp.CanonicalProductId,
+            sp.Prices.Where(p => p.IsLatest).Select(p => (decimal?)p.Price).FirstOrDefault(),
+            sp.IsActive, sp.LastScraped)).FirstOrDefaultAsync(ct);
 
     // ---- bulk apply of the confident cosine suggestions -------------------------------------------------
 
@@ -163,7 +173,7 @@ public class MatchingAdminController(
             items.Add(new
             {
                 c.Id, c.Cosine, c.SizeKnown, BrandCheck = c.BrandCheck.ToString(), Status = c.Status.ToString(), c.Suggestion,
-                Verdict = (string?)null, Note = (string?)null, Method = (string?)null,
+                Verdict = (string?)null, Note = (string?)null, Method = (string?)null, Inactive = false,
                 Warning = await applier.PreviewConflictAsync(c.StoreProductAId, c.StoreProductBId, ct),
                 A = await ListingAsync(c.StoreProductAId, ct), B = await ListingAsync(c.StoreProductBId, ct)
             });

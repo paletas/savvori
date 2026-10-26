@@ -30,30 +30,49 @@ public sealed partial class CeleiroScraper : BaseHttpScraper
     {
     }
 
-    public override async Task<IReadOnlyList<ScrapedProduct>> ScrapeProductsAsync(
+    public override async Task<ScrapeRunResult> ScrapeProductsAsync(
         string? category = null, CancellationToken ct = default)
     {
         var seen = new HashSet<string>();
         var products = new List<ScrapedProduct>();
+        var outcomes = new List<ScrapeOutcome>();
 
         if (category is not null)
         {
             await ScrapeListing(
                 p => $"{BaseUrl}/catalogsearch/result/?q={Uri.EscapeDataString(category)}&p={p}",
-                null, seen, products, ct);
+                null, category, seen, products, outcomes, ct);
         }
         else
         {
             foreach (var slug in GroceryCategories)
             {
                 ct.ThrowIfCancellationRequested();
-                await ScrapeListing(p => $"{BaseUrl}/produtos/{slug}?p={p}", slug, seen, products, ct);
+                await ScrapeListing(p => $"{BaseUrl}/produtos/{slug}?p={p}", slug, slug, seen, products, outcomes, ct);
             }
         }
 
+        await ReattemptAsync(outcomes, async old =>
+        {
+            var tmp = new List<ScrapeOutcome>();
+            if (category is not null)
+                await ScrapeListing(p => $"{BaseUrl}/catalogsearch/result/?q={Uri.EscapeDataString(old.Key)}&p={p}",
+                    null, old.Key, seen, products, tmp, ct);
+            else
+                await ScrapeListing(p => $"{BaseUrl}/produtos/{old.Key}?p={p}", old.Key, old.Key, seen, products, tmp, ct);
+            return tmp[0];
+        }, ct);
+
         Logger.LogInformation("Celeiro: scraped {Count} distinct products", products.Count);
-        return products;
+        return new ScrapeRunResult(products, outcomes, Array.Empty<string>());
     }
+
+    public override Task<CanaryResult> ProbeAsync(CancellationToken ct = default)
+        => ProbeHtmlAsync($"{BaseUrl}/produtos/alimentacao?p=1", d =>
+        {
+            var i = d.QuerySelectorAll(".product-item-info").ToList();
+            return (i.Count, i.Count(x => ParseItem(x, "alimentacao") is not null));
+        }, ct);
 
     public override Task<IReadOnlyList<ScrapedStoreLocation>> ScrapeStoreLocationsAsync(
         CancellationToken ct = default)
@@ -64,24 +83,26 @@ public sealed partial class CeleiroScraper : BaseHttpScraper
     private async Task ScrapeListing(
         Func<int, string> urlForPage,
         string? category,
+        string key,
         HashSet<string> seen,
         List<ScrapedProduct> products,
+        List<ScrapeOutcome> outcomes,
         CancellationToken ct)
     {
+        var outcome = new ScrapeOutcome { Kind = OutcomeKind.Category, Key = key, Url = urlForPage(1) };
+        outcomes.Add(outcome);
         for (var page = 1; page <= MaxPagesPerListing; page++)
         {
-            IDocument document;
-            try
+            var document = await GetHtmlAsync(urlForPage(page), outcome, ct);
+            if (document is null)
             {
-                document = await GetHtmlAsync(urlForPage(page), ct);
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError(ex, "Celeiro: failed to fetch {Url}", urlForPage(page));
+                Logger.LogError("Celeiro: failed to fetch {Url}: {Err}", urlForPage(page), outcome.FirstError);
                 return;
             }
 
             var items = document.QuerySelectorAll(".product-item-info").ToList();
+            if (page == 1)
+                MarkFirstPage(outcome, items.Count, items.Count(i => ParseItem(i, category) is not null));
             if (items.Count == 0) return;
 
             var added = 0;
@@ -91,6 +112,7 @@ public sealed partial class CeleiroScraper : BaseHttpScraper
                 if (product is not null && seen.Add(product.ExternalId))
                 {
                     products.Add(product);
+                    outcome.ProductsFound++;
                     added++;
                 }
             }

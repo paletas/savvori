@@ -15,6 +15,7 @@ public class SavvoriDbContext : DbContext
     public DbSet<ProductCategory> ProductCategories { get; set; } = default!;
     public DbSet<ScrapingJob> ScrapingJobs { get; set; } = default!;
     public DbSet<ScrapingLog> ScrapingLogs { get; set; } = default!;
+    public DbSet<ScrapingRunOutcome> ScrapingRunOutcomes { get; set; } = default!;
     public DbSet<StoreCategory> StoreCategories { get; set; } = default!;
     public DbSet<StoreCategoryMapping> StoreCategoryMappings { get; set; } = default!;
     public DbSet<StoreProduct> StoreProducts { get; set; } = default!;
@@ -83,6 +84,19 @@ public class SavvoriDbContext : DbContext
             .WithMany(j => j.Logs)
             .HasForeignKey(l => l.ScrapingJobId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        // ScrapingRunOutcome → ScrapingJob
+        modelBuilder.Entity<ScrapingRunOutcome>(e =>
+        {
+            e.HasOne(o => o.ScrapingJob)
+                .WithMany(j => j.Outcomes)
+                .HasForeignKey(o => o.ScrapingJobId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.Property(o => o.Url).HasMaxLength(500);
+            e.Property(o => o.FirstError).HasMaxLength(500);
+            e.HasIndex(o => o.ScrapingJobId);
+            e.HasIndex(o => new { o.Key, o.ScrapingJobId });
+        });
 
         // StoreCategory: self-referencing hierarchy
         modelBuilder.Entity<StoreCategory>()

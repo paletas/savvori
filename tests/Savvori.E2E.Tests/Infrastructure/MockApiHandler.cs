@@ -397,9 +397,20 @@ public class MockApiHandler : HttpMessageHandler
         {
             chainSlug = "pingodoce", chainName = "Pingo Doce",
             isScheduled = true, nextFireTime = (DateTime?)DateTime.UtcNow.AddHours(6),
-            lastStatus = (int?)null, lastRunAt = (DateTime?)null,
-            completedAt = (DateTime?)null,
-            productsScraped = 0, errorMessage = (string?)null
+            lastStatus = (int?)5, lastRunAt = (DateTime?)DateTime.UtcNow.AddHours(-1),
+            completedAt = (DateTime?)DateTime.UtcNow.AddMinutes(-30),
+            productsScraped = 1200, errorMessage = (string?)null,
+            healthReason = "cat-1: Failed https://x/y (HTTP 403)", failedKeys = new[] { "cat-1" },
+            staleMarkingSkipped = true, dropRatio = (double?)0.45, warningCount = 0, staleMarked = 0
+        },
+        new
+        {
+            chainSlug = "auchan", chainName = "Auchan",
+            isScheduled = true, nextFireTime = (DateTime?)DateTime.UtcNow.AddHours(6),
+            lastStatus = (int?)4, lastRunAt = (DateTime?)DateTime.UtcNow.AddHours(-1),
+            completedAt = (DateTime?)DateTime.UtcNow.AddMinutes(-30),
+            productsScraped = 900, errorMessage = (string?)null,
+            warningCount = 1
         }
     ];
 
@@ -413,12 +424,24 @@ public class MockApiHandler : HttpMessageHandler
                 {
                     id = Guid.NewGuid(), status = 2, startedAt = DateTime.UtcNow.AddHours(-1),
                     completedAt = (DateTime?)DateTime.UtcNow.AddMinutes(-30),
-                    productsScraped = 1500, errorMessage = (string?)null
+                    productsScraped = 1500, errorMessage = (string?)null,
+                    healthReason = (string?)null
+                },
+                new
+                {
+                    id = Guid.NewGuid(), status = 5, startedAt = DateTime.UtcNow.AddHours(-13),
+                    completedAt = (DateTime?)DateTime.UtcNow.AddHours(-12),
+                    productsScraped = 1200, errorMessage = (string?)null,
+                    healthReason = (string?)"cat-1: Failed https://x/y (HTTP 403)"
                 }
             },
             recentLogs = new[]
             {
                 new { scrapingJobId = Guid.NewGuid(), level = 2, message = "Scraping completed.", timestamp = DateTime.UtcNow.AddMinutes(-30) }
+            },
+            outcomes = new[]
+            {
+                new { kind = "Category", key = "cat-1", url = "https://x/y", result = "Failed", pagesFetched = 1, productsFound = 0, tilesSeen = 0, retries = 2, statusCounts = "403:3", firstError = "HTTP 403" }
             }
         };
 }

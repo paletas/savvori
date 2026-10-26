@@ -90,13 +90,22 @@ public record ScrapingStatusDto(
     string ChainSlug, string? ChainName,
     bool IsScheduled, DateTime? NextFireTime,
     int? LastStatus, DateTime? LastRunAt, DateTime? CompletedAt,
-    int ProductsScraped, string? ErrorMessage);
+    int ProductsScraped, string? ErrorMessage,
+    string? HealthReason = null, int WarningCount = 0, bool StaleMarkingSkipped = false,
+    int StaleMarked = 0, double? DropRatio = null, string[]? FailedKeys = null);
 
-public record ScrapingChainDetailDto(string Chain, List<ScrapingJobDto> Jobs, List<ScrapingLogDto> RecentLogs);
+public record ScrapingChainDetailDto(
+    string Chain, List<ScrapingJobDto> Jobs, List<ScrapingLogDto> RecentLogs,
+    List<ScrapingOutcomeDto>? Outcomes = null);
 
 public record ScrapingJobDto(
     Guid Id, int Status, DateTime StartedAt, DateTime? CompletedAt,
-    int ProductsScraped, string? ErrorMessage);
+    int ProductsScraped, string? ErrorMessage,
+    string? HealthReason = null, int WarningCount = 0, bool StaleMarkingSkipped = false, double? DropRatio = null);
+
+public record ScrapingOutcomeDto(
+    string Kind, string Key, string Url, string Result,
+    int PagesFetched, int ProductsFound, int TilesSeen, int Retries, string StatusCounts, string? FirstError);
 
 public record ScrapingLogDto(Guid ScrapingJobId, int Level, string Message, DateTime Timestamp);
 
@@ -187,11 +196,11 @@ public record MatchingSummaryDto(
 
 public record ReviewListingDto(
     Guid Id, string Name, string? Brand, decimal? SizeValue, string Unit, string? ImageUrl, string? SourceUrl,
-    string Chain, Guid? CanonicalProductId, decimal? Price);
+    string Chain, Guid? CanonicalProductId, decimal? Price, bool IsActive = true, DateTime? LastScraped = null);
 
 public record ReviewItemDto(
     Guid Id, double Cosine, bool SizeKnown, string BrandCheck, string Status, string? Suggestion, string? Verdict, double? JudgeScore,
-    string? Note, string? Method, string? Warning, ReviewListingDto A, ReviewListingDto B);
+    string? Note, string? Method, string? Warning, ReviewListingDto A, ReviewListingDto B, bool Inactive = false);
 
 public record ReviewPageDto(int Page, int PageSize, int Total, int TotalPages, List<ReviewItemDto> Items);
 

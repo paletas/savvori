@@ -54,6 +54,7 @@ tests/
 - `ProductNormalizer` — size/unit extraction, text normalization, brand extraction.
 - `ProductMatcher` / `CategoryMapper` / `CategoryTaxonomy` / `CategorySeeder` — category taxonomy assignment and product-to-category mapping (added in the "Phase 4" work).
 - `StoreScrapeJob` — Quartz.NET job running all registered scrapers, scheduled twice daily.
+- Run health, the stale-product grace window and the canary live in `ScrapeHealthEvaluator` and `StoreScrapeJob`; a `Degraded` run never deactivates products.
 - New store chain = implement `IStoreScraper` + register with DI; scrapers differ by underlying platform (SFCC JSON, SAP Hybris HTML, etc.) — check an existing scraper for the closest-matching platform before writing a new one from scratch.
 
 ### Model-assisted matching and categories (`src/Savvori.WebApi/Modeling`)

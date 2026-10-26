@@ -14,6 +14,7 @@ builder.AddServiceDefaults();
 // Register scraping and model ActivitySources/Meters with the OTel pipeline. Microsoft.EntityFrameworkCore is
 // EF Core's own built-in meter (query counts/duration, active DbContexts) - no package needed, just AddMeter.
 builder.Services.AddSingleton<ScrapingTelemetry>();
+builder.Services.AddHostedService<ScrapingTelemetrySampler>();
 builder.Services.AddOpenTelemetry()
     .WithTracing(t => t.AddSource(ScrapingTelemetry.ActivitySourceName).AddSource(ModelTelemetry.ActivitySourceName))
     .WithMetrics(m => m
@@ -265,4 +266,6 @@ public class ScrapingChainConfig
     public bool ScrapeLocations { get; set; } = true;
     public string? MorningCron { get; set; }
     public string? EveningCron { get; set; }
+    public int? GraceDays { get; set; }
+    public int EffectiveGraceDays => GraceDays ?? (Slug == "lidl" ? 14 : 3);
 }

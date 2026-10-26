@@ -1,3 +1,4 @@
+using System.Net;
 using NSubstitute;
 using Savvori.WebApi.Scraping.Scrapers;
 using Savvori.Shared;
@@ -23,13 +24,70 @@ public class CeleiroScraperTests
         var factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient("celeiro").Returns(new HttpClient(handler));
 
-        return new CeleiroScraper(factory, Substitute.For<ILogger<CeleiroScraper>>());
+        return new CeleiroScraper(factory, Substitute.For<ILogger<CeleiroScraper>>()) { ReattemptDelay = TimeSpan.Zero };
+    }
+
+    [Fact]
+    public async Task Celeiro_Probe_Ok()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.SetupRoute("produtos/alimentacao", LoadFixture("celeiro_products.html"));
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient("celeiro").Returns(new HttpClient(handler));
+        var scraper = new CeleiroScraper(factory, Substitute.For<ILogger<CeleiroScraper>>());
+
+        var r = await scraper.ProbeAsync(CancellationToken.None);
+
+        Assert.True(r.Ok);
+        Assert.Equal(1, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task Celeiro_Probe_NoTiles_NotOk()
+    {
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient("celeiro").Returns(new HttpClient(new FakeHttpMessageHandler()));
+        var scraper = new CeleiroScraper(factory, Substitute.For<ILogger<CeleiroScraper>>());
+
+        var r = await scraper.ProbeAsync(CancellationToken.None);
+
+        Assert.False(r.Ok);
+        Assert.Contains("no product tiles", r.Message);
+    }
+
+    [Fact]
+    public async Task Celeiro_410OnFirstPage_OutcomeFailed()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.SetupRoute("alimentacao", "gone", HttpStatusCode.Gone);
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient("celeiro").Returns(new HttpClient(handler));
+        var scraper = new CeleiroScraper(factory, Substitute.For<ILogger<CeleiroScraper>>()) { ReattemptDelay = TimeSpan.Zero };
+
+        var result = await scraper.ScrapeProductsAsync("alimentacao", CancellationToken.None);
+
+        Assert.Empty(result.Products);
+        var o = Assert.Single(result.Outcomes);
+        Assert.Equal(OutcomeKind.Category, o.Kind);
+        Assert.Equal("alimentacao", o.Key);
+        Assert.Equal(OutcomeResult.Failed, o.Result);
+        Assert.True(o.StatusCounts.ContainsKey(410));
+    }
+
+    [Fact]
+    public async Task Celeiro_HealthyFirstPage_OutcomeOk()
+    {
+        var result = await CreateScraper().ScrapeProductsAsync("leite", CancellationToken.None);
+
+        var o = Assert.Single(result.Outcomes);
+        Assert.Equal(OutcomeResult.Ok, o.Result);
+        Assert.True(o.TilesSeen > 0);
     }
 
     [Fact]
     public async Task ScrapeProductsAsync_ParsesValidProductsOnce_AndStopsOnRepeatedPage()
     {
-        var products = await CreateScraper().ScrapeProductsAsync("leite", CancellationToken.None);
+        var products = (await CreateScraper().ScrapeProductsAsync("leite", CancellationToken.None)).Products;
 
         // 2 valid products; the SKU-less item is skipped; repeated pages add nothing
         Assert.Equal(2, products.Count);
@@ -38,7 +96,7 @@ public class CeleiroScraperTests
     [Fact]
     public async Task ScrapeProductsAsync_ParsesFields()
     {
-        var products = await CreateScraper().ScrapeProductsAsync("leite", CancellationToken.None);
+        var products = (await CreateScraper().ScrapeProductsAsync("leite", CancellationToken.None)).Products;
 
         var aveia = products.First(p => p.ExternalId == "130950");
         Assert.Equal("Bebida de Aveia Bio", aveia.Name);
@@ -53,7 +111,7 @@ public class CeleiroScraperTests
     [Fact]
     public async Task ScrapeProductsAsync_ParsesKgUnitPrice_AndPromotion()
     {
-        var products = await CreateScraper().ScrapeProductsAsync("amendoas", CancellationToken.None);
+        var products = (await CreateScraper().ScrapeProductsAsync("amendoas", CancellationToken.None)).Products;
 
         var amendoas = products.First(p => p.ExternalId == "16813");
         Assert.Equal(3.11m, amendoas.Price);
