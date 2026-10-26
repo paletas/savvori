@@ -52,7 +52,7 @@ public sealed class ScrapeHealthEvaluatorTests
     {
         var h = ScrapeHealthEvaluator.Evaluate(Run([Outcome(OutcomeResult.Ok)], fallback: true));
         Assert.Equal(ScrapingJobStatus.Degraded, h.Status);
-        Assert.Contains("Discovery fell back to a static category list", h.Reasons);
+        Assert.Contains("Category discovery failed", h.Reasons);
     }
 
     [Fact]

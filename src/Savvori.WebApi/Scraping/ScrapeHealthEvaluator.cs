@@ -32,7 +32,7 @@ public static class ScrapeHealthEvaluator
         }
 
         if (r.DiscoveryFallbackUsed)
-            reasons.Add("Discovery fell back to a static category list");
+            reasons.Add("Category discovery failed");
 
         if (r.Canary is { Ok: false })
             reasons.Add($"Canary: {r.Canary.Message}");

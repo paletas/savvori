@@ -45,7 +45,7 @@ public sealed class ScrapingTelemetry : IDisposable
     /// <summary>HTTP responses received by the scrapers.</summary>
     public readonly Counter<long> HttpResponses;
 
-    /// <summary>Discovery runs that fell back to the static category list.</summary>
+    /// <summary>Discovery runs that failed (no category list; the run is Degraded).</summary>
     public readonly Counter<long> DiscoveryFallback;
 
     /// <summary>Canary checks that failed.</summary>
@@ -101,7 +101,7 @@ public sealed class ScrapingTelemetry : IDisposable
 
         DiscoveryFallback = _meter.CreateCounter<long>(
             "savvori.scraping.discovery.fallback", "runs",
-            "Number of discovery runs that fell back to the static category list");
+            "Number of discovery runs that failed");
 
         CanaryFailed = _meter.CreateCounter<long>(
             "savvori.scraping.canary.failed", "runs",
