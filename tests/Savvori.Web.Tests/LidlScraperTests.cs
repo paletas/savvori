@@ -107,7 +107,7 @@ public class LidlScraperTests
     }
 
     [Fact]
-    public async Task Lidl_NonFoodOnlyPage_IsNotMissingFields()
+    public async Task Lidl_NonFoodItem_IsParsed()
     {
         const string json = """
             {"numFound":1,"items":[{"gridbox":{"data":{"category":"Non-Food","itemId":20000001,"fullTitle":"Martelo","price":{"price":9.99}}}}]}
@@ -117,19 +117,19 @@ public class LidlScraperTests
 
         var result = await CreateScraper(handler).ScrapeProductsAsync("martelo", CancellationToken.None);
 
-        Assert.Empty(result.Products);
+        Assert.Equal("20000001", Assert.Single(result.Products).ExternalId);
         var o = Assert.Single(result.Outcomes);
         Assert.Equal(OutcomeResult.Ok, o.Result);
     }
 
     [Fact]
-    public async Task ScrapeProductsAsync_KeepsOnlyPricedFoodItems()
+    public async Task ScrapeProductsAsync_KeepsAllPricedItems()
     {
         var products = (await CreateScraper().ScrapeProductsAsync(null, CancellationToken.None)).Products;
 
-        // Non-food and price-less items are skipped
-        Assert.Equal(2, products.Count);
-        Assert.DoesNotContain(products, p => p.ExternalId == "20000001");
+        // Non-food items are kept; price-less items are skipped
+        Assert.Equal(3, products.Count);
+        Assert.Contains(products, p => p.ExternalId == "20000001");
         Assert.DoesNotContain(products, p => p.ExternalId == "11500002");
     }
 
@@ -160,6 +160,81 @@ public class LidlScraperTests
         Assert.Equal(ProductUnit.L, agros.Unit);
         Assert.False(agros.IsPromotion);
         Assert.Null(agros.Category);
+    }
+
+    private static string Page(int numFound, IEnumerable<int> ids) =>
+        "{\"numFound\":" + numFound + ",\"items\":[" + string.Join(",", ids.Select(id =>
+            "{\"gridbox\":{\"data\":{\"category\":\"Food\",\"itemId\":" + id +
+            ",\"fullTitle\":\"P" + id + "\",\"price\":{\"price\":1.5}}}}")) + "]}";
+
+    [Fact]
+    public async Task Lidl_AllAssortmentFixture_ParsesNonFoodItems()
+    {
+        var json = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "lidl_search_all_p0.json"));
+        var handler = new FakeHttpMessageHandler();
+        handler.SetDefaultResponse(json);
+
+        var nonFood = 0;
+        using (var doc = System.Text.Json.JsonDocument.Parse(json))
+        {
+            foreach (var item in doc.RootElement.GetProperty("items").EnumerateArray())
+            {
+                var data = item.GetProperty("gridbox").GetProperty("data");
+                if (data.TryGetProperty("category", out var c) && c.GetString() != "Food" &&
+                    data.TryGetProperty("price", out var pr) && pr.TryGetProperty("price", out var pv) &&
+                    pv.TryGetDecimal(out var price) && price > 0)
+                    nonFood++;
+            }
+        }
+        Assert.True(nonFood > 0);
+
+        var result = await CreateScraper(handler).ScrapeProductsAsync(null, CancellationToken.None);
+
+        Assert.True(result.Products.Count >= nonFood + 20);
+        var o = Assert.Single(result.Outcomes);
+        Assert.Equal(218, o.SiteTotal);
+        Assert.Equal(result.Products.Count, o.ProductsListed);
+        Assert.Equal(1, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task Lidl_PagesToNumFound_ThreePages()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.SetupRoute("offset=0&fetchsize", Page(100, Enumerable.Range(1, 48)));
+        handler.SetupRoute("offset=48&fetchsize", Page(100, Enumerable.Range(49, 48)));
+        handler.SetupRoute("offset=96&fetchsize", Page(100, Enumerable.Range(97, 4)));
+
+        var result = await CreateScraper(handler).ScrapeProductsAsync(null, CancellationToken.None);
+
+        Assert.Equal(100, result.Products.Count);
+        Assert.Equal(3, handler.RequestCount);
+        var o = Assert.Single(result.Outcomes);
+        Assert.Equal(100, o.SiteTotal);
+        Assert.Equal(100, o.ProductsListed);
+        Assert.Equal("(empty)", o.Key);
+        Assert.Equal(OutcomeResult.Ok, o.Result);
+        Assert.False(result.Incomplete);
+    }
+
+    [Fact]
+    public async Task Lidl_Loop_RepeatedPage_StopsAndWarns()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.SetDefaultResponse(Page(500, Enumerable.Range(1, 48)));
+
+        var result = await CreateScraper(handler).ScrapeProductsAsync(null, CancellationToken.None);
+
+        Assert.Equal(2, handler.RequestCount);
+        Assert.True(result.Incomplete);
+        Assert.Contains("Loop detected in (empty) at page 2: repeated page; category ended", result.Warnings);
+        Assert.Equal(48, result.Products.Count);
+    }
+
+    [Fact]
+    public void Lidl_RequestCeiling_Is15()
+    {
+        Assert.Equal(15, CreateScraper().RequestCeiling);
     }
 
     [Fact]
