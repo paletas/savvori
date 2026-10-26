@@ -244,22 +244,108 @@ public class AuchanScraperTests
         Assert.Empty(locations);
     }
 
-    [Fact]
-    public async Task ScrapeProductsAsync_StopsWhenServerRepeatsSamePage()
+    private static string Page(int total, IEnumerable<int> ids)
     {
-        // Regression: Auchan ignored an unknown paging param and returned page 1 forever,
-        // which made the scraper loop indefinitely.
+        var sb = new System.Text.StringBuilder();
+        sb.Append("<html><body><div class=\"auc-search-results auc-js-search-results-count\">1 - 24 de ")
+          .Append(total.ToString("N0", System.Globalization.CultureInfo.InvariantCulture))
+          .Append(" resultados</div>");
+        foreach (var id in ids)
+            sb.Append($"<div class=\"product-tile\" data-pid=\"{id}\" data-gtm='{{\"name\":\"P{id}\",\"price\":\"1.50\"}}'></div>");
+        sb.Append("</body></html>");
+        return sb.ToString();
+    }
+
+    private static (AuchanScraper Scraper, FakeHttpMessageHandler Handler) CreateWith(Action<FakeHttpMessageHandler> setup)
+    {
         var handler = new FakeHttpMessageHandler();
-        handler.SetDefaultResponse(LoadFixture("auchan_products.html"));
+        setup(handler);
         var factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient("auchan").Returns(new HttpClient(handler));
-        var scraper = new AuchanScraper(factory, Substitute.For<ILogger<AuchanScraper>>()) { RequestSpacing = TimeSpan.Zero };
+        return (new AuchanScraper(factory, Substitute.For<ILogger<AuchanScraper>>()) { ReattemptDelay = TimeSpan.Zero, RequestSpacing = TimeSpan.Zero }, handler);
+    }
 
-        var products = (await scraper.ScrapeProductsAsync("ovos", CancellationToken.None)
-            .WaitAsync(TimeSpan.FromSeconds(10))).Products;
+    [Fact]
+    public async Task Auchan_Loop_OffsetIgnored_StopsAndWarns()
+    {
+        var (scraper, handler) = CreateWith(h => h.SetDefaultResponse(Page(500, Enumerable.Range(1, 24))));
 
-        Assert.Equal(4, products.Count);
-        Assert.True(handler.RequestCount <= 3, $"Expected the loop to stop, made {handler.RequestCount} requests");
+        var result = await scraper.ScrapeProductsAsync(null, CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(2, handler.RequestCount);
+        Assert.True(result.Incomplete);
+        Assert.Equal("Loop detected in root at page 2: repeated page; category ended", Assert.Single(result.Warnings));
+        Assert.Equal(24, result.Products.Count);
+    }
+
+    [Fact]
+    public async Task Auchan_SiteTotal_FromRealCountFixture()
+    {
+        var (scraper, handler) = CreateWith(h => h.SetDefaultResponse(LoadFixture("auchan_root_count.html")));
+
+        var result = await scraper.ScrapeProductsAsync(null, CancellationToken.None);
+
+        var outcome = Assert.Single(result.Outcomes);
+        Assert.Equal("root", outcome.Key);
+        Assert.Equal(57562, outcome.SiteTotal);
+        Assert.Equal(OutcomeResult.NoTiles, outcome.Result);
+        Assert.Equal(2, handler.RequestCount); // page 1 plus the end-of-run reattempt of a non-Ok outcome
+    }
+
+    [Fact]
+    public async Task Auchan_PagesToTotal_ThreePages()
+    {
+        var (scraper, handler) = CreateWith(h =>
+        {
+            h.SetupRoute("cgid=root&start=0", Page(60, Enumerable.Range(1, 24)));
+            h.SetupRoute("start=24", Page(60, Enumerable.Range(25, 24)));
+            h.SetupRoute("start=48", Page(60, Enumerable.Range(49, 12)));
+        });
+
+        var result = await scraper.ScrapeProductsAsync(null, CancellationToken.None);
+
+        Assert.Equal(60, result.Products.Count);
+        Assert.Equal(3, handler.RequestCount);
+        Assert.False(result.Incomplete);
+        var outcome = Assert.Single(result.Outcomes);
+        Assert.Equal("root", outcome.Key);
+        Assert.Equal(60, outcome.SiteTotal);
+        Assert.Equal(60, outcome.ProductsListed);
+        Assert.Equal(OutcomeResult.Ok, outcome.Result);
+    }
+
+    [Fact]
+    public async Task Auchan_PastDeclaredTotal_Loop()
+    {
+        var (scraper, _) = CreateWith(h =>
+        {
+            h.SetupRoute("start=0", Page(10, Enumerable.Range(1, 24)));
+            h.SetupRoute("start=24", Page(10, Enumerable.Range(25, 24)));
+        });
+
+        var result = await scraper.ScrapeProductsAsync(null, CancellationToken.None);
+
+        Assert.True(result.Incomplete);
+        var warning = Assert.Single(result.Warnings);
+        Assert.StartsWith("Loop detected in root at page", warning);
+        Assert.Contains("past declared total", warning);
+    }
+
+    [Fact]
+    public void Auchan_RequestCeiling_Is7200()
+    {
+        Assert.Equal(7200, CreateScraper().Scraper.RequestCeiling);
+    }
+
+    [Fact]
+    public async Task Auchan_NoSearchTermsOrSortParams()
+    {
+        var (scraper, handler) = CreateScraper();
+
+        await scraper.ScrapeProductsAsync(null, CancellationToken.None);
+
+        Assert.Equal(1, handler.RequestCount);
     }
 
     [Fact]
