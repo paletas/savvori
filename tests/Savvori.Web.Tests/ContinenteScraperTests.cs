@@ -222,6 +222,109 @@ public class ContinenteScraperTests
         Assert.Equal(4.98m, queijo.UnitPrice);
     }
 
+    private static string Page(int? total, IEnumerable<int> ids)
+    {
+        var list = ids.ToList();
+        var counter = total is null ? "" : $"<div class=\"search-results-products-counter\">{list.Count} de {total} produtos</div>";
+        var tiles = string.Concat(list.Select(id =>
+            "<div class=\"product-tile\" data-product-tile-impression=\"" +
+            WebUtility.HtmlEncode("{\"id\":\"" + id + "\",\"name\":\"P" + id + "\",\"price\":1.5}") +
+            "\"></div>"));
+        return "<html><body>" + counter + tiles + "</body></html>";
+    }
+
+    [Fact]
+    public async Task Continente_SiteTotal_FromCounter()
+    {
+        var (scraper, handler) = CreateScraper();
+        handler.SetupRoute("start=0", Page(236, Enumerable.Range(1, 36)));
+
+        var result = await scraper.ScrapeProductsAsync("bebe/alimentacao", CancellationToken.None);
+
+        var o = Assert.Single(result.Outcomes);
+        Assert.Equal(236, o.SiteTotal);
+        Assert.Equal(36, o.ProductsListed);
+        Assert.Equal(1, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task Continente_SiteTotal_FallsBackToProductCount()
+    {
+        var (scraper, _) = CreateScraper();
+
+        var result = await scraper.ScrapeProductsAsync("frescos", CancellationToken.None);
+
+        Assert.Equal(4, Assert.Single(result.Outcomes).SiteTotal);
+    }
+
+    [Fact]
+    public async Task Continente_NoTotal_SiteTotalNull()
+    {
+        var (scraper, handler) = CreateScraper();
+        handler.SetupRoute("start=0", Page(null, Enumerable.Range(1, 10)));
+
+        var result = await scraper.ScrapeProductsAsync("frescos", CancellationToken.None);
+
+        var o = Assert.Single(result.Outcomes);
+        Assert.Null(o.SiteTotal);
+        Assert.Equal(OutcomeResult.Ok, o.Result);
+    }
+
+    [Fact]
+    public async Task Continente_PagesToTotal()
+    {
+        var (scraper, handler) = CreateScraper();
+        handler.SetupRoute("start=0", Page(100, Enumerable.Range(1, 48)));
+        handler.SetupRoute("start=48", Page(100, Enumerable.Range(49, 48)));
+        handler.SetupRoute("start=96", Page(100, Enumerable.Range(97, 4)));
+
+        var result = await scraper.ScrapeProductsAsync("frescos", CancellationToken.None);
+
+        Assert.Equal(100, result.Products.Count);
+        Assert.Equal(3, handler.RequestCount);
+        Assert.False(result.Incomplete);
+        var o = Assert.Single(result.Outcomes);
+        Assert.Equal(100, o.SiteTotal);
+        Assert.Equal(100, o.ProductsListed);
+    }
+
+    [Fact]
+    public async Task Continente_PastDeclaredTotal_Loop()
+    {
+        var (scraper, handler) = CreateScraper();
+        handler.SetupRoute("start=0", Page(10, Enumerable.Range(1, 48)));
+        handler.SetupRoute("start=48", Page(10, Enumerable.Range(49, 48)));
+
+        var result = await scraper.ScrapeProductsAsync("frescos", CancellationToken.None);
+
+        Assert.True(result.Incomplete);
+        var warning = Assert.Single(result.Warnings);
+        Assert.StartsWith("Loop detected in ", warning);
+        Assert.Contains("past declared total", warning);
+        Assert.Equal(2, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task Continente_Loop_RepeatedPage_StopsAndWarns()
+    {
+        var (scraper, handler) = CreateScraper();
+        handler.SetupRoute("start=0", Page(500, Enumerable.Range(1, 48)));
+        handler.SetupRoute("start=48", Page(500, Enumerable.Range(1, 48)));
+
+        var result = await scraper.ScrapeProductsAsync("frescos", CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(2, handler.RequestCount);
+        Assert.True(result.Incomplete);
+        Assert.Equal("Loop detected in frescos at page 2: repeated page; category ended", Assert.Single(result.Warnings));
+        Assert.Equal(48, result.Products.Count);
+    }
+
+    [Fact]
+    public void Continente_RequestCeiling_Is3800()
+    {
+        Assert.Equal(3800, CreateScraper().Scraper.RequestCeiling);
+    }
+
     [Fact]
     public async Task ScrapeStoreLocationsAsync_ReturnsEmpty()
     {
