@@ -90,13 +90,22 @@ public record ScrapingStatusDto(
     string ChainSlug, string? ChainName,
     bool IsScheduled, DateTime? NextFireTime,
     int? LastStatus, DateTime? LastRunAt, DateTime? CompletedAt,
-    int ProductsScraped, string? ErrorMessage);
+    int ProductsScraped, string? ErrorMessage,
+    string? HealthReason = null, int WarningCount = 0, bool StaleMarkingSkipped = false,
+    int StaleMarked = 0, double? DropRatio = null, string[]? FailedKeys = null);
 
-public record ScrapingChainDetailDto(string Chain, List<ScrapingJobDto> Jobs, List<ScrapingLogDto> RecentLogs);
+public record ScrapingChainDetailDto(
+    string Chain, List<ScrapingJobDto> Jobs, List<ScrapingLogDto> RecentLogs,
+    List<ScrapingOutcomeDto>? Outcomes = null);
 
 public record ScrapingJobDto(
     Guid Id, int Status, DateTime StartedAt, DateTime? CompletedAt,
-    int ProductsScraped, string? ErrorMessage);
+    int ProductsScraped, string? ErrorMessage,
+    string? HealthReason = null, int WarningCount = 0, bool StaleMarkingSkipped = false, double? DropRatio = null);
+
+public record ScrapingOutcomeDto(
+    string Kind, string Key, string Url, string Result,
+    int PagesFetched, int ProductsFound, int TilesSeen, int Retries, string StatusCounts, string? FirstError);
 
 public record ScrapingLogDto(Guid ScrapingJobId, int Level, string Message, DateTime Timestamp);
 

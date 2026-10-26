@@ -16,6 +16,8 @@ else
                 1     => ("badge-warning", "Running"),
                 2     => ("badge-success", "Completed"),
                 3     => ("badge-error",   "Failed"),
+                4     => ("badge-warning", "Warnings"),
+                5     => ("badge-error",   "Degraded"),
                 _     => ("badge-ghost",   "Unknown")
             };
             <div class="card bg-base-100 shadow border border-base-200">
@@ -31,6 +33,26 @@ else
                             <div>Completed: <span class="font-medium text-base-content">@job.CompletedAt.Value.ToString("dd/MM/yy HH:mm")</span></div>
                         }
                         <div>Products scraped: <span class="font-medium text-base-content">@job.ProductsScraped.ToString("N0")</span></div>
+                        @if (!string.IsNullOrEmpty(job.HealthReason))
+                        {
+                            <div class="text-error break-words" title="@job.HealthReason">Reason: @job.HealthReason</div>
+                        }
+                        @if (job.FailedKeys is { Length: > 0 })
+                        {
+                            <div class="text-error break-words">Failed: @string.Join(", ", job.FailedKeys)</div>
+                        }
+                        @if (job.StaleMarkingSkipped)
+                        {
+                            <div class="text-warning">Stale-marking skipped</div>
+                        }
+                        @if (job.DropRatio.HasValue)
+                        {
+                            <div>Count vs previous (advisory): <span class="font-medium text-base-content">@job.DropRatio.Value.ToString("P0")</span></div>
+                        }
+                        @if (job.WarningCount > 0)
+                        {
+                            <div class="text-warning">Warnings: @job.WarningCount</div>
+                        }
                         @if (job.IsScheduled && job.NextFireTime.HasValue)
                         {
                             <div>Next run: <span class="font-medium text-base-content">@job.NextFireTime.Value.ToString("dd/MM/yy HH:mm") UTC</span></div>

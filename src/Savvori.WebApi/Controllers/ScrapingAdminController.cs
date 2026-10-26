@@ -46,6 +46,18 @@ public class ScrapingAdminController : ControllerBase
             .GroupBy(j => j.StoreChainId)
             .ToDictionary(g => g.Key, g => g.First());
 
+        // Keys of non-ok outcomes of each chain's latest job
+        var latestIds = latestByChain.Values.Select(j => j.Id).ToList();
+        var failedKeyRows = await _db.ScrapingRunOutcomes
+            .Where(o => latestIds.Contains(o.ScrapingJobId) &&
+                        o.Result != Savvori.Shared.OutcomeResult.Ok && o.Result != Savvori.Shared.OutcomeResult.Recovered)
+            .OrderBy(o => o.Kind).ThenBy(o => o.Key)
+            .Select(o => new { o.ScrapingJobId, o.Key })
+            .ToListAsync(ct);
+        var failedKeys = failedKeyRows
+            .GroupBy(o => o.ScrapingJobId)
+            .ToDictionary(g => g.Key, g => g.Select(o => o.Key).ToArray());
+
         // Next fire times from Quartz
         var scheduler = await _schedulerFactory.GetScheduler(ct);
         var nextFireTimes = new Dictionary<string, DateTime?>();
@@ -82,7 +94,13 @@ public class ScrapingAdminController : ControllerBase
                 LastRunAt    = job?.StartedAt,
                 CompletedAt  = job?.CompletedAt,
                 ProductsScraped = job?.ProductsScraped ?? 0,
-                ErrorMessage = job?.ErrorMessage
+                ErrorMessage = job?.ErrorMessage,
+                HealthReason = job?.HealthReason,
+                WarningCount = job?.WarningCount ?? 0,
+                StaleMarkingSkipped = job?.StaleMarkingSkipped ?? false,
+                StaleMarked = job?.StaleMarked ?? 0,
+                DropRatio = job?.DropRatio,
+                FailedKeys = job is not null && failedKeys.TryGetValue(job.Id, out var keys) ? keys : Array.Empty<string>()
             };
         }).ToList();
 
@@ -112,9 +130,37 @@ public class ScrapingAdminController : ControllerBase
                 j.StartedAt,
                 j.CompletedAt,
                 j.ProductsScraped,
-                j.ErrorMessage
+                j.ErrorMessage,
+                j.HealthReason,
+                j.WarningCount,
+                j.StaleMarkingSkipped,
+                j.DropRatio
             })
             .ToListAsync(ct);
+
+        var outcomes = new List<object>();
+        if (jobs.Count > 0)
+        {
+            var latestId = jobs[0].Id;
+            var rows = await _db.ScrapingRunOutcomes
+                .Where(o => o.ScrapingJobId == latestId)
+                .OrderBy(o => o.Kind).ThenBy(o => o.Key)
+                .Select(o => new
+                {
+                    Kind = o.Kind.ToString(),
+                    o.Key,
+                    o.Url,
+                    Result = o.Result.ToString(),
+                    o.PagesFetched,
+                    o.ProductsFound,
+                    o.TilesSeen,
+                    o.Retries,
+                    o.StatusCounts,
+                    o.FirstError
+                })
+                .ToListAsync(ct);
+            outcomes.AddRange(rows);
+        }
 
         var logs = jobs.Select(j => j.Id).ToList();
         var recentLogs = await _db.ScrapingLogs
@@ -130,7 +176,7 @@ public class ScrapingAdminController : ControllerBase
             })
             .ToListAsync(ct);
 
-        return Ok(new { Chain = chainSlug, Jobs = jobs, RecentLogs = recentLogs });
+        return Ok(new { Chain = chainSlug, Jobs = jobs, RecentLogs = recentLogs, Outcomes = outcomes });
     }
 
     /// <summary>

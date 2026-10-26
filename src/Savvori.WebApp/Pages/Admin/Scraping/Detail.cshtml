@@ -49,6 +49,7 @@ else
                                 <th>Completed</th>
                                 <th>Duration</th>
                                 <th>Status</th>
+                                <th>Health</th>
                                 <th>Products</th>
                                 <th>Error</th>
                             </tr>
@@ -62,6 +63,8 @@ else
                                     1 => "badge-warning",
                                     2 => "badge-success",
                                     3 => "badge-error",
+                                    4 => "badge-warning",
+                                    5 => "badge-error",
                                     _ => "badge-ghost"
                                 };
                                 var statusLabel = job.Status switch
@@ -70,6 +73,8 @@ else
                                     1 => "Running",
                                     2 => "Completed",
                                     3 => "Failed",
+                                    4 => "Warnings",
+                                    5 => "Degraded",
                                     _ => "?"
                                 };
                                 var duration = job.CompletedAt.HasValue
@@ -80,6 +85,7 @@ else
                                     <td class="text-xs">@(job.CompletedAt?.ToString("dd/MM HH:mm") ?? "—")</td>
                                     <td class="text-xs">@duration</td>
                                     <td><span class="badge @statusCss badge-xs">@statusLabel</span></td>
+                                    <td class="text-xs text-error max-w-xs truncate" title="@job.HealthReason">@job.HealthReason</td>
                                     <td class="text-xs text-right">@job.ProductsScraped.ToString("N0")</td>
                                     <td class="text-xs text-error max-w-xs truncate" title="@job.ErrorMessage">@job.ErrorMessage</td>
                                 </tr>
@@ -90,6 +96,57 @@ else
             }
         </div>
     </div>
+
+    @if (Model.Detail.Outcomes is { Count: > 0 })
+    {
+        <!-- Latest run outcomes -->
+        <div class="card bg-base-100 shadow mb-6">
+            <div class="card-body">
+                <h2 class="card-title text-base mb-3">Latest run outcomes</h2>
+                <div class="overflow-x-auto">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Kind</th>
+                                <th>Key</th>
+                                <th>Url</th>
+                                <th>Result</th>
+                                <th>Pages</th>
+                                <th>Products</th>
+                                <th>Tiles</th>
+                                <th>Retries</th>
+                                <th>Statuses</th>
+                                <th>Error</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var outcome in Model.Detail.Outcomes)
+                            {
+                                var resultCss = outcome.Result switch
+                                {
+                                    "Ok" => "badge-success",
+                                    "Recovered" => "badge-warning",
+                                    _ => "badge-error"
+                                };
+                                <tr>
+                                    <td class="text-xs">@outcome.Kind</td>
+                                    <td class="text-xs">@outcome.Key</td>
+                                    <td class="text-xs max-w-xs truncate" title="@outcome.Url">@outcome.Url</td>
+                                    <td><span class="badge @resultCss badge-xs">@outcome.Result</span></td>
+                                    <td class="text-xs text-right">@outcome.PagesFetched</td>
+                                    <td class="text-xs text-right">@outcome.ProductsFound</td>
+                                    <td class="text-xs text-right">@outcome.TilesSeen</td>
+                                    <td class="text-xs text-right">@outcome.Retries</td>
+                                    <td class="text-xs">@outcome.StatusCounts</td>
+                                    <td class="text-xs text-error max-w-xs truncate" title="@outcome.FirstError">@outcome.FirstError</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
 
     <!-- Recent logs -->
     <div class="card bg-base-100 shadow">

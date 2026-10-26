@@ -147,11 +147,13 @@ public sealed class StoreScrapeJob : IJob
 
             sw.Stop();
             await MarkCompletedAsync(job.Id, chain.Id, count, products.Count, health, processResult);
-            await PersistOutcomesAsync(job, canary.Ok ? result : result with
+            var persisted = canary.Ok ? result : result with
             {
                 Outcomes = [new ScrapeOutcome { Kind = OutcomeKind.Canary, Key = "canary", Url = slug, Result = OutcomeResult.Failed, FirstError = canary.Message }]
-            }, health);
+            };
+            await PersistOutcomesAsync(job, persisted, health);
             await PruneOutcomesAsync();
+            _telemetry.RecordRun(slug, persisted, health, processResult);
 
             jobActivity?.SetTag("scraping.products.count", count);
             jobActivity?.SetTag("scraping.locations.count", locationCount);

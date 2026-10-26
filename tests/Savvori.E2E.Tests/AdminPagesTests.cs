@@ -55,6 +55,44 @@ public class AdminPagesTests(SavvoriWebAppFactory factory) : IClassFixture<Savvo
     }
 
     [Fact]
+    public async Task AdminScrapingPage_ShowsWarningsAndDegradedBadges()
+    {
+        var client = factory.CreateClient();
+        var response = await client.GetAsync("/Admin/Scraping", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.Matches(@"badge-warning[^>]*>\s*Warnings", html);
+        Assert.Matches(@"badge-error[^>]*>\s*Degraded", html);
+        Assert.DoesNotContain("Unknown", html);
+        Assert.Contains("Stale-marking skipped", html);
+        Assert.Contains("advisory", html);
+    }
+
+    [Fact]
+    public async Task AdminScrapingDetailPage_ShowsDegradedAndOutcomes()
+    {
+        var client = factory.CreateClient();
+        var response = await client.GetAsync("/Admin/Scraping/Detail/continente", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.Contains("Degraded", html);
+        Assert.Contains("Latest run outcomes", html);
+        Assert.Contains("cat-1", html);
+    }
+
+    [Fact]
+    public async Task AdminIndexPage_DegradedChain_ShowsBanner()
+    {
+        var client = factory.CreateClient();
+        var response = await client.GetAsync("/Admin", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.Contains("alert-error", html);
+        Assert.Contains("Scraping degraded", html);
+        Assert.Contains("Pingo Doce", html);
+    }
+
+    [Fact]
     public async Task AdminScrapingTrigger_Admin_RedirectsBackToDetail()
     {
         var client = factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
