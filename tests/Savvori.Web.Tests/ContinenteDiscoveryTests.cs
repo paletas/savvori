@@ -21,7 +21,7 @@ public class ContinenteDiscoveryTests
         var factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient("continente").Returns(new HttpClient(handler));
         var logger = Substitute.For<ILogger<ContinenteScraper>>();
-        return (new ContinenteScraper(factory, logger) { ReattemptDelay = TimeSpan.Zero }, handler);
+        return (new ContinenteScraper(factory, logger) { ReattemptDelay = TimeSpan.Zero, RequestSpacing = TimeSpan.Zero }, handler);
     }
 
     private static string Urlset(params string[] paths)

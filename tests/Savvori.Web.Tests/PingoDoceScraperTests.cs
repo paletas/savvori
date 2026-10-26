@@ -26,7 +26,7 @@ public class PingoDoceScraperTests
         factory.CreateClient("pingodoce").Returns(httpClient);
 
         var logger = Substitute.For<ILogger<PingoDoceScraper>>();
-        var scraper = new PingoDoceScraper(factory, logger) { ReattemptDelay = TimeSpan.Zero };
+        var scraper = new PingoDoceScraper(factory, logger) { ReattemptDelay = TimeSpan.Zero, RequestSpacing = TimeSpan.Zero };
         return (scraper, handler);
     }
 
@@ -207,7 +207,7 @@ public class PingoDoceScraperTests
         var factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient(Arg.Any<string>()).Returns(new HttpClient());
         var logger = Substitute.For<ILogger<PingoDoceScraper>>();
-        var scraper = new PingoDoceScraper(factory, logger);
+        var scraper = new PingoDoceScraper(factory, logger) { RequestSpacing = TimeSpan.Zero };
         Assert.Equal("pingodoce", scraper.StoreChainSlug);
     }
 }

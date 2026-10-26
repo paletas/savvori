@@ -27,7 +27,7 @@ public class ContinenteScraperTests
         factory.CreateClient("continente").Returns(httpClient);
 
         var logger = Substitute.For<ILogger<ContinenteScraper>>();
-        var scraper = new ContinenteScraper(factory, logger) { ReattemptDelay = TimeSpan.Zero };
+        var scraper = new ContinenteScraper(factory, logger) { ReattemptDelay = TimeSpan.Zero, RequestSpacing = TimeSpan.Zero };
         return (scraper, handler);
     }
 
@@ -236,7 +236,7 @@ public class ContinenteScraperTests
         var factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient(Arg.Any<string>()).Returns(new HttpClient());
         var logger = Substitute.For<ILogger<ContinenteScraper>>();
-        var scraper = new ContinenteScraper(factory, logger);
+        var scraper = new ContinenteScraper(factory, logger) { RequestSpacing = TimeSpan.Zero };
         Assert.Equal("continente", scraper.StoreChainSlug);
     }
 }

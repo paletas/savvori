@@ -22,7 +22,8 @@ public class ReattemptTests
         factory.CreateClient("auchan").Returns(new HttpClient(handler));
         var scraper = new AuchanScraper(factory, Substitute.For<ILogger<AuchanScraper>>())
         {
-            ReattemptDelay = TimeSpan.Zero
+            ReattemptDelay = TimeSpan.Zero,
+            RequestSpacing = TimeSpan.Zero
         };
 
         var result = await scraper.ScrapeProductsAsync(null, CancellationToken.None);

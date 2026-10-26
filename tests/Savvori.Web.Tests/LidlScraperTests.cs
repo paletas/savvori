@@ -12,7 +12,7 @@ public class LidlScraperTests
     {
         var factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient("lidl").Returns(new HttpClient(handler));
-        return new LidlScraper(factory, Substitute.For<ILogger<LidlScraper>>()) { ReattemptDelay = TimeSpan.Zero };
+        return new LidlScraper(factory, Substitute.For<ILogger<LidlScraper>>()) { ReattemptDelay = TimeSpan.Zero, RequestSpacing = TimeSpan.Zero };
     }
 
     private static string Fixture() =>
@@ -69,14 +69,14 @@ public class LidlScraperTests
         var factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient("lidl").Returns(new HttpClient(handler));
 
-        return new LidlScraper(factory, Substitute.For<ILogger<LidlScraper>>()) { ReattemptDelay = TimeSpan.Zero };
+        return new LidlScraper(factory, Substitute.For<ILogger<LidlScraper>>()) { ReattemptDelay = TimeSpan.Zero, RequestSpacing = TimeSpan.Zero };
     }
 
     private static LidlScraper CreateScraper(FakeHttpMessageHandler handler)
     {
         var factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient("lidl").Returns(new HttpClient(handler));
-        return new LidlScraper(factory, Substitute.For<ILogger<LidlScraper>>()) { ReattemptDelay = TimeSpan.Zero };
+        return new LidlScraper(factory, Substitute.For<ILogger<LidlScraper>>()) { ReattemptDelay = TimeSpan.Zero, RequestSpacing = TimeSpan.Zero };
     }
 
     [Fact]

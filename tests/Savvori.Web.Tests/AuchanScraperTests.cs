@@ -27,7 +27,7 @@ public class AuchanScraperTests
         factory.CreateClient("auchan").Returns(httpClient);
 
         var logger = Substitute.For<ILogger<AuchanScraper>>();
-        return (new AuchanScraper(factory, logger) { ReattemptDelay = TimeSpan.Zero }, handler);
+        return (new AuchanScraper(factory, logger) { ReattemptDelay = TimeSpan.Zero, RequestSpacing = TimeSpan.Zero }, handler);
     }
 
     [Fact]
@@ -210,7 +210,7 @@ public class AuchanScraperTests
         var factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient("auchan").Returns(new HttpClient(handler));
         var logger = Substitute.For<ILogger<AuchanScraper>>();
-        var scraper = new AuchanScraper(factory, logger);
+        var scraper = new AuchanScraper(factory, logger) { RequestSpacing = TimeSpan.Zero };
 
         var products = (await scraper.ScrapeProductsAsync("leite-e-laticínios", CancellationToken.None)).Products;
 
@@ -253,7 +253,7 @@ public class AuchanScraperTests
         handler.SetDefaultResponse(LoadFixture("auchan_products.html"));
         var factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient("auchan").Returns(new HttpClient(handler));
-        var scraper = new AuchanScraper(factory, Substitute.For<ILogger<AuchanScraper>>());
+        var scraper = new AuchanScraper(factory, Substitute.For<ILogger<AuchanScraper>>()) { RequestSpacing = TimeSpan.Zero };
 
         var products = (await scraper.ScrapeProductsAsync("ovos", CancellationToken.None)
             .WaitAsync(TimeSpan.FromSeconds(10))).Products;
