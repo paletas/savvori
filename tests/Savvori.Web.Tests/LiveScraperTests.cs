@@ -105,26 +105,6 @@ public sealed class LiveScraperTests
         });
     }
 
-    // ── Celeiro ───────────────────────────────────────────────────────────────
-
-    [Fact]
-    [Trait("Category", "Live")]
-    public async Task Celeiro_ScrapesAtLeastOneProduct()
-    {
-        var factory = BuildFactory("celeiro", "https://www.celeiro.pt");
-        var scraper = new CeleiroScraper(factory, NullLogger<CeleiroScraper>.Instance);
-
-        var products = (await scraper.ScrapeProductsAsync("leite", CancellationToken.None)).Products;
-
-        Assert.NotEmpty(products);
-        Assert.All(products, p =>
-        {
-            Assert.False(string.IsNullOrWhiteSpace(p.Name));
-            Assert.False(string.IsNullOrWhiteSpace(p.ExternalId));
-            Assert.True(p.Price > 0m);
-        });
-    }
-
     // ── Helper ────────────────────────────────────────────────────────────────
 
     private sealed class NamedClientFactory(string name, HttpClient client) : IHttpClientFactory

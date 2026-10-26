@@ -22,7 +22,7 @@
 - As an admin/developer, I want the system to automatically discover and update product prices from supported stores.
 
 ### Acceptance Criteria
-- The product catalog includes products from Continente, Pingo Doce, Auchan, Lidl (via its JSON search API), and Celeiro (organic/health-food chain) (via web scraping). Only chains with a working scraper are listed as stores.
+- The product catalog includes products from Continente, Pingo Doce, Auchan, and Lidl (via its JSON search API). Only chains with a working scraper are listed as stores.
 - Product prices are updated automatically up to twice daily.
 - The system prefers APIs for price discovery, but uses web scraping if APIs are unavailable.
 - The system is designed to easily add new stores in the future.
@@ -108,7 +108,7 @@ The `/api/shoppinglists/{id}/optimize` endpoint supports four modes via `?mode=`
 - `POST /api/admin/scraping/reactivate-recent?apply=false|true` re-activates inactive products last scraped within each chain's grace window; it is a dry run unless `apply=true`, and returns the per-chain count.
 - The match-review queue (`GET /api/admin/matching/review`) hides candidates with an inactive product by default; the `filter=inactive` option lists them.
 
-- Supported `chainSlug` values: `continente`, `pingodoce`, `auchan`, `lidl`, `celeiro`.
+- Supported `chainSlug` values: `continente`, `pingodoce`, `auchan`, `lidl`.
 
 ## 9. Category & Product Mapping Admin
 

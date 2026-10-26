@@ -42,7 +42,7 @@ public static class CandidateRules
     /// Dietary variants must agree: if one listing is sem lactose, sem glúten, vegan or sem açúcar and the other is not,
     /// they are different products ("Chocolate Negro" vs "Chocolate Negro sem Açúcar"). Deterministic tag rules on name
     /// and brand; a missed tag can only cause a missed match, never a wrong merge. "Bio" is deliberately NOT compared:
-    /// chains label organic inconsistently (Celeiro, an organic chain, mostly does not say so), so it would reject
+    /// chains label organic inconsistently (an organic chain mostly does not say so), so it would reject
     /// genuine matches; it stays a tag only.
     /// </summary>
     public static bool TagsConflict(ListingFacts a, ListingFacts b)
