@@ -26,23 +26,21 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
     private const int MaxPagesPerCategory = 50;  // safety cap (~2,400 products per category)
     private const string SitemapIndexUrl = $"{BaseUrl}/sitemap_index.xml";
 
-    // Top-level slugs to include when discovering categories.
-    // Extend this list to capture non-grocery departments as well.
+    // Top-level slugs to include when discovering categories (sitemap first path segment).
+    // Any other top level in the sitemap is reported as a run warning, not scraped silently.
     private static readonly HashSet<string> AllowedTopSlugs = new(StringComparer.OrdinalIgnoreCase)
     {
-        "frescos", "laticinios-e-ovos", "mercearia", "congelados",
-        "peixaria-e-talho", "bebidas-e-garrafeira", "bio-e-saudavel",
-        "padaria-e-pastelaria", "higiene-e-beleza", "limpeza-e-casa",
-        "pet", "bebe"
+        "supermercado", "bebe", "animais", "beleza"
     };
 
-    // Last-resort fallback: top-level slugs used when all discovery mechanisms fail.
-    private static readonly string[] FallbackCategories =
-    [
-        "frescos", "laticinios-e-ovos", "mercearia", "congelados",
-        "peixaria-e-talho", "bebidas-e-garrafeira", "bio-e-saudavel",
-        "padaria-e-pastelaria"
-    ];
+    // Brands pages repeat products already listed under the departments.
+    private static readonly HashSet<string> ExcludedTopSlugs = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "marcas"
+    };
+
+    // Real leaf category requested by the canary probe.
+    private const string ProbeCategory = "supermercado/frutas-e-legumes/frutas/banana";
 
     public ContinenteScraper(
         IHttpClientFactory httpClientFactory,
@@ -56,13 +54,14 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
     {
         IReadOnlyList<string> categories;
         var discoveryFallback = false;
+        IReadOnlyList<string> discoveryWarnings = [];
         if (category is not null)
         {
             categories = [category];
         }
         else
         {
-            (categories, discoveryFallback) = await DiscoverCategoryPathsAsync(ct);
+            (categories, discoveryFallback, discoveryWarnings) = await DiscoverCategoryPathsAsync(ct);
             await Task.Delay(500, ct);
         }
 
@@ -86,7 +85,7 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
 
         Logger.LogInformation("Continente: scraped {Count} distinct products across {Cats} categories",
             products.Count, categories.Count);
-        return new ScrapeRunResult(products, outcomes, Array.Empty<string>(), DiscoveryFallbackUsed: discoveryFallback);
+        return new ScrapeRunResult(products, outcomes, discoveryWarnings, DiscoveryFallbackUsed: discoveryFallback);
     }
 
     public override async Task<CanaryResult> ProbeAsync(CancellationToken ct = default)
@@ -113,7 +112,7 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
         }
 
         var page = await ProbeHtmlAsync(
-            $"{BaseUrl}/{FallbackCategories[0]}/?start=0&sz={PageSize}&srule=Continente", d =>
+            $"{BaseUrl}/{ProbeCategory}/?start=0&sz={PageSize}&srule=Continente", d =>
             {
                 var t = d.QuerySelectorAll(".product-tile").ToList();
                 return (t.Count, t.Count(x => ParseTile(x) is not null));
@@ -173,9 +172,11 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
     /// Discovers category paths from the Continente sitemap.
     /// Fetches the sitemap index, locates the category sitemap (excluding refinement sitemaps),
     /// parses category URLs, filters to allowed top-level slugs, and prunes parent paths so only
-    /// leaf categories are scraped. Falls back to <see cref="FallbackCategories"/> on failure.
+    /// leaf categories are scraped. On failure returns no paths and <c>FallbackUsed = true</c>
+    /// (the run is then reported as failed discovery). Top-level segments that are neither allowed
+    /// nor excluded are returned as warnings.
     /// </summary>
-    private async Task<(IReadOnlyList<string> Paths, bool FallbackUsed)> DiscoverCategoryPathsAsync(CancellationToken ct)
+    private async Task<(IReadOnlyList<string> Paths, bool FallbackUsed, IReadOnlyList<string> Warnings)> DiscoverCategoryPathsAsync(CancellationToken ct)
     {
         try
         {
@@ -193,12 +194,13 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
 
             if (categorySitemapUrls.Count == 0)
             {
-                Logger.LogWarning("Continente: no category sitemap found in {Url}, using fallback", SitemapIndexUrl);
-                return (FallbackCategories, true);
+                Logger.LogWarning("Continente: no category sitemap found in {Url}, discovery failed", SitemapIndexUrl);
+                return ([], true, []);
             }
 
             // Step 2: Parse each category sitemap and collect matching paths.
             var discovered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var topSegments = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var sitemapUrl in categorySitemapUrls)
             {
@@ -218,6 +220,7 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
                         if (string.IsNullOrEmpty(path)) continue;
 
                         var firstSegment = path.Split('/')[0];
+                        topSegments[firstSegment] = topSegments.GetValueOrDefault(firstSegment) + 1;
                         if (!AllowedTopSlugs.Contains(firstSegment)) continue;
 
                         discovered.Add(path);
@@ -237,8 +240,8 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
 
             if (discovered.Count == 0)
             {
-                Logger.LogWarning("Continente: category sitemaps yielded no matching paths, using fallback");
-                return (FallbackCategories, true);
+                Logger.LogWarning("Continente: category sitemaps yielded no matching paths, discovery failed");
+                return ([], true, []);
             }
 
             // Step 3: Prune parent paths — only scrape leaves to avoid duplicate products.
@@ -253,12 +256,18 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
                 "Continente: {Total} category paths in sitemap → {Leaves} leaf categories to scrape",
                 paths.Count, leaves.Count);
 
-            return (leaves, false);
+            var warnings = topSegments
+                .Where(kv => !AllowedTopSlugs.Contains(kv.Key) && !ExcludedTopSlugs.Contains(kv.Key))
+                .OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(kv => $"Continente: uncovered top-level category '{kv.Key}' ({kv.Value} URLs)")
+                .ToList();
+
+            return (leaves, false, warnings);
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "Continente: sitemap category discovery failed, using fallback list");
-            return (FallbackCategories, true);
+            Logger.LogWarning(ex, "Continente: sitemap category discovery failed");
+            return ([], true, []);
         }
     }
 
