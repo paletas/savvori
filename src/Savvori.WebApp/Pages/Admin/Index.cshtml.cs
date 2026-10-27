@@ -10,6 +10,10 @@ public class AdminIndexModel(SavvoriApiClient api) : PageModel
 
     public async Task OnGetAsync(CancellationToken ct)
     {
-        DegradedChains = (await api.GetScrapingStatusAsync(ct)).Where(j => j.LastStatus == 5).ToList();
+        // 5 = Degraded; 3 = Failed, listed only when the run failed because category discovery failed.
+        DegradedChains = (await api.GetScrapingStatusAsync(ct))
+            .Where(j => j.LastStatus == 5
+                        || (j.LastStatus == 3 && j.HealthReason?.StartsWith("Discovery failed", StringComparison.Ordinal) == true))
+            .ToList();
     }
 }

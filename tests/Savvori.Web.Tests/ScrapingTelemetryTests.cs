@@ -45,27 +45,41 @@ public class ScrapingTelemetryTests
     private static RunHealth Health(ScrapingJobStatus status) => new(status, [], []);
 
     [Fact]
-    public void RecordRun_Degraded_EmitsFailedBlockedSkippedFallbackCanary()
+    public void RecordRun_Degraded_EmitsFailedBlockedSkippedDiscoveryCanary()
     {
         using var telemetry = new ScrapingTelemetry();
         var seen = new List<Measured>();
         using var listener = Listen(telemetry, seen);
-        var result = new ScrapeRunResult([], [Outcome(OutcomeResult.Failed), Outcome(OutcomeResult.Blocked), Outcome(OutcomeResult.Ok)], [],
-            DiscoveryFallbackUsed: true, Canary: new CanaryResult(false, "down", 1));
+        var result = new ScrapeRunResult([], [Outcome(OutcomeResult.Failed), Outcome(OutcomeResult.Blocked), Outcome(OutcomeResult.Ok),
+                new ScrapeOutcome { Kind = OutcomeKind.Discovery, Result = OutcomeResult.Failed }], [],
+            Canary: new CanaryResult(false, "down", 1));
 
         telemetry.RecordRun("pingodoce", result, Health(ScrapingJobStatus.Degraded), new ProcessResult(0, 0));
 
         foreach (var name in new[]
         {
             "savvori.scraping.categories.failed", "savvori.scraping.blocked", "savvori.scraping.stale_marking.skipped",
-            "savvori.scraping.discovery.fallback", "savvori.scraping.canary.failed"
+            "savvori.scraping.discovery.failed", "savvori.scraping.canary.failed"
         })
         {
             var m = Assert.Single(seen, x => x.Name == name);
             Assert.Equal("pingodoce", m.Tags["store.chain.slug"]);
         }
-        Assert.Equal(2, seen.Single(x => x.Name == "savvori.scraping.categories.failed").Value);
+        Assert.Equal(3, seen.Single(x => x.Name == "savvori.scraping.categories.failed").Value);
         Assert.Equal(1, seen.Single(x => x.Name == "savvori.scraping.blocked").Value);
+    }
+
+    [Fact]
+    public void RecordRun_IncompleteRun_EmitsStaleMarkingSkipped()
+    {
+        using var telemetry = new ScrapingTelemetry();
+        var seen = new List<Measured>();
+        using var listener = Listen(telemetry, seen);
+        var result = new ScrapeRunResult([], [Outcome(OutcomeResult.Ok)], ["Loop detected"], Incomplete: true);
+
+        telemetry.RecordRun("pingodoce", result, Health(ScrapingJobStatus.CompletedWithWarnings), new ProcessResult(0, 0));
+
+        Assert.Single(seen, x => x.Name == "savvori.scraping.stale_marking.skipped");
     }
 
     [Fact]

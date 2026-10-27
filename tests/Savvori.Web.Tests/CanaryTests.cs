@@ -36,7 +36,8 @@ public sealed class CanaryTests : IAsyncLifetime
         factory.CreateClient("auchan").Returns(new HttpClient(_handler));
         var scraper = new AuchanScraper(factory, Substitute.For<ILogger<AuchanScraper>>())
         {
-            ReattemptDelay = TimeSpan.Zero
+            ReattemptDelay = TimeSpan.Zero,
+            RequestSpacing = TimeSpan.Zero
         };
 
         _telemetry = new ScrapingTelemetry();

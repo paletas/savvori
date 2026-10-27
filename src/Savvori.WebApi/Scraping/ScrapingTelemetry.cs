@@ -45,8 +45,8 @@ public sealed class ScrapingTelemetry : IDisposable
     /// <summary>HTTP responses received by the scrapers.</summary>
     public readonly Counter<long> HttpResponses;
 
-    /// <summary>Discovery runs that failed (no category list; the run is Degraded).</summary>
-    public readonly Counter<long> DiscoveryFallback;
+    /// <summary>Discovery runs that failed (no category list; the run is Failed).</summary>
+    public readonly Counter<long> DiscoveryFailed;
 
     /// <summary>Canary checks that failed.</summary>
     public readonly Counter<long> CanaryFailed;
@@ -99,8 +99,8 @@ public sealed class ScrapingTelemetry : IDisposable
             "savvori.scraping.http.responses", "responses",
             "Number of HTTP responses received by scrapers");
 
-        DiscoveryFallback = _meter.CreateCounter<long>(
-            "savvori.scraping.discovery.fallback", "runs",
+        DiscoveryFailed = _meter.CreateCounter<long>(
+            "savvori.scraping.discovery.failed", "runs",
             "Number of discovery runs that failed");
 
         CanaryFailed = _meter.CreateCounter<long>(
@@ -151,9 +151,9 @@ public sealed class ScrapingTelemetry : IDisposable
         foreach (var (code, n) in byStatus)
             HttpResponses.Add(n, new TagList { { "store.chain.slug", slug }, { "http.status", code.ToString() } });
 
-        if (result.DiscoveryFallbackUsed) DiscoveryFallback.Add(1, tags);
+        if (result.Outcomes.Any(o => o.Kind == OutcomeKind.Discovery && o.Result == OutcomeResult.Failed)) DiscoveryFailed.Add(1, tags);
         if (result.Canary is { Ok: false }) CanaryFailed.Add(1, tags);
-        if (health.Status == ScrapingJobStatus.Degraded) StaleMarkingSkipped.Add(1, tags);
+        if (!ScrapeHealthEvaluator.StaleMarkingAllowed(result, health)) StaleMarkingSkipped.Add(1, tags);
         if (processed.StaleMarked > 0) ProductsDeactivated.Add(processed.StaleMarked, tags);
     }
 

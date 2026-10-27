@@ -8,9 +8,10 @@ namespace Savvori.WebApi.Scraping.Scrapers;
 /// <summary>
 /// Scraper for Lidl Portugal (lidl.pt) via the JSON search API the storefront itself uses.
 /// Endpoint: /q/api/search?q={query}&amp;offset={n}&amp;fetchsize=48&amp;locale=pt_PT&amp;assortment=PT&amp;version=2.1.0
-/// An empty query lists the whole online assortment (a few hundred items, food and non-food),
-/// so only items with category "Food" and a price are kept. Prices are Lidl's published prices,
-/// most items are in-store only. Note: the API answers 406 to a strict "Accept: application/json".
+/// An empty query lists the whole online assortment (food and non-food, <c>numFound</c> items, 48 per page);
+/// every priced item is kept and the listing is paged until <c>numFound</c> via <see cref="PagingGuard"/>.
+/// Prices are Lidl's published prices, most items are in-store only.
+/// Note: the API answers 406 to a strict "Accept: application/json".
 /// </summary>
 public sealed partial class LidlScraper : BaseHttpScraper
 {
@@ -18,46 +19,41 @@ public sealed partial class LidlScraper : BaseHttpScraper
 
     private const string BaseUrl = "https://www.lidl.pt";
     private const int FetchSize = 48;
-    private const int MaxOffset = 2000; // safety cap; the API allows up to 1000 per request
-
-    // The empty query lists only part of the assortment; grocery terms surface the rest.
-    private static readonly string[] GrocerySearchTerms =
-    [
-        "leite", "iogurte", "queijo", "ovos", "carne", "peixe",
-        "fruta", "legumes", "bebidas", "congelados", "pão",
-        "arroz", "massa", "azeite", "chocolate", "bolachas"
-    ];
 
     public LidlScraper(
         IHttpClientFactory httpClientFactory,
         ILogger<LidlScraper> logger)
         : base(httpClientFactory, logger, "lidl")
     {
+        RequestCeiling = 15;
     }
 
     public override async Task<ScrapeRunResult> ScrapeProductsAsync(
         string? category = null, CancellationToken ct = default)
     {
+        BeginRun();
+        var warnings = new List<string>();
         var seen = new HashSet<string>();
         var products = new List<ScrapedProduct>();
         var outcomes = new List<ScrapeOutcome>();
-        string[] queries = category is not null ? [category] : ["", .. GrocerySearchTerms];
+        string[] queries = category is not null ? [category] : [""];
 
         foreach (var query in queries)
         {
+            if (Halted) break;
             ct.ThrowIfCancellationRequested();
-            await ScrapeQuery(query, seen, products, outcomes, ct);
+            await ScrapeQuery(query, seen, products, outcomes, warnings, ct);
         }
 
         await ReattemptAsync(outcomes, async old =>
         {
             var tmp = new List<ScrapeOutcome>();
-            await ScrapeQuery(old.Key == "(empty)" ? "" : old.Key, seen, products, tmp, ct);
+            await ScrapeQuery(old.Key == "(empty)" ? "" : old.Key, seen, products, tmp, warnings, ct);
             return tmp[0];
         }, ct);
 
-        Logger.LogInformation("Lidl: scraped {Count} distinct food products", products.Count);
-        return new ScrapeRunResult(products, outcomes, Array.Empty<string>());
+        Logger.LogInformation("Lidl: scraped {Count} distinct products", products.Count);
+        return BuildResult(products, outcomes, warnings);
     }
 
     public override Task<CanaryResult> ProbeAsync(CancellationToken ct = default)
@@ -71,7 +67,7 @@ public sealed partial class LidlScraper : BaseHttpScraper
 
     private async Task ScrapeQuery(
         string query, HashSet<string> seen, List<ScrapedProduct> products,
-        List<ScrapeOutcome> outcomes, CancellationToken ct)
+        List<ScrapeOutcome> outcomes, List<string> warnings, CancellationToken ct)
     {
         var outcome = new ScrapeOutcome
         {
@@ -80,8 +76,10 @@ public sealed partial class LidlScraper : BaseHttpScraper
             Url = SearchUrl(query, 0)
         };
         outcomes.Add(outcome);
-        for (var offset = 0; offset < MaxOffset; offset += FetchSize)
+        PagingGuard? guard = null;
+        for (var offset = 0; ; offset += FetchSize)
         {
+            if (Halted) return;
             var url = SearchUrl(query, offset);
 
             JsonDocument doc;
@@ -113,8 +111,16 @@ public sealed partial class LidlScraper : BaseHttpScraper
                     return;
                 }
 
+                var numFound = root.TryGetProperty("numFound", out var nf) && nf.TryGetInt32(out var n) ? n : 0;
+                var ids = items.EnumerateArray().Where(HasCoreFields)
+                    .Select(i => i.GetProperty("gridbox").GetProperty("data").GetProperty("itemId").ToString()).ToList();
+
                 if (offset == 0)
-                    MarkFirstPage(outcome, items.GetArrayLength(), items.EnumerateArray().Count(HasCoreFields));
+                {
+                    MarkFirstPage(outcome, items.GetArrayLength(), ids.Count);
+                    outcome.SiteTotal = numFound > 0 ? numFound : null;
+                }
+                outcome.ProductsListed += ids.Count;
 
                 foreach (var item in items.EnumerateArray())
                 {
@@ -126,11 +132,16 @@ public sealed partial class LidlScraper : BaseHttpScraper
                     }
                 }
 
-                var numFound = root.TryGetProperty("numFound", out var nf) && nf.TryGetInt32(out var n) ? n : 0;
-                if (items.GetArrayLength() == 0 || offset + FetchSize >= numFound) return;
+                guard ??= new PagingGuard(outcome.Key, FetchSize, numFound > 0 ? numFound : null);
+                switch (guard.Observe(ids, offset))
+                {
+                    case PagingVerdict.Loop:
+                        ReportLoop(guard, warnings);
+                        return;
+                    case PagingVerdict.NaturalEnd:
+                        return;
+                }
             }
-
-            await Task.Delay(500, ct);
         }
     }
 
@@ -162,8 +173,6 @@ public sealed partial class LidlScraper : BaseHttpScraper
         if (!item.TryGetProperty("gridbox", out var gridbox) ||
             !gridbox.TryGetProperty("data", out var data))
             return null;
-
-        if (GetString(data, "category") != "Food") return null;
 
         var id = data.TryGetProperty("itemId", out var idEl) ? idEl.ToString() : null;
         var name = GetString(data, "fullTitle") ?? GetString(data, "title");

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Text.Json;
 using AngleSharp;
@@ -9,7 +10,8 @@ using Polly.Retry;
 namespace Savvori.WebApi.Scraping;
 
 /// <summary>
-/// Abstract base for all store scrapers. Provides rate-limited, retrying HTTP helpers.
+/// Abstract base for all store scrapers. Provides rate-limited, retrying HTTP helpers: requests are
+/// serially spaced, bounded by a request ceiling and a wall-clock limit, and a 403/429/bot marker halts the run.
 /// </summary>
 public abstract class BaseHttpScraper : IStoreScraper
 {
@@ -42,9 +44,7 @@ public abstract class BaseHttpScraper : IStoreScraper
                     if (args.Outcome.Exception is HttpRequestException) return true;
                     var r = args.Outcome.Result;
                     if (r is null) return false;
-                    if (r.StatusCode == HttpStatusCode.TooManyRequests ||
-                        r.StatusCode == HttpStatusCode.ServiceUnavailable ||
-                        r.StatusCode == HttpStatusCode.Forbidden ||
+                    if (r.StatusCode == HttpStatusCode.ServiceUnavailable ||
                         r.StatusCode == HttpStatusCode.RequestTimeout ||
                         (int)r.StatusCode >= 500)
                         return true;
@@ -68,6 +68,69 @@ public abstract class BaseHttpScraper : IStoreScraper
 
     public abstract string StoreChainSlug { get; }
 
+    /// <summary>Minimum gap between any two request attempts of this scraper (retries included).</summary>
+    public TimeSpan RequestSpacing { get; set; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>Maximum bounded request attempts per run; reaching it halts the run without sending more.</summary>
+    public int RequestCeiling { get; set; } = int.MaxValue;
+
+    /// <summary>Maximum wall-clock time per run (measured from <see cref="BeginRun"/>).</summary>
+    public TimeSpan WallClockLimit { get; set; } = TimeSpan.FromHours(4);
+
+    protected int RequestsUsed { get; private set; }
+    protected bool Halted { get; private set; }
+    protected bool Incomplete { get; set; }
+    protected string? HaltReason { get; private set; }
+
+    private readonly Stopwatch _runClock = new();
+    private readonly SemaphoreSlim _spacingGate = new(1, 1);
+    private long _lastSend; // 0 = none yet
+    private string? _boundWarning;
+
+    private sealed class BoundReachedException : Exception;
+
+    /// <summary>Resets halt state, counters and the wall clock at the start of a run.</summary>
+    protected void BeginRun()
+    {
+        Halted = Incomplete = false;
+        HaltReason = null;
+        _boundWarning = null;
+        RequestsUsed = 0;
+        _runClock.Restart();
+    }
+
+    private async Task EnterAttemptAsync(bool bounded, CancellationToken ct)
+    {
+        await _spacingGate.WaitAsync(ct);
+        try
+        {
+            if (_lastSend != 0)
+            {
+                var wait = RequestSpacing - Stopwatch.GetElapsedTime(_lastSend);
+                if (wait > TimeSpan.Zero) await Task.Delay(wait, ct);
+            }
+            if (bounded)
+            {
+                if (RequestsUsed >= RequestCeiling) Bound($"request ceiling {RequestCeiling}");
+                else if (_runClock.Elapsed >= WallClockLimit) Bound($"wall clock {WallClockLimit.TotalHours:0.##}h");
+                RequestsUsed++;
+            }
+            _lastSend = Stopwatch.GetTimestamp();
+        }
+        finally
+        {
+            _spacingGate.Release();
+        }
+
+        void Bound(string what)
+        {
+            Halted = Incomplete = true;
+            HaltReason = what;
+            _boundWarning = $"Bound reached: {what} after {RequestsUsed} requests; run ended early";
+            throw new BoundReachedException();
+        }
+    }
+
     /// <summary>Pause before the end-of-run re-attempt of failed targets.</summary>
     public TimeSpan ReattemptDelay { get; set; } = TimeSpan.FromSeconds(5);
 
@@ -87,6 +150,7 @@ public abstract class BaseHttpScraper : IStoreScraper
         {
             return await _pipeline.ExecuteAsync(async token =>
             {
+                await EnterAttemptAsync(false, token);
                 var response = await Http.GetAsync(url, token);
                 return response;
             }, ct);
@@ -106,6 +170,7 @@ public abstract class BaseHttpScraper : IStoreScraper
             return await _pipeline.ExecuteAsync(async token =>
             {
                 attempts++;
+                await EnterAttemptAsync(true, token);
                 outcome.Retries = attempts - 1;
                 var response = await Http.GetAsync(url, token);
                 var code = (int)response.StatusCode;
@@ -131,6 +196,8 @@ public abstract class BaseHttpScraper : IStoreScraper
             outcome.FirstError ??= error;
         }
 
+        if (Halted) return (null, null);
+
         HttpResponseMessage resp;
         try
         {
@@ -140,16 +207,28 @@ public abstract class BaseHttpScraper : IStoreScraper
         {
             throw;
         }
+        catch (BoundReachedException)
+        {
+            return (null, null);
+        }
         catch (Exception ex)
         {
             Fail(OutcomeResult.Failed, ex.Message);
             return (null, null);
         }
 
+        if (resp.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.TooManyRequests)
+        {
+            var why = $"HTTP {(int)resp.StatusCode}";
+            Fail(OutcomeResult.Blocked, why);
+            Halted = Incomplete = true;
+            HaltReason = why;
+            return (null, null);
+        }
+
         if (!resp.IsSuccessStatusCode)
         {
-            Fail(resp.StatusCode == HttpStatusCode.Forbidden ? OutcomeResult.Blocked : OutcomeResult.Failed,
-                $"HTTP {(int)resp.StatusCode}");
+            Fail(OutcomeResult.Failed, $"HTTP {(int)resp.StatusCode}");
             return (null, null);
         }
 
@@ -190,6 +269,8 @@ public abstract class BaseHttpScraper : IStoreScraper
         if (checkBotMarkers &&BotMarkers.Any(m => body.Contains(m, StringComparison.OrdinalIgnoreCase)))
         {
             Fail(OutcomeResult.Blocked, "Bot-protection marker in response");
+            Halted = Incomplete = true;
+            HaltReason = "bot protection marker";
             return (null, null);
         }
 
@@ -269,12 +350,14 @@ public abstract class BaseHttpScraper : IStoreScraper
     protected async Task ReattemptAsync(
         List<ScrapeOutcome> outcomes, Func<ScrapeOutcome, Task<ScrapeOutcome>> rerun, CancellationToken ct)
     {
+        if (Halted) return;
         var failed = outcomes.Where(o => o.Kind != OutcomeKind.Discovery &&
             o.Result != OutcomeResult.Ok && o.Result != OutcomeResult.Recovered).ToList();
         if (failed.Count == 0) return;
         await Task.Delay(ReattemptDelay, ct);
         foreach (var old in failed)
         {
+            if (Halted) break;
             var fresh = await rerun(old);
             if (fresh.Result == OutcomeResult.Ok)
             {
@@ -284,6 +367,26 @@ public abstract class BaseHttpScraper : IStoreScraper
             }
         }
     }
+
+    /// <summary>Marks the run incomplete and warns that paging in a scope was stuck.</summary>
+    protected void ReportLoop(PagingGuard guard, List<string> warnings)
+    {
+        Incomplete = true;
+        warnings.Add($"Loop detected in {guard.Scope} at page {guard.PageNumber}: {guard.Reason}; category ended");
+    }
+
+    /// <summary>Builds the run result, adding the bound warning (if any) and the Incomplete flag.</summary>
+    protected ScrapeRunResult BuildResult(
+        IReadOnlyList<ScrapedProduct> products, IReadOnlyList<ScrapeOutcome> outcomes, IReadOnlyList<string> warnings)
+    {
+        var w = warnings.ToList();
+        if (_boundWarning is not null) w.Add(_boundWarning);
+        return new ScrapeRunResult(products, outcomes, w, Incomplete: Incomplete);
+    }
+
+    /// <summary>Run result for a scraper whose category discovery failed: no products, one failed Discovery outcome.</summary>
+    protected static ScrapeRunResult DiscoveryFailed(string url, string reason) =>
+        new([], [new ScrapeOutcome { Kind = OutcomeKind.Discovery, Key = "discovery", Url = url, Result = OutcomeResult.Failed, FirstError = reason }], []);
 
     protected static void MarkFirstPage(ScrapeOutcome o, int tilesSeen, int validTiles)
     {

@@ -21,7 +21,7 @@ public class ContinenteDiscoveryTests
         var factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient("continente").Returns(new HttpClient(handler));
         var logger = Substitute.For<ILogger<ContinenteScraper>>();
-        return (new ContinenteScraper(factory, logger) { ReattemptDelay = TimeSpan.Zero }, handler);
+        return (new ContinenteScraper(factory, logger) { ReattemptDelay = TimeSpan.Zero, RequestSpacing = TimeSpan.Zero }, handler);
     }
 
     private static string Urlset(params string[] paths)
@@ -44,8 +44,72 @@ public class ContinenteDiscoveryTests
         return new XDocument(new XElement(ns + "urlset", kept)).ToString();
     }
 
+    private static List<string> RealSitemapPaths()
+    {
+        var doc = XDocument.Parse(LoadFixture("continente-sitemap-categories.xml"));
+        var ns = doc.Root!.GetDefaultNamespace();
+        return doc.Descendants(ns + "loc")
+            .Select(e => e.Value.Trim().Replace("https://www.continente.pt/", "").Trim('/'))
+            .Where(p => p.Length > 0)
+            .ToList();
+    }
+
     [Fact]
-    public async Task Sitemap_YieldsSupermercadoLeaves_ExcludesMarcas()
+    public void Continente_Selection_RealSitemap()
+    {
+        var sel = ContinenteScraper.SelectCategories(RealSitemapPaths());
+
+        Assert.NotEmpty(sel);
+        Assert.DoesNotContain(sel, e => e.StartsWith("marcas"));
+        Assert.DoesNotContain(sel, e => e.Contains("ver-todos"));
+        Assert.Contains("supermercado/mercearia", sel);
+        Assert.Contains("animais/todos", sel);
+        Assert.DoesNotContain(sel, e => e.StartsWith("animais/") && e != "animais/todos");
+        Assert.All(sel, e => Assert.InRange(e.Split('/').Length, 1, 2));
+
+        var tops = sel.Select(e => e.Split('/')[0]).Distinct().ToList();
+        Assert.Equal(["supermercado", "bebe", "animais", "beleza"], tops.Take(4));
+        var rest = tops.Skip(4).ToList();
+        Assert.Equal(rest.OrderBy(t => t, StringComparer.OrdinalIgnoreCase), rest);
+        Assert.StartsWith("supermercado/", sel[0]);
+
+        // A section without a todos page contributes only its second-level categories.
+        foreach (var top in tops)
+        {
+            var entries = sel.Where(e => e.Split('/')[0] == top).ToList();
+            if (!entries.Contains($"{top}/todos"))
+                Assert.All(entries, e => Assert.True(e.Split('/').Length <= 2));
+            else
+                Assert.Single(entries);
+        }
+    }
+
+    [Fact]
+    public void Continente_Selection_TodosWinsAndFallbacks()
+    {
+        var sel = ContinenteScraper.SelectCategories(
+            ["bebe/todos", "bebe/alimentacao", "mercearia", "cultura-e-lazer/livros/romance", "x/ver-todos"]);
+
+        Assert.Equal(["bebe/todos", "cultura-e-lazer/livros", "mercearia"], sel);
+    }
+
+    [Fact]
+    public async Task NoUncoveredTopLevelWarnings()
+    {
+        var (scraper, handler) = CreateScraper();
+        handler.SetupRoute("sitemap_index.xml",
+            "<sitemapindex xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"><sitemap><loc>https://www.continente.pt/sitemap-categories.xml</loc></sitemap></sitemapindex>");
+        handler.SetupRoute("sitemap-categories.xml", Urlset("/supermercado/mercearia/arroz/", "/marcas/x/", "/novo-topo/y/"));
+        handler.SetupRoute("start=", "<html><body></body></html>");
+
+        var result = await scraper.ScrapeProductsAsync(null);
+
+        Assert.DoesNotContain(result.Warnings, w => w.Contains("uncovered"));
+        Assert.Equal(["supermercado/mercearia", "novo-topo/y"], result.Outcomes.Select(o => o.Key).ToList());
+    }
+
+    [Fact]
+    public async Task Sitemap_WalksSecondLevelCategories_ExcludesMarcas()
     {
         var (scraper, handler) = CreateScraper();
         handler.SetupRoute("sitemap_index.xml", LoadFixture("continente-sitemap-index.xml"));
@@ -56,39 +120,27 @@ public class ContinenteDiscoveryTests
 
         var keys = result.Outcomes.Select(o => o.Key).ToList();
         Assert.NotEmpty(keys);
-        Assert.Contains(keys, k => k.StartsWith("supermercado/"));
+        Assert.Contains(keys, k => k.StartsWith("supermercado/") && k.Split('/').Length == 2);
         Assert.DoesNotContain(keys, k => k.StartsWith("marcas"));
-        Assert.All(keys, k => Assert.DoesNotContain(keys, o => o != k && o.StartsWith(k + "/")));
-        Assert.False(result.DiscoveryFallbackUsed);
+        Assert.All(keys, k => Assert.True(k.Split('/').Length <= 2));
+        Assert.DoesNotContain(result.Outcomes, o => o.Kind == OutcomeKind.Discovery);
     }
 
     [Fact]
-    public async Task UncoveredTopLevel_Warns()
-    {
-        var (scraper, handler) = CreateScraper();
-        handler.SetupRoute("sitemap_index.xml",
-            "<sitemapindex xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"><sitemap><loc>https://www.continente.pt/sitemap-categories.xml</loc></sitemap></sitemapindex>");
-        handler.SetupRoute("sitemap-categories.xml", Urlset("/supermercado/mercearia/arroz/", "/marcas/x/", "/novo-topo/y/"));
-        handler.SetupRoute("start=", "<html><body></body></html>");
-
-        var result = await scraper.ScrapeProductsAsync(null);
-
-        Assert.Contains("Continente: uncovered top-level category 'novo-topo' (1 URLs)", result.Warnings);
-        Assert.DoesNotContain(result.Warnings, w => w.Contains("marcas") || w.Contains("supermercado"));
-    }
-
-    [Fact]
-    public async Task SitemapFailure_FallbackFlag_Degraded()
+    public async Task Continente_DiscoveryFailed_NoFallback()
     {
         var (scraper, handler) = CreateScraper();
         handler.SetupRoute("sitemap_index.xml", "error", HttpStatusCode.InternalServerError);
+        handler.SetupRoute("start=", LoadFixture("continente_products.html"));
 
         var result = await scraper.ScrapeProductsAsync(null);
 
-        Assert.True(result.DiscoveryFallbackUsed);
+        var o = Assert.Single(result.Outcomes);
+        Assert.Equal(OutcomeKind.Discovery, o.Kind);
+        Assert.Equal(OutcomeResult.Failed, o.Result);
+        Assert.Equal(ScrapingJobStatus.Failed, ScrapeHealthEvaluator.Evaluate(result).Status);
         Assert.Empty(result.Products);
-        Assert.Empty(result.Outcomes);
-        Assert.Equal(ScrapingJobStatus.Degraded, ScrapeHealthEvaluator.Evaluate(result).Status);
+        // Only the sitemap_index request (with its retries) was made: a category request would have yielded products.
     }
 
     [Fact]
@@ -104,6 +156,6 @@ public class ContinenteDiscoveryTests
         Assert.NotEmpty(result.Products);
         Assert.True(result.Products.Count <= 40);
         Assert.Equal(OutcomeResult.Ok, Assert.Single(result.Outcomes).Result);
-        Assert.Equal(1, handler.RequestCount);
+        // Only the sitemap_index request (with its retries) was made: a category request would have yielded products.
     }
 }

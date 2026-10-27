@@ -9,7 +9,9 @@ namespace Savvori.WebApi.Scraping.Scrapers;
 /// <summary>
 /// Scraper for Auchan Portugal (auchan.pt).
 /// Uses the SFCC platform — products are in .product-tile elements with data-gtm JSON.
-/// Search URL: https://www.auchan.pt/pt/pesquisa?q={query}&amp;start={offset} (24 products per page)
+/// URL: https://www.auchan.pt/pt/pesquisa?cgid={cgid}&amp;start={N} (24 products per page); there is no keyword list.
+/// The default cgid "root" lists the whole assortment; the site total comes from the "N de TOTAL resultados" counter.
+/// No sz, srule, pmin, prefn or search-query parameters (robots.txt disallows them); paged via <see cref="PagingGuard"/>.
 /// </summary>
 public sealed partial class AuchanScraper : BaseHttpScraper
 {
@@ -17,51 +19,47 @@ public sealed partial class AuchanScraper : BaseHttpScraper
 
     private const string BaseUrl = "https://www.auchan.pt";
     private const string SearchBase = "https://www.auchan.pt/pt/pesquisa";
+    private const string RootCgid = "root";
     private const int PageSize = 24;
-
-    private static readonly string[] GrocerySearchTerms =
-    [
-        "leite", "iogurte", "queijo", "fruta", "legumes",
-        "carne", "charcutaria", "peixe", "marisco",
-        "mercearia", "congelados", "bebidas", "pão", "pastelaria",
-        "ovos", "bio", "arroz", "massa", "azeite"
-    ];
 
     public AuchanScraper(
         IHttpClientFactory httpClientFactory,
         ILogger<AuchanScraper> logger)
         : base(httpClientFactory, logger, "auchan")
     {
+        RequestCeiling = 7200;
     }
 
     public override async Task<ScrapeRunResult> ScrapeProductsAsync(
         string? category = null, CancellationToken ct = default)
     {
-        var terms = category is not null ? [category] : GrocerySearchTerms;
+        BeginRun();
+        var warnings = new List<string>();
+        string[] cgids = [category ?? RootCgid];
         var seen = new HashSet<string>();
         var products = new List<ScrapedProduct>();
         var outcomes = new List<ScrapeOutcome>();
 
-        foreach (var term in terms)
+        foreach (var cgid in cgids)
         {
+            if (Halted) break;
             ct.ThrowIfCancellationRequested();
-            await ScrapeSearch(term, seen, products, outcomes, ct);
-            await Task.Delay(800, ct);
+            await ScrapeSearch(cgid, seen, products, outcomes, warnings, ct);
         }
 
         await ReattemptAsync(outcomes, async old =>
         {
             var tmp = new List<ScrapeOutcome>();
-            await ScrapeSearch(old.Key, seen, products, tmp, ct);
+            await ScrapeSearch(old.Key, seen, products, tmp, warnings, ct);
             return tmp[0];
         }, ct);
 
         Logger.LogInformation("Auchan: scraped {Count} distinct products", products.Count);
-        return new ScrapeRunResult(products, outcomes, Array.Empty<string>());
+        return BuildResult(products, outcomes, warnings);
     }
 
     public override Task<CanaryResult> ProbeAsync(CancellationToken ct = default)
-        => ProbeHtmlAsync($"{SearchBase}?q=leite&start=0", d =>
+        => ProbeHtmlAsync($"{SearchBase}?cgid={RootCgid}&start=0", d =>
         {
             var t = d.QuerySelectorAll(".product-tile").ToList();
             return (t.Count, t.Count(x => ParseTile(x) is not null));
@@ -74,67 +72,64 @@ public sealed partial class AuchanScraper : BaseHttpScraper
     }
 
     private async Task ScrapeSearch(
-        string query,
+        string cgid,
         HashSet<string> seen,
         List<ScrapedProduct> products,
         List<ScrapeOutcome> outcomes,
+        List<string> warnings,
         CancellationToken ct)
     {
         var outcome = new ScrapeOutcome
         {
             Kind = OutcomeKind.Term,
-            Key = query,
-            Url = $"{SearchBase}?q={Uri.EscapeDataString(query)}&start=0"
+            Key = cgid,
+            Url = $"{SearchBase}?cgid={Uri.EscapeDataString(cgid)}&start=0"
         };
         outcomes.Add(outcome);
-        var page = 0;
-        int? total = null;
+        PagingGuard? guard = null;
 
-        do
+        for (var offset = 0; ; offset += PageSize)
         {
+            if (Halted) return;
+
             // Auchan ignores ?page=N (always returns the first page); paging is via ?start=N
-            var url = $"{SearchBase}?q={Uri.EscapeDataString(query)}&start={page * PageSize}";
+            var url = $"{SearchBase}?cgid={Uri.EscapeDataString(cgid)}&start={offset}";
             var document = await GetHtmlAsync(url, outcome, ct);
             if (document is null)
             {
-                Logger.LogError("Auchan: failed to fetch query='{Query}' page={Page}: {Err}",
-                    query, page, outcome.FirstError);
-                break;
+                Logger.LogError("Auchan: failed to fetch cgid='{Cgid}' start={Offset}: {Err}",
+                    cgid, offset, outcome.FirstError);
+                return;
             }
 
             var tiles = document.QuerySelectorAll(".product-tile").ToList();
-            if (page == 0)
-                MarkFirstPage(outcome, tiles.Count, tiles.Count(t => ParseTile(t) is not null));
-            if (tiles.Count == 0) break;
-
-            var added = 0;
-            foreach (var tile in tiles)
+            var parsed = tiles.Select(ParseTile).Where(p => p is not null).Select(p => p!).ToList();
+            if (offset == 0)
             {
-                var product = ParseTile(tile);
-                if (product is null) continue;
+                MarkFirstPage(outcome, tiles.Count, parsed.Count);
+                outcome.SiteTotal = ParseTotal(document);
+            }
+            outcome.ProductsListed += parsed.Count;
+
+            foreach (var product in parsed)
+            {
                 if (seen.Add(product.ExternalId))
                 {
                     products.Add(product);
                     outcome.ProductsFound++;
-                    added++;
                 }
             }
 
-            if (total is null)
+            guard ??= new PagingGuard(outcome.Key, PageSize, outcome.SiteTotal);
+            switch (guard.Observe(parsed.Select(p => p.ExternalId).ToList(), offset))
             {
-                var countEl = document.QuerySelector("[class*='result-count'], [class*='results-hits'], [class*='total-items']");
-                total = ParseCount(countEl?.TextContent);
+                case PagingVerdict.Loop:
+                    ReportLoop(guard, warnings);
+                    return;
+                case PagingVerdict.NaturalEnd:
+                    return;
             }
-
-            page++;
-
-            // Stop on: no new products (server repeated a page), a short page, or the reported total reached.
-            if (added == 0 || tiles.Count < PageSize || (total is not null && page * PageSize >= total))
-                break;
-
-            await Task.Delay(500, ct);
-
-        } while (true);
+        }
     }
 
     private static ScrapedProduct? ParseTile(IElement tile)
@@ -227,13 +222,15 @@ public sealed partial class AuchanScraper : BaseHttpScraper
             ? val : null;
     }
 
-    private static int? ParseCount(string? text)
+    private static int? ParseTotal(IDocument doc)
     {
-        if (string.IsNullOrWhiteSpace(text)) return null;
-        var match = CountDigits().Match(text);
-        return match.Success ? int.Parse(match.Value) : null;
+        var text = doc.QuerySelector(".auc-js-search-results-count")?.TextContent;
+        var m = TotalRegex().Match(text ?? "");
+        if (!m.Success) return null;
+        var digits = m.Groups[1].Value.Replace(",", "").Replace(".", "");
+        return int.TryParse(digits, out var n) && n > 0 ? n : null;
     }
 
-    [GeneratedRegex(@"\d+")]
-    private static partial Regex CountDigits();
+    [GeneratedRegex(@"de\s+([\d.,]+)\s+resultados", RegexOptions.IgnoreCase)]
+    private static partial Regex TotalRegex();
 }

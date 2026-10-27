@@ -15,7 +15,10 @@ public class BaseHttpScraperRetryTests
     {
         public TestScraper(IHttpClientFactory factory)
             : base(factory, Substitute.For<ILogger>(), "test", retryBaseDelay: TimeSpan.FromMilliseconds(1))
-            => ReattemptDelay = TimeSpan.Zero;
+        {
+            ReattemptDelay = TimeSpan.Zero;
+            RequestSpacing = TimeSpan.Zero;
+        }
 
         public override string StoreChainSlug => "test";
 
@@ -42,17 +45,17 @@ public class BaseHttpScraperRetryTests
     }
 
     [Fact]
-    public async Task Retries403_Bounded()
+    public async Task StopOn403_NoRetry()
     {
         var (s, h) = Create();
         h.SetupRoute("cat/page", "forbidden", HttpStatusCode.Forbidden);
         var o = new ScrapeOutcome();
         var doc = await s.Html(Url, o);
         Assert.Null(doc);
-        Assert.Equal(4, h.RequestCount);
+        Assert.Equal(1, h.RequestCount);
         Assert.Equal(OutcomeResult.Blocked, o.Result);
-        Assert.Equal(4, o.StatusCounts[403]);
-        Assert.Equal(3, o.Retries);
+        Assert.Equal(1, o.StatusCounts[403]);
+        Assert.Equal(0, o.Retries);
     }
 
     [Fact]

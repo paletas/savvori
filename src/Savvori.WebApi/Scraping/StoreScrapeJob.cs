@@ -127,6 +127,7 @@ public sealed class StoreScrapeJob : IJob
             }
             var products = result.Products;
             var health = ScrapeHealthEvaluator.Evaluate(result);
+            var staleAllowed = ScrapeHealthEvaluator.StaleMarkingAllowed(result, health);
             var graceDays = _config?.GetSection("Scraping:Chains").Get<List<ScrapingChainConfig>>()
                 ?.FirstOrDefault(c => c.Slug == slug)?.EffectiveGraceDays
                 ?? new ScrapingChainConfig { Slug = slug }.EffectiveGraceDays;
@@ -137,8 +138,8 @@ public sealed class StoreScrapeJob : IJob
                             j.StartedAt >= since)
                 .Select(j => j.StartedAt)
                 .ToListAsync(CancellationToken.None);
-            if (health.Status != ScrapingJobStatus.Degraded) starts.Add(job.StartedAt);
-            var policy = new StalePolicy(health.Status != ScrapingJobStatus.Degraded, TimeSpan.FromDays(graceDays), starts);
+            if (staleAllowed) starts.Add(job.StartedAt);
+            var policy = new StalePolicy(staleAllowed,TimeSpan.FromDays(graceDays), starts);
             var processResult = await _processor.ProcessProductsAsync(slug, products, policy, context.CancellationToken);
             var count = processResult.Processed;
 
@@ -146,7 +147,7 @@ public sealed class StoreScrapeJob : IJob
             prodActivity?.SetStatus(ActivityStatusCode.Ok);
 
             sw.Stop();
-            await MarkCompletedAsync(job.Id, chain.Id, count, products.Count, health, processResult);
+            await MarkCompletedAsync(job.Id, chain.Id, count, products.Count, health, processResult, staleMarkingSkipped: !staleAllowed);
             var persisted = canary.Ok ? result : result with
             {
                 Outcomes = [new ScrapeOutcome { Kind = OutcomeKind.Canary, Key = "canary", Url = slug, Result = OutcomeResult.Failed, FirstError = canary.Message }]
@@ -202,7 +203,7 @@ public sealed class StoreScrapeJob : IJob
     }
 
     private async Task MarkCompletedAsync(
-        Guid jobId, Guid chainId, int productsScraped, int productsReturned, RunHealth health, ProcessResult processResult)
+        Guid jobId, Guid chainId, int productsScraped, int productsReturned, RunHealth health, ProcessResult processResult, bool staleMarkingSkipped)
     {
         var persistedJob = await _db.ScrapingJobs
             .FirstOrDefaultAsync(j => j.Id == jobId, CancellationToken.None);
@@ -223,7 +224,7 @@ public sealed class StoreScrapeJob : IJob
         persistedJob.HealthReason = health.Reasons.Count > 0 ? string.Join("; ", health.Reasons) : null;
         persistedJob.WarningCount = health.Warnings.Count;
         persistedJob.StaleMarked = processResult.StaleMarked;
-        persistedJob.StaleMarkingSkipped = health.Status == ScrapingJobStatus.Degraded;
+        persistedJob.StaleMarkingSkipped = staleMarkingSkipped;
         persistedJob.PreviousHealthyCount = previous;
         persistedJob.DropRatio = previous > 0 ? productsReturned / (double)previous : null;
         persistedJob.CompletedAt = DateTime.UtcNow;

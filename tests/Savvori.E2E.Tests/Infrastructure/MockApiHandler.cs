@@ -411,6 +411,15 @@ public class MockApiHandler : HttpMessageHandler
             completedAt = (DateTime?)DateTime.UtcNow.AddMinutes(-30),
             productsScraped = 900, errorMessage = (string?)null,
             warningCount = 1
+        },
+        new
+        {
+            chainSlug = "lidl", chainName = "Lidl",
+            isScheduled = true, nextFireTime = (DateTime?)DateTime.UtcNow.AddHours(6),
+            lastStatus = (int?)3, lastRunAt = (DateTime?)DateTime.UtcNow.AddHours(-1),
+            completedAt = (DateTime?)DateTime.UtcNow.AddMinutes(-30),
+            productsScraped = 0, errorMessage = (string?)null,
+            healthReason = "Discovery failed: https://x/sitemap.xml (HTTP 500)"
         }
     ];
 
