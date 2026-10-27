@@ -248,6 +248,25 @@ public class ContinenteScraperTests
     }
 
     [Fact]
+    public async Task Continente_LiveFixture_TotalAndTiles()
+    {
+        var (scraper, handler) = CreateScraper();
+        handler.SetupRoute("start=0", LoadFixture("continente_category_live.html"));
+
+        var result = await scraper.ScrapeProductsAsync("bebe/alimentacao", CancellationToken.None);
+
+        var o = Assert.Single(result.Outcomes);
+        Assert.NotNull(o.SiteTotal);
+        Assert.InRange(o.SiteTotal!.Value, 213, 259);
+        Assert.True(result.Products.Count >= 3);
+        Assert.All(result.Products, p =>
+        {
+            Assert.True(p.Price > 0);
+            Assert.False(string.IsNullOrWhiteSpace(p.Name));
+        });
+    }
+
+    [Fact]
     public async Task Continente_SiteTotal_FallsBackToProductCount()
     {
         var (scraper, _) = CreateScraper();

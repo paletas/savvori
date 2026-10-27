@@ -294,6 +294,28 @@ public class AuchanScraperTests
     }
 
     [Fact]
+    public async Task Auchan_LiveFixture_TotalAndTiles()
+    {
+        var (scraper, _) = CreateWith(h =>
+        {
+            h.SetupRoute("start=0", LoadFixture("auchan_root_p2.html"));
+            h.SetupRoute("start=24", "<html><body></body></html>");
+        });
+
+        var result = await scraper.ScrapeProductsAsync(null, CancellationToken.None);
+
+        var outcome = Assert.Single(result.Outcomes);
+        Assert.NotNull(outcome.SiteTotal);
+        Assert.InRange(outcome.SiteTotal!.Value, 54684, 60440);
+        Assert.True(result.Products.Count >= 20);
+        Assert.All(result.Products, p =>
+        {
+            Assert.True(p.Price > 0);
+            Assert.False(string.IsNullOrWhiteSpace(p.Name));
+        });
+    }
+
+    [Fact]
     public async Task Auchan_PagesToTotal_ThreePages()
     {
         var (scraper, handler) = CreateWith(h =>
