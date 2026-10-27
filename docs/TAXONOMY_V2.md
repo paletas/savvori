@@ -11,7 +11,7 @@ This document proposes 12 aisles and 87 leaf categories, replacing today's 10 to
 
 ## Why change
 
-- Celeiro is 100% uncategorised, and whole aisles have no home today, so products pile up uncategorised.
+- Many products are uncategorised, and whole aisles have no home today, so products pile up uncategorised.
 - Several v1 categories are catch-alls (`bolachas`, `bebidas-alcoolicas`, `bolos-sobremesas`, `higiene-pessoal`, and products sitting directly on the `Mercearia` parent). A classifier cannot learn a coherent label from a catch-all.
 - 'Bio', 'sem lactose' and 'sem glúten' cut across aisles (a bio yoghurt and a bio rice are both bio); as categories they fragment the tree and confuse the classifier. As tags they combine with any category.
 

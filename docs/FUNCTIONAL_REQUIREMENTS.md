@@ -103,7 +103,9 @@ The `/api/shoppinglists/{id}/optimize` endpoint supports four modes via `?mode=`
 - `GET /api/admin/scraping/status` returns the last run time, next scheduled time, and success/failure status for each scraper.
 - `POST /api/admin/scraping/trigger/{chainSlug}` enqueues an immediate scrape for the specified chain.
 
-- Each scrape run ends with one of the statuses `Completed`, `CompletedWithWarnings` (non-fatal warnings, for example a recovered retry), `Degraded` (a structural failure such as a block, redirect, missing tiles or fields, a failed canary or failed category discovery; nothing is deactivated and the Admin home page shows a banner) or `Failed` (the job threw).
+- Each scrape run ends with one of the statuses `Completed`, `CompletedWithWarnings` (non-fatal warnings, for example a recovered retry), `Degraded` (a structural failure such as a block, redirect, missing tiles or fields, a failed canary; nothing is deactivated and the Admin home page shows a banner) or `Failed` (the job threw, or a category discovery failure (there is no fallback list)).
+- A run whose category discovery failed ends Failed and marks no product stale.
+- A run that lists under 80% of a site's declared total (Lidl, Auchan, Continente) gets an advisory coverage warning. A paging loop (repeated page, nothing new, offset ignored, past the declared total, or past 500 pages with no declared total) or a bound (request ceiling, 4-hour limit) adds a warning and skips stale marking for the whole run.
 - Products not seen in a run are deactivated only after a grace window of 3 days (Lidl 14 days, configurable per chain). Only healthy runs (`Completed` or `CompletedWithWarnings`) count towards the window; a `Degraded` run never starts or advances grace.
 - `POST /api/admin/scraping/reactivate-recent?apply=false|true` re-activates inactive products last scraped within each chain's grace window; it is a dry run unless `apply=true`, and returns the per-chain count.
 - The match-review queue (`GET /api/admin/matching/review`) hides candidates with an inactive product by default; the `filter=inactive` option lists them.
