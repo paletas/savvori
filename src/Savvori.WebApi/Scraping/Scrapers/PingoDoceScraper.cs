@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Xml.Linq;
 using AngleSharp.Dom;
 using Savvori.Shared;
 
@@ -24,63 +25,63 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
         (37.02, -7.93),   // Faro   — covers Algarve + Alentejo south
     ];
 
-    // Browse all grocery-relevant Pingo Doce categories using the site's actual category IDs
-    private static readonly string[] GroceryCategories =
-    [
-        "ec_frutasevegetais_100",         // fruits & vegetables
-        "ec_talho_200",                   // meat
-        "ec_charcutariaqueijos_500",       // charcuterie & cheese
-        "ec_ovos_600",                    // eggs
-        "ec_leitebebidasvegetais_900",     // milk & plant drinks
-        "ec_iogurtessobremesas_800",       // yogurts & desserts
-        "ec_congelados_1000",             // frozen
-        "ec_cafechaachocolatados_1100",    // coffee, tea & hot drinks
-        "ec_bolachascereaisguloseimas_1200", // cookies, cereals & sweets
-        "ec_mercearia_1300",              // grocery staples (pasta, rice, sauces…)
-        "ec_aguassumosrefrigerantes_1400", // water, juices & soft drinks
-    ];
+    private const string SitemapIndexUrl = $"{BaseUrl}/home/sitemap_index.xml";
+    private const string ProductsPrefix = "/home/produtos/";
+
+    // Real category id requested by the canary probe.
+    private const string CanaryCgid = "ec_frutasevegetais_100";
+
+    // Brand and promotion pages repeat products already listed under the departments.
+    private static readonly string[] ExcludedSections = ["as-nossas-marcas", "promocoes"];
 
     public PingoDoceScraper(
         IHttpClientFactory httpClientFactory,
         ILogger<PingoDoceScraper> logger)
         : base(httpClientFactory, logger, "pingodoce")
     {
+        RequestCeiling = 2000;
     }
 
     public override async Task<ScrapeRunResult> ScrapeProductsAsync(
         string? category = null, CancellationToken ct = default)
     {
+        BeginRun();
+        var warnings = new List<string>();
         var seen = new HashSet<string>();
         var products = new List<ScrapedProduct>();
         var outcomes = new List<ScrapeOutcome>();
 
         if (category is not null)
         {
-            await ScrapeCategory(category, seen, products, outcomes, ct);
+            await ScrapeCategory(category, seen, products, outcomes, warnings, ct);
         }
         else
         {
-            foreach (var cat in GroceryCategories)
+            var (sections, discWarnings, failure) = await DiscoverSectionsAsync(ct);
+            if (failure is not null) return DiscoveryFailed(SitemapIndexUrl, failure);
+            warnings.AddRange(discWarnings);
+
+            foreach (var (_, cgid) in sections)
             {
+                if (Halted) break;
                 ct.ThrowIfCancellationRequested();
-                await ScrapeCategory(cat, seen, products, outcomes, ct);
-                await Task.Delay(800, ct);
+                await ScrapeCategory(cgid!, seen, products, outcomes, warnings, ct);
             }
         }
 
         await ReattemptAsync(outcomes, async old =>
         {
             var tmp = new List<ScrapeOutcome>();
-            await ScrapeCategory(old.Key, seen, products, tmp, ct);
+            await ScrapeCategory(old.Key, seen, products, tmp, warnings, ct);
             return tmp[0];
         }, ct);
 
         Logger.LogInformation("PingoDoce: scraped {Count} distinct products", products.Count);
-        return new ScrapeRunResult(products, outcomes, Array.Empty<string>());
+        return BuildResult(products, outcomes, warnings);
     }
 
     public override Task<CanaryResult> ProbeAsync(CancellationToken ct = default)
-        => ProbeHtmlAsync($"{SearchUrl}?cgid={Uri.EscapeDataString(GroceryCategories[0])}&format=ajax&start=0&sz={PageSize}", d =>
+        => ProbeHtmlAsync($"{SearchUrl}?cgid={Uri.EscapeDataString(CanaryCgid)}&format=ajax&start=0&sz={PageSize}", d =>
         {
             var t = d.QuerySelectorAll(".product-tile-pd").ToList();
             return (t.Count, t.Count(x => ParseTile(x) is not null));
@@ -139,6 +140,7 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
         HashSet<string> seen,
         List<ScrapedProduct> products,
         List<ScrapeOutcome> outcomes,
+        List<string> warnings,
         CancellationToken ct)
     {
         var outcome = new ScrapeOutcome
@@ -148,12 +150,12 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
             Url = $"{SearchUrl}?cgid={Uri.EscapeDataString(categoryId)}&format=ajax&start=0&sz={PageSize}"
         };
         outcomes.Add(outcome);
-        var firstPage = true;
-        var start = 0;
-        int? total = null;
+        PagingGuard? guard = null;
 
-        do
+        for (var start = 0; ; start += PageSize)
         {
+            if (Halted) return;
+
             // Use category browse (cgid=) with ajax format — server-renders product tiles
             var url = $"{SearchUrl}?cgid={Uri.EscapeDataString(categoryId)}&format=ajax&start={start}&sz={PageSize}";
             var document = await GetHtmlAsync(url, outcome, ct);
@@ -161,21 +163,16 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
             {
                 Logger.LogError("PingoDoce: failed to fetch category='{Category}' start={Start}: {Err}",
                     categoryId, start, outcome.FirstError);
-                break;
+                return;
             }
 
             var tiles = document.QuerySelectorAll(".product-tile-pd").ToList();
-            if (firstPage)
-            {
-                firstPage = false;
-                MarkFirstPage(outcome, tiles.Count, tiles.Count(t => ParseTile(t) is not null));
-            }
-            if (tiles.Count == 0) break;
+            var parsed = tiles.Select(ParseTile).Where(p => p is not null).Select(p => p!).ToList();
+            if (start == 0) MarkFirstPage(outcome, tiles.Count, parsed.Count);
+            outcome.ProductsListed += parsed.Count;
 
-            foreach (var tile in tiles)
+            foreach (var product in parsed)
             {
-                var product = ParseTile(tile);
-                if (product is null) continue;
                 if (seen.Add(product.ExternalId))
                 {
                     products.Add(product);
@@ -183,21 +180,126 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
                 }
             }
 
-            if (total is null)
+            guard ??= new PagingGuard(outcome.Key, PageSize, null);
+            switch (guard.Observe(parsed.Select(p => p.ExternalId).ToList(), start))
             {
-                var countText = document.QuerySelector(".results-hits, [class*='result-count']")?.TextContent;
-                total = ParseCount(countText);
+                case PagingVerdict.Loop:
+                    ReportLoop(guard, warnings);
+                    return;
+                case PagingVerdict.NaturalEnd:
+                    return;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Selects the sections to scrape from the category sitemap locs: the first path segment after
+    /// <c>/home/produtos/</c>, without <c>as-nossas-marcas</c> and <c>promocoes</c> (they repeat the
+    /// departments), distinct and sorted. Locs outside that prefix are ignored.
+    /// </summary>
+    public static IReadOnlyList<string> SelectSections(IEnumerable<string> locs)
+    {
+        var sections = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var raw in locs)
+        {
+            var loc = raw.Trim();
+            if (!loc.StartsWith(BaseUrl, StringComparison.OrdinalIgnoreCase)) continue;
+            var path = loc[BaseUrl.Length..];
+            if (!path.StartsWith(ProductsPrefix, StringComparison.OrdinalIgnoreCase)) continue;
+            var rest = path[ProductsPrefix.Length..].Split('?', '#')[0];
+            var slug = rest.Split('/', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+            if (string.IsNullOrEmpty(slug)) continue;
+            if (ExcludedSections.Contains(slug, StringComparer.OrdinalIgnoreCase)) continue;
+            sections.Add(slug);
+        }
+        return sections.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    /// <summary>
+    /// Maps each top-level section slug to its cgid, read from the menu anchors
+    /// (<c>href="/home/produtos/slug" id="ec_..."</c>). Two-segment links are ignored.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> ParseNavCgids(IDocument doc)
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var a in doc.QuerySelectorAll("a[href^='/home/produtos/'][id^='ec_']"))
+        {
+            var href = (a.GetAttribute("href") ?? string.Empty).Trim().TrimEnd('/');
+            var rest = href.Length > ProductsPrefix.Length ? href[ProductsPrefix.Length..] : string.Empty;
+            var id = a.GetAttribute("id");
+            if (rest.Length == 0 || rest.Contains('/') || string.IsNullOrEmpty(id)) continue;
+            map.TryAdd(rest, id);
+        }
+        return map;
+    }
+
+    /// <summary>
+    /// Discovers the sections to scrape. Source: the category sitemap listed in the sitemap index
+    /// (sections via <see cref="SelectSections"/>, marcas and promocoes excluded) plus one extra page
+    /// (the first section's page) whose menu carries the cgid of every section. A section without a
+    /// cgid is skipped with a warning. On failure returns a <c>FailureReason</c> (the run is then
+    /// reported as failed discovery).
+    /// </summary>
+    private async Task<(IReadOnlyList<(string Slug, string? Cgid)> Sections, IReadOnlyList<string> Warnings, string? FailureReason)>
+        DiscoverSectionsAsync(CancellationToken ct)
+    {
+        try
+        {
+            var indexXml = await GetStringAsync(SitemapIndexUrl, ct);
+            var index = XDocument.Parse(indexXml);
+            var ns = index.Root?.GetDefaultNamespace() ?? XNamespace.None;
+            var sitemapUrl = index.Descendants(ns + "loc")
+                .Select(e => e.Value.Trim())
+                .FirstOrDefault(u =>
+                    u.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) &&
+                    !u.Contains("-product", StringComparison.OrdinalIgnoreCase));
+            if (sitemapUrl is null)
+            {
+                Logger.LogWarning("PingoDoce: no category sitemap found in {Url}, discovery failed", SitemapIndexUrl);
+                return ([], [], "no category sitemap found in index");
             }
 
-            // Fewer tiles than requested means this is the last page
-            if (tiles.Count < PageSize) break;
+            var sitemapXml = await GetStringAsync(sitemapUrl, ct);
+            var sitemap = XDocument.Parse(sitemapXml);
+            var sNs = sitemap.Root?.GetDefaultNamespace() ?? XNamespace.None;
+            var sections = SelectSections(sitemap.Descendants(sNs + "loc").Select(e => e.Value));
+            if (sections.Count == 0)
+            {
+                Logger.LogWarning("PingoDoce: category sitemap yielded no sections, discovery failed");
+                return ([], [], "category sitemap yielded no sections");
+            }
 
-            start += PageSize;
+            var navUrl = $"{BaseUrl}{ProductsPrefix}{sections[0]}";
+            var doc = await GetHtmlAsync(navUrl, new ScrapeOutcome { Url = navUrl }, ct);
+            if (doc is null)
+            {
+                Logger.LogWarning("PingoDoce: nav page {Url} unavailable, discovery failed", navUrl);
+                return ([], [], "nav page unavailable");
+            }
 
-            if (start < (total ?? int.MaxValue))
-                await Task.Delay(500, ct);
+            var cgids = ParseNavCgids(doc);
+            var result = new List<(string Slug, string? Cgid)>();
+            var warnings = new List<string>();
+            foreach (var slug in sections)
+            {
+                if (cgids.TryGetValue(slug, out var cgid)) result.Add((slug, cgid));
+                else warnings.Add($"Pingo Doce: no cgid for section '{slug}'");
+            }
 
-        } while (start < (total ?? int.MaxValue));
+            if (result.Count == 0)
+            {
+                Logger.LogWarning("PingoDoce: no section ids found in menu, discovery failed");
+                return ([], warnings, "no section ids found in menu");
+            }
+
+            Logger.LogInformation("PingoDoce: {Total} sections -> {Count} with a cgid", sections.Count, result.Count);
+            return (result, warnings, null);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or System.Xml.XmlException)
+        {
+            Logger.LogWarning(ex, "PingoDoce: section discovery failed");
+            return ([], [], ex.Message);
+        }
     }
 
     private static ScrapedProduct? ParseTile(IElement tile)
@@ -300,24 +402,11 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
         return (sizeUnit?.SizeValue, sizeUnit?.Unit ?? ProductUnit.Unit, null);
     }
 
-    private static int? ParseCount(string? text)
-    {
-        if (string.IsNullOrWhiteSpace(text)) return null;
-        var match = CountDigits().Match(text);
-        if (!match.Success) return null;
-        var digits = match.Value.Replace(",", "").Replace(".", "");
-        return int.TryParse(digits, out var val) ? val : null;
-    }
-
     // Matches patterns like "1 L | 0,86 €/L" or "500 g | 2,50 €/kg"
     [GeneratedRegex(
         @"(?<![\d.,])(?<size>\d+(?:[.,]\d+)?)\s*(?<unit>kg|g|l|ml|cl)\s*\|\s*(?<uprice>\d+(?:[.,]\d+)?)\s*€/(?:kg|g|l|ml)",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex SizeUnitPricePattern();
-
-    // Matches a number that may use comma/dot as thousand separators (e.g., "11,028" or "5.576")
-    [GeneratedRegex(@"[\d,.]+")]
-    private static partial Regex CountDigits();
 
     // ---- DTOs for SFCC store finder response -----------------------------------
 
