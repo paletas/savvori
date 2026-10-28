@@ -25,8 +25,8 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
 
     private const string SitemapIndexUrl = $"{BaseUrl}/sitemap_index.xml";
 
-    // Brands pages repeat products already listed under the departments.
-    private const string ExcludedTop = "marcas";
+    // Brands pages repeat products already listed under the departments; destaques is a promotional landing section.
+    private static readonly string[] ExcludedTops = ["marcas", "destaques"];
 
     // Sections scraped first, in this order; every other section follows alphabetically.
     private static readonly string[] FirstTops = ["supermercado", "bebe", "animais", "beleza"];
@@ -39,7 +39,8 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
         ILogger<ContinenteScraper> logger)
         : base(httpClientFactory, logger, "continente")
     {
-        RequestCeiling = 3800;
+        RequestCeiling = 8000;
+        WallClockLimit = TimeSpan.FromHours(8);
     }
 
     public override async Task<ScrapeRunResult> ScrapeProductsAsync(
@@ -179,7 +180,7 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
             var segs = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
             if (segs.Length == 0 || segs.Any(x => x.Contains("ver-todos", StringComparison.OrdinalIgnoreCase)))
                 continue;
-            if (string.Equals(segs[0], ExcludedTop, StringComparison.OrdinalIgnoreCase)) continue;
+            if (ExcludedTops.Any(t => string.Equals(segs[0], t, StringComparison.OrdinalIgnoreCase))) continue;
             if (!byTop.TryGetValue(segs[0], out var list)) byTop[segs[0]] = list = [];
             list.Add(segs);
         }
@@ -307,7 +308,8 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
         outcomes.Add(outcome);
         PagingGuard? guard = null;
 
-        for (var start = 0; ; start += PageSize)
+        var start = 0;
+        while (true)
         {
             if (Halted) { outcome.StopReason ??= $"run halted: {HaltReason}"; return; }
 
@@ -324,8 +326,8 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
             var parsed = tiles.Select(ParseTile).Where(p => p is not null).Select(p => p!).ToList();
             if (start == 0)
             {
-                MarkFirstPage(outcome, tiles.Count, parsed.Count);
                 outcome.SiteTotal = ParseTotal(document);
+                MarkFirstPage(outcome, tiles.Count, parsed.Count, contentPageWhenNoCounter: true);
             }
             outcome.ProductsListed += parsed.Count;
 
@@ -338,9 +340,9 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
                 }
             }
 
-            guard ??= new PagingGuard(outcome.Key, PageSize, outcome.SiteTotal);
+            guard ??= new PagingGuard(outcome.Key, null, outcome.SiteTotal, counterlessRepeatEndsListing: true);
             var verdict = guard.Observe(parsed.Select(p => p.ExternalId).ToList(), start, tiles.Count);
-            outcome.StopReason = guard.StopReason;
+            outcome.StopReason = outcome.Result == OutcomeResult.ContentPage ? outcome.StopReason : guard.StopReason;
             switch (verdict)
             {
                 case PagingVerdict.Loop:
@@ -349,6 +351,8 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
                 case PagingVerdict.NaturalEnd:
                     return;
             }
+
+            start += tiles.Count;
         }
     }
 

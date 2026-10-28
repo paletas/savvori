@@ -36,6 +36,9 @@ public sealed class FakeHttpMessageHandler : HttpMessageHandler
 
     private int _requestCount;
 
+    /// <summary>Every requested URL, in order.</summary>
+    public List<string> RequestUrls { get; } = [];
+
     /// <summary>Total number of HTTP requests processed by this handler.</summary>
     public int RequestCount => _requestCount;
 
@@ -44,6 +47,7 @@ public sealed class FakeHttpMessageHandler : HttpMessageHandler
     {
         Interlocked.Increment(ref _requestCount);
         var url = request.RequestUri?.ToString() ?? string.Empty;
+        lock (RequestUrls) RequestUrls.Add(url);
         (HttpStatusCode Status, string Content)? seq = null;
         lock (_sequences)
         {

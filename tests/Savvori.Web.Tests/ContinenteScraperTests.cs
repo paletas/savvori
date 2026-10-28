@@ -238,7 +238,7 @@ public class ContinenteScraperTests
     {
         var (scraper, handler) = CreateScraper();
         handler.SetupRoute("start=0", Page(236, Enumerable.Range(1, 36)));
-        handler.SetupRoute("start=48", Page(236, []));
+        handler.SetupRoute("start=36", Page(236, []));
 
         var result = await scraper.ScrapeProductsAsync("bebe/alimentacao", CancellationToken.None);
 
@@ -294,13 +294,18 @@ public class ContinenteScraperTests
     public async Task Continente_PagesToTotal()
     {
         var (scraper, handler) = CreateScraper();
-        handler.SetupRoute("start=0", Page(100, Enumerable.Range(1, 48)));
-        handler.SetupRoute("start=48", Page(100, Enumerable.Range(49, 48)));
-        handler.SetupRoute("start=96", Page(100, Enumerable.Range(97, 4)));
+        handler.SetupRoute("start=0", Page(100, Enumerable.Range(1, 35)));
+        handler.SetupRoute("start=35", Page(100, Enumerable.Range(36, 35)));
+        handler.SetupRoute("start=70", Page(100, Enumerable.Range(71, 30)));
 
         var result = await scraper.ScrapeProductsAsync("frescos", CancellationToken.None);
 
+        Assert.Equal(3, handler.RequestUrls.Count);
+        Assert.Contains("start=0&", handler.RequestUrls[0]);
+        Assert.Contains("start=35&", handler.RequestUrls[1]);
+        Assert.Contains("start=70&", handler.RequestUrls[2]);
         Assert.Equal(100, result.Products.Count);
+        Assert.Equal(100, result.Products.Select(p => p.ExternalId).Distinct().Count());
         Assert.Equal(3, handler.RequestCount);
         Assert.False(result.Incomplete);
         var o = Assert.Single(result.Outcomes);
@@ -309,20 +314,104 @@ public class ContinenteScraperTests
     }
 
     [Fact]
-    public async Task Continente_PastDeclaredTotal_Loop()
+    public async Task Continente_ServedPastTotal_NaturalEnd()
     {
         var (scraper, handler) = CreateScraper();
-        // Declared 40, 35 served per page: the second request (start=48) lands past the total.
         handler.SetupRoute("start=0", Page(40, Enumerable.Range(1, 35)));
-        handler.SetupRoute("start=48", Page(40, Enumerable.Range(49, 35)));
+        handler.SetupRoute("start=35", Page(40, Enumerable.Range(36, 35)));
+
+        var result = await scraper.ScrapeProductsAsync("frescos", CancellationToken.None);
+
+        Assert.Equal(2, handler.RequestCount);
+        Assert.False(result.Incomplete);
+        Assert.Empty(result.Warnings);
+        Assert.StartsWith("reached declared total", Assert.Single(result.Outcomes).StopReason);
+    }
+
+    [Fact]
+    public void Continente_DestaquesExcluded()
+    {
+        var selected = ContinenteScraper.SelectCategories(["/destaques/ofertas/", "/marcas/x/", "/mercearia/arroz/"]);
+
+        Assert.DoesNotContain(selected, s => s.StartsWith("destaques") || s.StartsWith("marcas"));
+        Assert.Contains(selected, s => s.StartsWith("mercearia"));
+    }
+
+    [Fact]
+    public async Task Continente_CounterlessEmptyPage_ContentPage()
+    {
+        var (scraper, handler) = CreateScraper();
+        handler.SetupRoute("start=0", Page(null, []));
+
+        var result = await scraper.ScrapeProductsAsync("frescos", CancellationToken.None);
+
+        var o = Assert.Single(result.Outcomes);
+        Assert.Equal(OutcomeResult.ContentPage, o.Result);
+        Assert.Equal(1, handler.RequestCount);
+        Assert.StartsWith("content page", o.StopReason);
+        Assert.False(result.Incomplete);
+        Assert.Empty(result.Warnings);
+    }
+
+    [Fact]
+    public async Task Continente_LandingPageRepeat_NaturalEndNotIncomplete()
+    {
+        var (scraper, handler) = CreateScraper();
+        handler.SetupRoute("start=0", Page(null, Enumerable.Range(1, 5)));
+        handler.SetupRoute("start=5", Page(null, Enumerable.Range(1, 5)));
+
+        var result = await scraper.ScrapeProductsAsync("frescos", CancellationToken.None);
+
+        Assert.Equal(2, handler.RequestCount);
+        Assert.False(result.Incomplete);
+        Assert.Empty(result.Warnings);
+        Assert.StartsWith("landing page", Assert.Single(result.Outcomes).StopReason);
+        Assert.Equal(5, result.Products.Count);
+    }
+
+    [Fact]
+    public async Task Continente_CountedRepeat_LoopIncomplete()
+    {
+        var (scraper, handler) = CreateScraper();
+        handler.SetupRoute("start=0", Page(500, Enumerable.Range(1, 35)));
+        handler.SetupRoute("start=35", Page(500, Enumerable.Range(1, 35)));
 
         var result = await scraper.ScrapeProductsAsync("frescos", CancellationToken.None);
 
         Assert.True(result.Incomplete);
-        var warning = Assert.Single(result.Warnings);
-        Assert.StartsWith("Loop detected in ", warning);
-        Assert.Contains("past declared total", warning);
+        Assert.StartsWith("Loop detected in ", Assert.Single(result.Warnings));
         Assert.Equal(2, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task Continente_CounterlessLargeListing_NotShortPage()
+    {
+        var (scraper, handler) = CreateScraper();
+        handler.SetupRoute("start=0", LoadFixture("continente_livros.html"));
+
+        var result = await scraper.ScrapeProductsAsync("livros", CancellationToken.None);
+
+        var o = Assert.Single(result.Outcomes);
+        Assert.Equal(93, o.ProductsListed);
+        Assert.Equal(2, handler.RequestCount);
+        Assert.DoesNotContain(result.Warnings, w => w.StartsWith("Loop detected"));
+        Assert.StartsWith("empty page", o.StopReason);
+    }
+
+    [Fact]
+    public async Task Continente_MerceariaFixtures_StepIsServedTiles()
+    {
+        var (scraper, handler) = CreateScraper();
+        handler.SetupRoute("start=0", LoadFixture("continente_mercearia_s0.html"));
+        handler.SetupRoute("start=35", LoadFixture("continente_mercearia_s35.html"));
+
+        var result = await scraper.ScrapeProductsAsync("mercearia", CancellationToken.None);
+
+        Assert.Contains("start=35&", handler.RequestUrls[1]);
+        Assert.Contains("start=70&", handler.RequestUrls[2]);
+        var o = Assert.Single(result.Outcomes);
+        Assert.Equal(5447, o.SiteTotal);
+        Assert.Equal(70, o.ProductsListed);
     }
 
     [Fact]
@@ -341,9 +430,15 @@ public class ContinenteScraperTests
     }
 
     [Fact]
-    public void Continente_RequestCeiling_Is3800()
+    public void Continente_RequestCeiling_Is8000()
     {
-        Assert.Equal(3800, CreateScraper().Scraper.RequestCeiling);
+        Assert.Equal(8000, CreateScraper().Scraper.RequestCeiling);
+    }
+
+    [Fact]
+    public void Continente_WallClockLimit_Is8Hours()
+    {
+        Assert.Equal(TimeSpan.FromHours(8), CreateScraper().Scraper.WallClockLimit);
     }
 
     [Fact]

@@ -355,7 +355,8 @@ public abstract class BaseHttpScraper : IStoreScraper
     {
         if (Halted) return;
         var failed = outcomes.Where(o => o.Kind != OutcomeKind.Discovery &&
-            o.Result != OutcomeResult.Ok && o.Result != OutcomeResult.Recovered).ToList();
+            o.Result != OutcomeResult.Ok && o.Result != OutcomeResult.Recovered &&
+            o.Result != OutcomeResult.ContentPage).ToList();
         if (failed.Count == 0) return;
         await Task.Delay(ReattemptDelay, ct);
         foreach (var old in failed)
