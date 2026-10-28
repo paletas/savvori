@@ -198,6 +198,42 @@ public class LidlScraperTests
         Assert.Equal(2, handler.RequestCount);
     }
 
+    private static string LidlPage(int offset) =>
+        File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", $"lidl_page_o{offset}.json"));
+
+    [Fact]
+    public async Task Lidl_UnpricedItemsDoNotStopPaging()
+    {
+        var offsets = new[] { 0, 48, 96, 144, 192 };
+        var handler = new FakeHttpMessageHandler();
+        var priced = new HashSet<string>();
+        foreach (var o in offsets)
+        {
+            var json = LidlPage(o);
+            handler.SetupRoute($"offset={o}&fetchsize", json);
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            foreach (var item in doc.RootElement.GetProperty("items").EnumerateArray())
+            {
+                var data = item.GetProperty("gridbox").GetProperty("data");
+                if (data.TryGetProperty("price", out var pr) && pr.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                    pr.TryGetProperty("price", out var pv) && pv.ValueKind == System.Text.Json.JsonValueKind.Number &&
+                    pv.TryGetDecimal(out var price) && price > 0)
+                    priced.Add(data.GetProperty("itemId").ToString());
+            }
+        }
+
+        var result = await NewScraper(handler).ScrapeProductsAsync(null, CancellationToken.None);
+
+        Assert.Equal(5, handler.RequestCount);
+        Assert.Equal(priced.Count, result.Products.Count);
+        var outcome = Assert.Single(result.Outcomes);
+        Assert.Equal(218, outcome.SiteTotal);
+        Assert.Equal(priced.Count, outcome.ProductsListed);
+        Assert.False(string.IsNullOrEmpty(outcome.StopReason));
+        Assert.Equal(OutcomeResult.Ok, outcome.Result);
+        Assert.False(result.Incomplete);
+    }
+
     [Fact]
     public async Task Lidl_PagesToNumFound_ThreePages()
     {

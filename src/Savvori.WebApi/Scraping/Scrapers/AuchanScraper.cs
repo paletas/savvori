@@ -28,6 +28,7 @@ public sealed partial class AuchanScraper : BaseHttpScraper
         : base(httpClientFactory, logger, "auchan")
     {
         RequestCeiling = 7200;
+        WallClockLimit = TimeSpan.FromHours(6);
     }
 
     public override async Task<ScrapeRunResult> ScrapeProductsAsync(

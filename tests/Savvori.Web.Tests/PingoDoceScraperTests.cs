@@ -265,18 +265,26 @@ public class PingoDoceScraperTests
     [Fact]
     public async Task PingoDoce_Discovery_WalksAllCgids()
     {
-        var (scraper, _) = CreateDiscoveryScraper();
+        var (scraper, handler) = CreateDiscoveryScraper();
+        // Seasonal pages are not live here; without this the generic nav route would answer their lookups.
+        foreach (var slug in new[] { "natal-e-ano-novo", "pascoa", "santos-populares", "feira-do-bebe" })
+            handler.SetupRouteSequence($"/home/produtos/{slug}", (HttpStatusCode.NotFound, "gone"));
         var sections = PingoDoceScraper.SelectSections(FixtureLocs());
         var cgids = PingoDoceScraper.ParseNavCgids(ParseHtml(LoadFixture("pingodoce_nav.html")));
+        string[] ignored = ["freshpage", "unclassified", "valor-de-deposito"];
+        string[] seasonal = ["natal-e-ano-novo", "pascoa", "santos-populares", "feira-do-bebe"];
         var withoutCgid = sections.Count(s => !cgids.ContainsKey(s));
+        // Ignored sections never become categories; seasonal ones without a live page only log an Info line.
+        var withCgid = sections.Count(s => cgids.ContainsKey(s) && !ignored.Contains(s));
+        var warned = sections.Count(s => !cgids.ContainsKey(s) && !ignored.Contains(s) && !seasonal.Contains(s));
 
         var result = await scraper.ScrapeProductsAsync(ct: CancellationToken.None);
 
         var cats = result.Outcomes.Where(o => o.Kind == OutcomeKind.Category).ToList();
         Assert.True(cats.Count >= 25, $"categories was {cats.Count}");
-        Assert.Equal(sections.Count - withoutCgid, cats.Count);
+        Assert.Equal(withCgid, cats.Count);
         Assert.All(cats, o => Assert.StartsWith("ec_", o.Key));
-        Assert.Equal(withoutCgid, result.Warnings.Count);
+        Assert.Equal(warned, result.Warnings.Count);
         Assert.All(result.Warnings, w => Assert.StartsWith("Pingo Doce: no cgid for section '", w));
         Assert.NotEmpty(result.Products);
         Assert.DoesNotContain(result.Outcomes, o => o.Kind == OutcomeKind.Discovery);
@@ -292,6 +300,60 @@ public class PingoDoceScraperTests
 
         Assert.Equal("Pingo Doce: no cgid for section 'zzz-sem-id'", Assert.Single(result.Warnings));
         Assert.Contains(result.Outcomes, o => o.Kind == OutcomeKind.Category && o.Key == "ec_limpeza_1800");
+    }
+
+    private static void SetupSeasonal(FakeHttpMessageHandler handler, params string[] slugs)
+    {
+        // Sequences are matched before plain routes, so these win over the generic /home/produtos/ nav route.
+        foreach (var slug in slugs)
+            handler.SetupRouteSequence($"/home/produtos/{slug}",
+                (HttpStatusCode.OK, LoadFixture($"pingodoce_seasonal_{slug}.html")));
+    }
+
+    [Fact]
+    public async Task PingoDoce_SeasonalCgidResolvedFromOwnPage()
+    {
+        var (scraper, handler) = CreateDiscoveryScraper(
+            SitemapXml("/home/produtos/natal-e-ano-novo/x", "/home/produtos/limpeza/x"));
+        SetupSeasonal(handler, "natal-e-ano-novo");
+
+        var result = await scraper.ScrapeProductsAsync(ct: CancellationToken.None);
+
+        Assert.Contains(result.Outcomes, o => o.Kind == OutcomeKind.Category && o.Key == "ec_natal_1200000");
+        Assert.DoesNotContain(result.Warnings, w => w.Contains("natal-e-ano-novo"));
+    }
+
+    [Fact]
+    public async Task PingoDoce_IgnoredSectionsInfoNoWarning()
+    {
+        var (scraper, _) = CreateDiscoveryScraper(SitemapXml(
+            "/home/produtos/freshpage/x", "/home/produtos/unclassified/x",
+            "/home/produtos/valor-de-deposito/x", "/home/produtos/limpeza/x"));
+
+        var result = await scraper.ScrapeProductsAsync(ct: CancellationToken.None);
+
+        Assert.DoesNotContain(result.Warnings, w => w.Contains("no cgid"));
+        var cat = Assert.Single(result.Outcomes, o => o.Kind == OutcomeKind.Category);
+        Assert.Equal("ec_limpeza_1800", cat.Key);
+    }
+
+    [Fact]
+    public async Task PingoDoce_24TilesWith4Unparseable_Continues()
+    {
+        var (scraper, handler) = CreateScraper();
+        var first = Page(Enumerable.Range(1, 24));
+        foreach (var id in new[] { 3, 7, 11, 15 })
+            first = first.Replace($"data-pid=\"{id}\" data-gtm-info=", $"data-pid=\"{id}\" data-x=");
+        handler.SetupRoute("start=0", first);
+        handler.SetupRoute("start=24", Page(Enumerable.Range(25, 6)));
+        handler.SetupRoute("start=48", Page([]));
+
+        var result = await scraper.ScrapeProductsAsync("frescos", CancellationToken.None);
+
+        // 24 raw tiles (20 parsable) do not end the category; the short second page (6 tiles) does.
+        Assert.Equal(2, handler.RequestCount);
+        Assert.Equal(26, result.Products.Count);
+        Assert.False(result.Incomplete);
     }
 
     [Fact]

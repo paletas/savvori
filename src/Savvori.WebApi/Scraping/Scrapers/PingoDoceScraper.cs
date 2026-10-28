@@ -34,6 +34,12 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
     // Brand and promotion pages repeat products already listed under the departments.
     private static readonly string[] ExcludedSections = ["as-nossas-marcas", "promocoes"];
 
+    // Seasonal sections are absent from the nav menu; their cgid is read from the section's own page.
+    private static readonly string[] SeasonalSections = ["natal-e-ano-novo", "pascoa", "santos-populares", "feira-do-bebe"];
+
+    // Technical sections that hold no real assortment.
+    private static readonly string[] IgnoredSections = ["freshpage", "unclassified", "valor-de-deposito"];
+
     public PingoDoceScraper(
         IHttpClientFactory httpClientFactory,
         ILogger<PingoDoceScraper> logger)
@@ -284,7 +290,19 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
             var warnings = new List<string>();
             foreach (var slug in sections)
             {
+                if (IgnoredSections.Contains(slug, StringComparer.OrdinalIgnoreCase))
+                {
+                    Logger.LogInformation("Pingo Doce: section '{Slug}' ignored (technical)", slug);
+                    continue;
+                }
+
                 if (cgids.TryGetValue(slug, out var cgid)) result.Add((slug, cgid));
+                else if (SeasonalSections.Contains(slug, StringComparer.OrdinalIgnoreCase))
+                {
+                    var seasonal = await ResolveSeasonalCgidAsync(slug, ct);
+                    if (seasonal is not null) result.Add((slug, seasonal));
+                    else Logger.LogInformation("Pingo Doce: seasonal section '{Slug}' not live", slug);
+                }
                 else warnings.Add($"Pingo Doce: no cgid for section '{slug}'");
             }
 
@@ -302,6 +320,22 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
             Logger.LogWarning(ex, "PingoDoce: section discovery failed");
             return ([], [], ex.Message);
         }
+    }
+
+    private async Task<string?> ResolveSeasonalCgidAsync(string slug, CancellationToken ct)
+    {
+        var url = $"{BaseUrl}{ProductsPrefix}{slug}";
+        var doc = await GetHtmlAsync(url, new ScrapeOutcome { Url = url }, ct);
+        if (doc is null) return null;
+
+        var candidates = new[]
+        {
+            doc.QuerySelector("div.get-category")?.GetAttribute("data-category-id"),
+            doc.QuerySelector("input.category-id")?.GetAttribute("value"),
+            doc.QuerySelector("div.page")?.GetAttribute("data-querystring") is { } qs && qs.StartsWith("cgid=", StringComparison.OrdinalIgnoreCase)
+                ? qs["cgid=".Length..] : null,
+        };
+        return candidates.FirstOrDefault(c => !string.IsNullOrEmpty(c) && c.StartsWith("ec_", StringComparison.Ordinal));
     }
 
     private static ScrapedProduct? ParseTile(IElement tile)

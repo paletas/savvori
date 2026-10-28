@@ -338,6 +338,41 @@ public class AuchanScraperTests
     }
 
     [Fact]
+    public async Task Auchan_23Of24ParsableMidList_Continues()
+    {
+        var (scraper, handler) = CreateWith(h =>
+        {
+            h.SetupRoute("cgid=root&start=0", Page(60, Enumerable.Range(1, 24)));
+            h.SetupRoute("start=24", Page(60, Enumerable.Range(25, 23))
+                .Replace("</body>", "<div class=\"product-tile\"></div></body>"));
+            h.SetupRoute("start=48", Page(60, Enumerable.Range(49, 12)));
+        });
+
+        var result = await scraper.ScrapeProductsAsync(null, CancellationToken.None);
+
+        Assert.Equal(3, handler.RequestCount);
+        Assert.Equal(59, result.Products.Count);
+        Assert.False(result.Incomplete);
+    }
+
+    [Fact]
+    public async Task Auchan_RootOutcome_StopReasonReachedDeclaredTotal()
+    {
+        var (scraper, _) = CreateWith(h =>
+        {
+            h.SetupRoute("cgid=root&start=0", Page(60, Enumerable.Range(1, 24)));
+            h.SetupRoute("start=24", Page(60, Enumerable.Range(25, 24)));
+            h.SetupRoute("start=48", Page(60, Enumerable.Range(49, 12)));
+        });
+
+        var result = await scraper.ScrapeProductsAsync(null, CancellationToken.None);
+
+        var outcome = Assert.Single(result.Outcomes);
+        Assert.NotNull(outcome.StopReason);
+        Assert.StartsWith("reached declared total", outcome.StopReason);
+    }
+
+    [Fact]
     public async Task Auchan_PastDeclaredTotal_Loop()
     {
         var (scraper, _) = CreateWith(h =>
