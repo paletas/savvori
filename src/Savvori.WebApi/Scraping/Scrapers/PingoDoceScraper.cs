@@ -154,7 +154,7 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
 
         for (var start = 0; ; start += PageSize)
         {
-            if (Halted) return;
+            if (Halted) { outcome.StopReason ??= $"run halted: {HaltReason}"; return; }
 
             // Use category browse (cgid=) with ajax format — server-renders product tiles
             var url = $"{SearchUrl}?cgid={Uri.EscapeDataString(categoryId)}&format=ajax&start={start}&sz={PageSize}";
@@ -181,7 +181,9 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
             }
 
             guard ??= new PagingGuard(outcome.Key, PageSize, null);
-            switch (guard.Observe(parsed.Select(p => p.ExternalId).ToList(), start))
+            var verdict = guard.Observe(parsed.Select(p => p.ExternalId).ToList(), start, tiles.Count);
+            outcome.StopReason = guard.StopReason;
+            switch (verdict)
             {
                 case PagingVerdict.Loop:
                     ReportLoop(guard, warnings);

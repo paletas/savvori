@@ -90,7 +90,7 @@ public sealed partial class AuchanScraper : BaseHttpScraper
 
         for (var offset = 0; ; offset += PageSize)
         {
-            if (Halted) return;
+            if (Halted) { outcome.StopReason ??= $"run halted: {HaltReason}"; return; }
 
             // Auchan ignores ?page=N (always returns the first page); paging is via ?start=N
             var url = $"{SearchBase}?cgid={Uri.EscapeDataString(cgid)}&start={offset}";
@@ -121,7 +121,9 @@ public sealed partial class AuchanScraper : BaseHttpScraper
             }
 
             guard ??= new PagingGuard(outcome.Key, PageSize, outcome.SiteTotal);
-            switch (guard.Observe(parsed.Select(p => p.ExternalId).ToList(), offset))
+            var verdict = guard.Observe(parsed.Select(p => p.ExternalId).ToList(), offset, tiles.Count);
+            outcome.StopReason = guard.StopReason;
+            switch (verdict)
             {
                 case PagingVerdict.Loop:
                     ReportLoop(guard, warnings);

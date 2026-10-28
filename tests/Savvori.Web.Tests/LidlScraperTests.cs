@@ -172,7 +172,8 @@ public class LidlScraperTests
     {
         var json = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "lidl_search_all_p0.json"));
         var handler = new FakeHttpMessageHandler();
-        handler.SetDefaultResponse(json);
+        // 47 raw items against a declared total of 218: the guard now walks on, so page 2 is empty.
+        handler.SetupRouteSequence("q/api/search", (System.Net.HttpStatusCode.OK, json), (System.Net.HttpStatusCode.OK, "{\"items\":[]}"));
 
         var nonFood = 0;
         using (var doc = System.Text.Json.JsonDocument.Parse(json))
@@ -194,7 +195,7 @@ public class LidlScraperTests
         var o = Assert.Single(result.Outcomes);
         Assert.Equal(218, o.SiteTotal);
         Assert.Equal(result.Products.Count, o.ProductsListed);
-        Assert.Equal(1, handler.RequestCount);
+        Assert.Equal(2, handler.RequestCount);
     }
 
     [Fact]

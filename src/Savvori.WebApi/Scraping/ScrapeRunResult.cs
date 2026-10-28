@@ -20,6 +20,9 @@ public sealed class ScrapeOutcome
     public int ProductsListed { get; set; }
     public Dictionary<int, int> StatusCounts { get; set; } = new();
     public string? FirstError { get; set; }
+
+    /// <summary>Why this listing stopped: natural end, loop, bound, block or failure.</summary>
+    public string? StopReason { get; set; }
 }
 
 public record ScrapeRunResult(

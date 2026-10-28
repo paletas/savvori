@@ -256,7 +256,8 @@ public sealed class StoreScrapeJob : IJob
                 TilesSeen = o.TilesSeen,
                 Retries = o.Retries,
                 StatusCounts = string.Join(",", o.StatusCounts.OrderBy(k => k.Key).Select(k => $"{k.Key}:{k.Value}")),
-                FirstError = o.FirstError is null ? null : Trunc(o.FirstError)
+                FirstError = o.FirstError is null ? null : Trunc(o.FirstError),
+                StopReason = o.StopReason is null ? null : (o.StopReason.Length > 300 ? o.StopReason[..300] : o.StopReason)
             });
         }
         await _db.SaveChangesAsync(CancellationToken.None);

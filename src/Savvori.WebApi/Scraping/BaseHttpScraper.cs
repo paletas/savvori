@@ -194,6 +194,7 @@ public abstract class BaseHttpScraper : IStoreScraper
         {
             if (outcome.Result == OutcomeResult.Ok) outcome.Result = result;
             outcome.FirstError ??= error;
+            outcome.StopReason ??= result == OutcomeResult.Blocked ? $"blocked {error}" : $"failed: {error}";
         }
 
         if (Halted) return (null, null);
@@ -209,6 +210,7 @@ public abstract class BaseHttpScraper : IStoreScraper
         }
         catch (BoundReachedException)
         {
+            outcome.StopReason ??= HaltReason;
             return (null, null);
         }
         catch (Exception ex)
@@ -301,6 +303,7 @@ public abstract class BaseHttpScraper : IStoreScraper
         {
             if (outcome.Result == OutcomeResult.Ok) outcome.Result = OutcomeResult.Failed;
             outcome.FirstError ??= ex.Message;
+            outcome.StopReason ??= $"failed: {ex.Message}";
             return default;
         }
     }

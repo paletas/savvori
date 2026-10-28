@@ -238,13 +238,14 @@ public class ContinenteScraperTests
     {
         var (scraper, handler) = CreateScraper();
         handler.SetupRoute("start=0", Page(236, Enumerable.Range(1, 36)));
+        handler.SetupRoute("start=48", Page(236, []));
 
         var result = await scraper.ScrapeProductsAsync("bebe/alimentacao", CancellationToken.None);
 
         var o = Assert.Single(result.Outcomes);
         Assert.Equal(236, o.SiteTotal);
         Assert.Equal(36, o.ProductsListed);
-        Assert.Equal(1, handler.RequestCount);
+        Assert.Equal(2, handler.RequestCount);
     }
 
     [Fact]
@@ -311,8 +312,9 @@ public class ContinenteScraperTests
     public async Task Continente_PastDeclaredTotal_Loop()
     {
         var (scraper, handler) = CreateScraper();
-        handler.SetupRoute("start=0", Page(10, Enumerable.Range(1, 48)));
-        handler.SetupRoute("start=48", Page(10, Enumerable.Range(49, 48)));
+        // Declared 40, 35 served per page: the second request (start=48) lands past the total.
+        handler.SetupRoute("start=0", Page(40, Enumerable.Range(1, 35)));
+        handler.SetupRoute("start=48", Page(40, Enumerable.Range(49, 35)));
 
         var result = await scraper.ScrapeProductsAsync("frescos", CancellationToken.None);
 

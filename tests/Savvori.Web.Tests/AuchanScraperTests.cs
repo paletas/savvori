@@ -342,8 +342,9 @@ public class AuchanScraperTests
     {
         var (scraper, _) = CreateWith(h =>
         {
-            h.SetupRoute("start=0", Page(10, Enumerable.Range(1, 24)));
-            h.SetupRoute("start=24", Page(10, Enumerable.Range(25, 24)));
+            // Declared 20, 18 served per page: the second request (start=24) lands past the total.
+            h.SetupRoute("start=0", Page(20, Enumerable.Range(1, 18)));
+            h.SetupRoute("start=24", Page(20, Enumerable.Range(25, 18)));
         });
 
         var result = await scraper.ScrapeProductsAsync(null, CancellationToken.None);

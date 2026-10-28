@@ -309,7 +309,7 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
 
         for (var start = 0; ; start += PageSize)
         {
-            if (Halted) return;
+            if (Halted) { outcome.StopReason ??= $"run halted: {HaltReason}"; return; }
 
             var url = $"{BaseUrl}/{categorySlug}/?start={start}&sz={PageSize}&srule=Continente";
             var document = await GetHtmlAsync(url, outcome, ct);
@@ -339,7 +339,9 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
             }
 
             guard ??= new PagingGuard(outcome.Key, PageSize, outcome.SiteTotal);
-            switch (guard.Observe(parsed.Select(p => p.ExternalId).ToList(), start))
+            var verdict = guard.Observe(parsed.Select(p => p.ExternalId).ToList(), start, tiles.Count);
+            outcome.StopReason = guard.StopReason;
+            switch (verdict)
             {
                 case PagingVerdict.Loop:
                     ReportLoop(guard, warnings);
