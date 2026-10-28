@@ -110,7 +110,7 @@ public sealed class StoreScrapeJobTests : IAsyncLifetime
         var outcome = new ScrapeOutcome
         {
             Kind = OutcomeKind.Category, Key = "x", Result = OutcomeResult.Failed, Url = "https://e/x",
-            StatusCounts = new() { [410] = 1 }
+            StatusCounts = new() { [410] = 1 }, ProductsFound = 1
         };
 
         await MakeJob(new FakeStoreScraper(outcomes: [outcome])).Execute(MakeContext(ct), CancellationToken.None);

@@ -6,7 +6,7 @@ public enum ScrapingJobStatus { Pending, Running, Completed, Failed, CompletedWi
 
 public enum OutcomeKind { Category, Term, Discovery, Canary }
 
-public enum OutcomeResult { Ok, Failed, Redirected, Blocked, NoTiles, MissingFields, Recovered }
+public enum OutcomeResult { Ok, Failed, Redirected, Blocked, NoTiles, MissingFields, Recovered, ContentPage }
 
 public enum ScrapingLogLevel { Info, Warning, Error }
 

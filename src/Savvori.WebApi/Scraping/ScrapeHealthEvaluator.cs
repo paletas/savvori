@@ -43,6 +43,9 @@ public static class ScrapeHealthEvaluator
             }
         }
 
+        if (r.Outcomes.Count > 0 && r.Outcomes.All(o => o.ProductsFound == 0))
+            reasons.Add("no listing returned products");
+
         if (r.Canary is { Ok: false })
             reasons.Add($"Canary: {r.Canary.Message}");
 
@@ -54,5 +57,14 @@ public static class ScrapeHealthEvaluator
             : ScrapingJobStatus.Completed;
 
         return new RunHealth(status, reasons, warnings);
+    }
+
+    /// <summary>Bounds the persisted reason text: first <paramref name="max"/> reasons, a "and N more" tail, hard-capped at <paramref name="maxChars"/>.</summary>
+    public static string Summarize(IReadOnlyList<string> reasons, int max = 10, int maxChars = 1000)
+    {
+        if (reasons.Count == 0) return "";
+        var s = string.Join("; ", reasons.Take(max));
+        if (reasons.Count > max) s += $"; and {reasons.Count - max} more";
+        return s.Length > maxChars ? s[..maxChars] : s;
     }
 }

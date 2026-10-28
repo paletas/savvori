@@ -391,11 +391,19 @@ public abstract class BaseHttpScraper : IStoreScraper
     protected static ScrapeRunResult DiscoveryFailed(string url, string reason) =>
         new([], [new ScrapeOutcome { Kind = OutcomeKind.Discovery, Key = "discovery", Url = url, Result = OutcomeResult.Failed, FirstError = reason }], []);
 
-    protected static void MarkFirstPage(ScrapeOutcome o, int tilesSeen, int validTiles)
+    protected static void MarkFirstPage(ScrapeOutcome o, int tilesSeen, int validTiles, bool contentPageWhenNoCounter = false)
     {
         if (o.Result != OutcomeResult.Ok) return;
         o.TilesSeen = tilesSeen;
-        if (tilesSeen == 0) o.Result = OutcomeResult.NoTiles;
+        if (tilesSeen == 0)
+        {
+            if (contentPageWhenNoCounter && (o.SiteTotal is null or 0))
+            {
+                o.Result = OutcomeResult.ContentPage;
+                o.StopReason = "content page: no tiles, no counter";
+            }
+            else o.Result = OutcomeResult.NoTiles;
+        }
         else if (validTiles == 0) o.Result = OutcomeResult.MissingFields;
     }
 

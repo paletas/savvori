@@ -105,7 +105,7 @@ public record ScrapingJobDto(
 
 public record ScrapingOutcomeDto(
     string Kind, string Key, string Url, string Result,
-    int PagesFetched, int ProductsFound, int TilesSeen, int Retries, string StatusCounts, string? FirstError);
+    int PagesFetched, int ProductsFound, int TilesSeen, int Retries, string StatusCounts, string? FirstError, string? StopReason = null);
 
 public record ScrapingLogDto(Guid ScrapingJobId, int Level, string Message, DateTime Timestamp);
 
