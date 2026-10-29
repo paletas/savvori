@@ -115,7 +115,7 @@ public class BaseHttpScraperRetryTests
         Assert.False(r.Ok);
         Assert.Contains(Url, r.Message);
         Assert.Contains("Failed", r.Message);
-        Assert.Equal(2, h.RequestCount); // canary retries any non-Blocked failure once
+        Assert.Equal(1, h.RequestCount);
     }
 
     private static (HttpStatusCode, string)[] Fail500(int n) =>
@@ -145,6 +145,17 @@ public class BaseHttpScraperRetryTests
         Assert.Equal(1, r.Requests);
         Assert.Equal(1, h.RequestCount);
         Assert.DoesNotContain("retry also failed", r.Message);
+    }
+
+    [Fact]
+    public async Task ProbeHtml_Transient5xx_IsRetried()
+    {
+        var (s, h) = Create();
+        h.SetupRoute("cat/page", "err", HttpStatusCode.ServiceUnavailable);
+        var r = await s.ProbeHtml(Url, _ => (2, 2));
+        Assert.False(r.Ok);
+        Assert.Equal(8, h.RequestCount);
+        Assert.Contains("retry also failed", r.Message);
     }
 
     [Fact]

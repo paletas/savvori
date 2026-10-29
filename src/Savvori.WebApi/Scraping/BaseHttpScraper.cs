@@ -311,15 +311,15 @@ public abstract class BaseHttpScraper : IStoreScraper
     private static int Requests(ScrapeOutcome o) => o.StatusCounts.Values.Sum();
 
     /// <summary>
-    /// Runs the canary GET; a failed request that is not Blocked (a one-off timeout, say) is retried once
-    /// after <see cref="ReattemptDelay"/> with a fresh outcome. 403/429/challenge are never retried.
+    /// Runs the canary GET; a transient failure (a one-off timeout, say) is retried once
+    /// after <see cref="ReattemptDelay"/> with a fresh outcome. 403/429/challenge and permanent 4xx are never retried.
     /// </summary>
     private async Task<(T? Value, ScrapeOutcome Outcome, int Requests, bool RetryFailed)> ProbeFetchAsync<T>(
         string url, Func<ScrapeOutcome, Task<T?>> fetch, CancellationToken ct) where T : class
     {
         var o = new ScrapeOutcome { Url = url };
         var value = await fetch(o);
-        if (value is not null || o.Result == OutcomeResult.Blocked || Halted) return (value, o, Requests(o), false);
+        if (value is not null || !IsTransient(o) || Halted) return (value, o, Requests(o), false);
 
         await Task.Delay(ReattemptDelay, ct);
         if (Halted) return (null, o, Requests(o), false);
@@ -327,6 +327,11 @@ public abstract class BaseHttpScraper : IStoreScraper
         value = await fetch(o2);
         return (value, o2, Requests(o) + Requests(o2), true);
     }
+
+    // Transient = timeout, network error, 5xx, empty body. Blocked, redirects and permanent 4xx (410...) are not retried.
+    private static bool IsTransient(ScrapeOutcome o)
+        => o.Result == OutcomeResult.Failed &&
+           !o.StatusCounts.Keys.Any(c => c is >= 400 and < 500 and not 408);
 
     private static CanaryResult ProbeFetchFailed(string url, ScrapeOutcome o, int requests, bool retried)
         => new(false, $"{url}: {o.Result} {o.FirstError}{(retried ? " (retry also failed)" : "")}".Trim(), requests);

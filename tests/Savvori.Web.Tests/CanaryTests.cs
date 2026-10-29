@@ -88,6 +88,6 @@ public sealed class CanaryTests : IAsyncLifetime
 
         var saved = await _db.ScrapingJobs.AsNoTracking().SingleAsync(ct);
         Assert.Equal(ScrapingJobStatus.Degraded, saved.Status);
-        Assert.Equal(2, _handler.RequestCount);
+        Assert.Equal(1, _handler.RequestCount);
     }
 }
