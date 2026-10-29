@@ -6,6 +6,7 @@ using AngleSharp.Dom;
 using Polly;
 using Savvori.Shared;
 using Polly.Retry;
+using Polly.Timeout;
 
 namespace Savvori.WebApi.Scraping;
 
@@ -41,7 +42,7 @@ public abstract class BaseHttpScraper : IStoreScraper
                 Delay = delay,
                 ShouldHandle = async args =>
                 {
-                    if (args.Outcome.Exception is HttpRequestException) return true;
+                    if (args.Outcome.Exception is HttpRequestException or TimeoutRejectedException) return true;
                     var r = args.Outcome.Result;
                     if (r is null) return false;
                     if (r.StatusCode == HttpStatusCode.ServiceUnavailable ||
@@ -310,59 +311,37 @@ public abstract class BaseHttpScraper : IStoreScraper
 
     private static int Requests(ScrapeOutcome o) => o.StatusCounts.Values.Sum();
 
-    /// <summary>
-    /// Runs the canary GET; a transient failure (a one-off timeout, say) is retried once
-    /// after <see cref="ReattemptDelay"/> with a fresh outcome. 403/429/challenge and permanent 4xx are never retried.
-    /// </summary>
-    private async Task<(T? Value, ScrapeOutcome Outcome, int Requests, bool RetryFailed)> ProbeFetchAsync<T>(
-        string url, Func<ScrapeOutcome, Task<T?>> fetch, CancellationToken ct) where T : class
-    {
-        var o = new ScrapeOutcome { Url = url };
-        var value = await fetch(o);
-        if (value is not null || !IsTransient(o) || Halted) return (value, o, Requests(o), false);
-
-        await Task.Delay(ReattemptDelay, ct);
-        if (Halted) return (null, o, Requests(o), false);
-        var o2 = new ScrapeOutcome { Url = url };
-        value = await fetch(o2);
-        return (value, o2, Requests(o) + Requests(o2), true);
-    }
-
-    // Transient = timeout, network error, 5xx, empty body. Blocked, redirects and permanent 4xx (410...) are not retried.
-    private static bool IsTransient(ScrapeOutcome o)
-        => o.Result == OutcomeResult.Failed &&
-           !o.StatusCounts.Keys.Any(c => c is >= 400 and < 500 and not 408);
-
-    private static CanaryResult ProbeFetchFailed(string url, ScrapeOutcome o, int requests, bool retried)
-        => new(false, $"{url}: {o.Result} {o.FirstError}{(retried ? " (retry also failed)" : "")}".Trim(), requests);
-
     protected async Task<CanaryResult> ProbeHtmlAsync(
         string url, Func<IDocument, (int Tiles, int Valid)> inspect, CancellationToken ct)
     {
-        var (doc, o, requests, retried) = await ProbeFetchAsync(url, x => GetHtmlAsync(url, x, ct), ct);
-        if (doc is null) return ProbeFetchFailed(url, o, requests, retried);
+        var o = new ScrapeOutcome { Url = url };
+        var doc = await GetHtmlAsync(url, o, ct);
+        if (doc is null)
+            return new CanaryResult(false, $"{url}: {o.Result} {o.FirstError}".Trim(), Requests(o));
         try
         {
-            return ProbeVerdict(url, inspect(doc), requests);
+            return ProbeVerdict(url, inspect(doc), Requests(o));
         }
         catch (Exception)
         {
-            return new CanaryResult(false, $"{url}: unparseable response", requests);
+            return new CanaryResult(false, $"{url}: unparseable response", Requests(o));
         }
     }
 
     protected async Task<CanaryResult> ProbeStringAsync(
         string url, Func<string, (int Tiles, int Valid)> inspect, CancellationToken ct)
     {
-        var (body, o, requests, retried) = await ProbeFetchAsync(url, x => GetStringAsync(url, x, ct), ct);
-        if (body is null) return ProbeFetchFailed(url, o, requests, retried);
+        var o = new ScrapeOutcome { Url = url };
+        var body = await GetStringAsync(url, o, ct);
+        if (body is null)
+            return new CanaryResult(false, $"{url}: {o.Result} {o.FirstError}".Trim(), Requests(o));
         try
         {
-            return ProbeVerdict(url, inspect(body), requests);
+            return ProbeVerdict(url, inspect(body), Requests(o));
         }
         catch (Exception)
         {
-            return new CanaryResult(false, $"{url}: unparseable response", requests);
+            return new CanaryResult(false, $"{url}: unparseable response", Requests(o));
         }
     }
 

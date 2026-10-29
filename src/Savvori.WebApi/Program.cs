@@ -1,3 +1,4 @@
+using System.Net;
 using Microsoft.EntityFrameworkCore;
 using Quartz;
 using Savvori.Shared;
@@ -36,6 +37,12 @@ builder.Services.AddDbContext<SavvoriDbContext>(opts => opts.UseSqlite(connectio
 builder.Services.AddControllers();
 
 // --- Scraping infrastructure ---
+// Advertise and decode gzip/deflate/br: category pages are ~3.4 MB uncompressed and stall past the timeout otherwise.
+static HttpMessageHandler ScraperPrimaryHandler() => new SocketsHttpHandler
+{
+    AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate | DecompressionMethods.Brotli
+};
+
 builder.Services.AddHttpClient("continente", c =>
 {
     c.BaseAddress = new Uri("https://www.continente.pt");
@@ -43,7 +50,8 @@ builder.Services.AddHttpClient("continente", c =>
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
     c.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "pt-PT,pt;q=0.9");
     c.Timeout = TimeSpan.FromSeconds(60);
-});
+})
+.ConfigurePrimaryHttpMessageHandler(ScraperPrimaryHandler);
 
 builder.Services.AddHttpClient("pingodoce", c =>
 {
@@ -52,7 +60,8 @@ builder.Services.AddHttpClient("pingodoce", c =>
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
     c.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "pt-PT,pt;q=0.9");
     c.Timeout = TimeSpan.FromSeconds(60);
-});
+})
+.ConfigurePrimaryHttpMessageHandler(ScraperPrimaryHandler);
 
 builder.Services.AddHttpClient("auchan", c =>
 {
@@ -61,7 +70,8 @@ builder.Services.AddHttpClient("auchan", c =>
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
     c.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "pt-PT,pt;q=0.9");
     c.Timeout = TimeSpan.FromSeconds(60);
-});
+})
+.ConfigurePrimaryHttpMessageHandler(ScraperPrimaryHandler);
 
 builder.Services.AddHttpClient("lidl", c =>
 {
@@ -70,7 +80,8 @@ builder.Services.AddHttpClient("lidl", c =>
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
     c.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "pt-PT,pt;q=0.9");
     c.Timeout = TimeSpan.FromSeconds(60);
-});
+})
+.ConfigurePrimaryHttpMessageHandler(ScraperPrimaryHandler);
 
 builder.Services.AddScoped<ScraperResultProcessor>();
 builder.Services.AddScoped<TaxonomyMigrationService>();

@@ -58,6 +58,32 @@ public class BaseHttpScraperRetryTests
         Assert.Equal(0, o.Retries);
     }
 
+    private sealed class TimeoutOnceHandler : HttpMessageHandler
+    {
+        public int Calls;
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            if (Interlocked.Increment(ref Calls) == 1)
+                throw new Polly.Timeout.TimeoutRejectedException("stalled body");
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("<html><body>ok</body></html>") });
+        }
+    }
+
+    [Fact]
+    public async Task TimeoutOnFirstAttempt_IsRetriedAndSucceeds()
+    {
+        var handler = new TimeoutOnceHandler();
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient("test").Returns(new HttpClient(handler));
+        var s = new TestScraper(factory);
+        var o = new ScrapeOutcome();
+        var doc = await s.Html(Url, o);
+        Assert.NotNull(doc);
+        Assert.Equal(2, handler.Calls);
+        Assert.Equal(1, o.Retries);
+        Assert.Equal(OutcomeResult.Ok, o.Result);
+    }
+
     [Fact]
     public async Task RetriesEmpty200()
     {
@@ -116,58 +142,6 @@ public class BaseHttpScraperRetryTests
         Assert.Contains(Url, r.Message);
         Assert.Contains("Failed", r.Message);
         Assert.Equal(1, h.RequestCount);
-    }
-
-    private static (HttpStatusCode, string)[] Fail500(int n) =>
-        Enumerable.Repeat((HttpStatusCode.InternalServerError, "err"), n).ToArray();
-
-    [Fact]
-    public async Task ProbeHtml_FailedRequest_RetriesOnceAndPasses()
-    {
-        var (s, h) = Create();
-        // First attempt exhausts its 4 tries, the canary retry gets a good page.
-        h.SetupRouteSequence("cat/page", [.. Fail500(4), (HttpStatusCode.OK, "<html><body>x</body></html>")]);
-        var r = await s.ProbeHtml(Url, _ => (2, 2));
-        Assert.True(r.Ok);
-        Assert.Equal(5, r.Requests);
-        Assert.Equal(5, h.RequestCount);
-    }
-
-    [Theory]
-    [InlineData(HttpStatusCode.Forbidden)]
-    [InlineData(HttpStatusCode.TooManyRequests)]
-    public async Task ProbeHtml_Blocked_NotRetried(HttpStatusCode status)
-    {
-        var (s, h) = Create();
-        h.SetupRoute("cat/page", "blocked", status);
-        var r = await s.ProbeHtml(Url, _ => (2, 2));
-        Assert.False(r.Ok);
-        Assert.Equal(1, r.Requests);
-        Assert.Equal(1, h.RequestCount);
-        Assert.DoesNotContain("retry also failed", r.Message);
-    }
-
-    [Fact]
-    public async Task ProbeHtml_Transient5xx_IsRetried()
-    {
-        var (s, h) = Create();
-        h.SetupRoute("cat/page", "err", HttpStatusCode.ServiceUnavailable);
-        var r = await s.ProbeHtml(Url, _ => (2, 2));
-        Assert.False(r.Ok);
-        Assert.Equal(8, h.RequestCount);
-        Assert.Contains("retry also failed", r.Message);
-    }
-
-    [Fact]
-    public async Task ProbeStr_TwoFailures_FailsWithSummedRequests()
-    {
-        var (s, h) = Create();
-        h.SetupRoute("cat/page", "err", HttpStatusCode.InternalServerError);
-        var r = await s.ProbeStr(Url, _ => (2, 2));
-        Assert.False(r.Ok);
-        Assert.Equal(8, r.Requests);
-        Assert.Equal(8, h.RequestCount);
-        Assert.Contains("retry also failed", r.Message);
     }
 
     [Fact]
