@@ -56,10 +56,11 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
         var seen = new HashSet<string>();
         var products = new List<ScrapedProduct>();
         var outcomes = new List<ScrapeOutcome>();
+        var seasonalCgids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         if (category is not null)
         {
-            await ScrapeCategory(category, seen, products, outcomes, warnings, ct);
+            await ScrapeCategory(category, seen, products, outcomes, warnings, false, ct);
         }
         else
         {
@@ -67,18 +68,20 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
             if (failure is not null) return DiscoveryFailed(SitemapIndexUrl, failure);
             warnings.AddRange(discWarnings);
 
-            foreach (var (_, cgid) in sections)
+            foreach (var (slug, cgid) in sections)
             {
                 if (Halted) break;
                 ct.ThrowIfCancellationRequested();
-                await ScrapeCategory(cgid!, seen, products, outcomes, warnings, ct);
+                var seasonal = SeasonalSections.Contains(slug, StringComparer.OrdinalIgnoreCase);
+                if (seasonal) seasonalCgids.Add(cgid!);
+                await ScrapeCategory(cgid!, seen, products, outcomes, warnings, seasonal, ct);
             }
         }
 
         await ReattemptAsync(outcomes, async old =>
         {
             var tmp = new List<ScrapeOutcome>();
-            await ScrapeCategory(old.Key, seen, products, tmp, warnings, ct);
+            await ScrapeCategory(old.Key, seen, products, tmp, warnings, seasonalCgids.Contains(old.Key), ct);
             return tmp[0];
         }, ct);
 
@@ -147,6 +150,7 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
         List<ScrapedProduct> products,
         List<ScrapeOutcome> outcomes,
         List<string> warnings,
+        bool seasonal,
         CancellationToken ct)
     {
         var outcome = new ScrapeOutcome
@@ -174,7 +178,8 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
 
             var tiles = document.QuerySelectorAll(".product-tile-pd").ToList();
             var parsed = tiles.Select(ParseTile).Where(p => p is not null).Select(p => p!).ToList();
-            if (start == 0) MarkFirstPage(outcome, tiles.Count, parsed.Count);
+            // A seasonal section out of season serves an empty page with no counter: a content page, not a failure.
+            if (start == 0) MarkFirstPage(outcome, tiles.Count, parsed.Count, contentPageWhenNoCounter: seasonal);
             outcome.ProductsListed += parsed.Count;
 
             foreach (var product in parsed)

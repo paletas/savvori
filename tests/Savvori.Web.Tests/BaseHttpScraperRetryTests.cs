@@ -58,6 +58,32 @@ public class BaseHttpScraperRetryTests
         Assert.Equal(0, o.Retries);
     }
 
+    private sealed class TimeoutOnceHandler : HttpMessageHandler
+    {
+        public int Calls;
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            if (Interlocked.Increment(ref Calls) == 1)
+                throw new Polly.Timeout.TimeoutRejectedException("stalled body");
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("<html><body>ok</body></html>") });
+        }
+    }
+
+    [Fact]
+    public async Task TimeoutOnFirstAttempt_IsRetriedAndSucceeds()
+    {
+        var handler = new TimeoutOnceHandler();
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient("test").Returns(new HttpClient(handler));
+        var s = new TestScraper(factory);
+        var o = new ScrapeOutcome();
+        var doc = await s.Html(Url, o);
+        Assert.NotNull(doc);
+        Assert.Equal(2, handler.Calls);
+        Assert.Equal(1, o.Retries);
+        Assert.Equal(OutcomeResult.Ok, o.Result);
+    }
+
     [Fact]
     public async Task RetriesEmpty200()
     {

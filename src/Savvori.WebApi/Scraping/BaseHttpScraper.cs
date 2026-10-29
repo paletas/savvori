@@ -6,6 +6,7 @@ using AngleSharp.Dom;
 using Polly;
 using Savvori.Shared;
 using Polly.Retry;
+using Polly.Timeout;
 
 namespace Savvori.WebApi.Scraping;
 
@@ -41,7 +42,7 @@ public abstract class BaseHttpScraper : IStoreScraper
                 Delay = delay,
                 ShouldHandle = async args =>
                 {
-                    if (args.Outcome.Exception is HttpRequestException) return true;
+                    if (args.Outcome.Exception is HttpRequestException or TimeoutRejectedException) return true;
                     var r = args.Outcome.Result;
                     if (r is null) return false;
                     if (r.StatusCode == HttpStatusCode.ServiceUnavailable ||
