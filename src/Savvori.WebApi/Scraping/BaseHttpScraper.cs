@@ -310,37 +310,54 @@ public abstract class BaseHttpScraper : IStoreScraper
 
     private static int Requests(ScrapeOutcome o) => o.StatusCounts.Values.Sum();
 
+    /// <summary>
+    /// Runs the canary GET; a failed request that is not Blocked (a one-off timeout, say) is retried once
+    /// after <see cref="ReattemptDelay"/> with a fresh outcome. 403/429/challenge are never retried.
+    /// </summary>
+    private async Task<(T? Value, ScrapeOutcome Outcome, int Requests, bool RetryFailed)> ProbeFetchAsync<T>(
+        string url, Func<ScrapeOutcome, Task<T?>> fetch, CancellationToken ct) where T : class
+    {
+        var o = new ScrapeOutcome { Url = url };
+        var value = await fetch(o);
+        if (value is not null || o.Result == OutcomeResult.Blocked || Halted) return (value, o, Requests(o), false);
+
+        await Task.Delay(ReattemptDelay, ct);
+        if (Halted) return (null, o, Requests(o), false);
+        var o2 = new ScrapeOutcome { Url = url };
+        value = await fetch(o2);
+        return (value, o2, Requests(o) + Requests(o2), true);
+    }
+
+    private static CanaryResult ProbeFetchFailed(string url, ScrapeOutcome o, int requests, bool retried)
+        => new(false, $"{url}: {o.Result} {o.FirstError}{(retried ? " (retry also failed)" : "")}".Trim(), requests);
+
     protected async Task<CanaryResult> ProbeHtmlAsync(
         string url, Func<IDocument, (int Tiles, int Valid)> inspect, CancellationToken ct)
     {
-        var o = new ScrapeOutcome { Url = url };
-        var doc = await GetHtmlAsync(url, o, ct);
-        if (doc is null)
-            return new CanaryResult(false, $"{url}: {o.Result} {o.FirstError}".Trim(), Requests(o));
+        var (doc, o, requests, retried) = await ProbeFetchAsync(url, x => GetHtmlAsync(url, x, ct), ct);
+        if (doc is null) return ProbeFetchFailed(url, o, requests, retried);
         try
         {
-            return ProbeVerdict(url, inspect(doc), Requests(o));
+            return ProbeVerdict(url, inspect(doc), requests);
         }
         catch (Exception)
         {
-            return new CanaryResult(false, $"{url}: unparseable response", Requests(o));
+            return new CanaryResult(false, $"{url}: unparseable response", requests);
         }
     }
 
     protected async Task<CanaryResult> ProbeStringAsync(
         string url, Func<string, (int Tiles, int Valid)> inspect, CancellationToken ct)
     {
-        var o = new ScrapeOutcome { Url = url };
-        var body = await GetStringAsync(url, o, ct);
-        if (body is null)
-            return new CanaryResult(false, $"{url}: {o.Result} {o.FirstError}".Trim(), Requests(o));
+        var (body, o, requests, retried) = await ProbeFetchAsync(url, x => GetStringAsync(url, x, ct), ct);
+        if (body is null) return ProbeFetchFailed(url, o, requests, retried);
         try
         {
-            return ProbeVerdict(url, inspect(body), Requests(o));
+            return ProbeVerdict(url, inspect(body), requests);
         }
         catch (Exception)
         {
-            return new CanaryResult(false, $"{url}: unparseable response", Requests(o));
+            return new CanaryResult(false, $"{url}: unparseable response", requests);
         }
     }
 

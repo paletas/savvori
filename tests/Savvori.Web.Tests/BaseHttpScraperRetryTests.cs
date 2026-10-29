@@ -115,7 +115,48 @@ public class BaseHttpScraperRetryTests
         Assert.False(r.Ok);
         Assert.Contains(Url, r.Message);
         Assert.Contains("Failed", r.Message);
+        Assert.Equal(2, h.RequestCount); // canary retries any non-Blocked failure once
+    }
+
+    private static (HttpStatusCode, string)[] Fail500(int n) =>
+        Enumerable.Repeat((HttpStatusCode.InternalServerError, "err"), n).ToArray();
+
+    [Fact]
+    public async Task ProbeHtml_FailedRequest_RetriesOnceAndPasses()
+    {
+        var (s, h) = Create();
+        // First attempt exhausts its 4 tries, the canary retry gets a good page.
+        h.SetupRouteSequence("cat/page", [.. Fail500(4), (HttpStatusCode.OK, "<html><body>x</body></html>")]);
+        var r = await s.ProbeHtml(Url, _ => (2, 2));
+        Assert.True(r.Ok);
+        Assert.Equal(5, r.Requests);
+        Assert.Equal(5, h.RequestCount);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Forbidden)]
+    [InlineData(HttpStatusCode.TooManyRequests)]
+    public async Task ProbeHtml_Blocked_NotRetried(HttpStatusCode status)
+    {
+        var (s, h) = Create();
+        h.SetupRoute("cat/page", "blocked", status);
+        var r = await s.ProbeHtml(Url, _ => (2, 2));
+        Assert.False(r.Ok);
+        Assert.Equal(1, r.Requests);
         Assert.Equal(1, h.RequestCount);
+        Assert.DoesNotContain("retry also failed", r.Message);
+    }
+
+    [Fact]
+    public async Task ProbeStr_TwoFailures_FailsWithSummedRequests()
+    {
+        var (s, h) = Create();
+        h.SetupRoute("cat/page", "err", HttpStatusCode.InternalServerError);
+        var r = await s.ProbeStr(Url, _ => (2, 2));
+        Assert.False(r.Ok);
+        Assert.Equal(8, r.Requests);
+        Assert.Equal(8, h.RequestCount);
+        Assert.Contains("retry also failed", r.Message);
     }
 
     [Fact]

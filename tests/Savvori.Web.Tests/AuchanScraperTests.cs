@@ -46,7 +46,7 @@ public class AuchanScraperTests
         handler.SetupRoute("start=0", "gone", HttpStatusCode.Gone);
         var r = await scraper.ProbeAsync(CancellationToken.None);
         Assert.False(r.Ok);
-        Assert.Equal(1, handler.RequestCount);
+        Assert.Equal(2, handler.RequestCount);
     }
 
     [Fact]
