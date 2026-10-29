@@ -117,6 +117,7 @@ else
                                 <th>Retries</th>
                                 <th>Statuses</th>
                                 <th>Error</th>
+                                <th>Stop reason</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -139,6 +140,7 @@ else
                                     <td class="text-xs text-right">@outcome.Retries</td>
                                     <td class="text-xs">@outcome.StatusCounts</td>
                                     <td class="text-xs text-error max-w-xs truncate" title="@outcome.FirstError">@outcome.FirstError</td>
+                                    <td class="text-xs max-w-xs truncate" title="@outcome.StopReason">@outcome.StopReason</td>
                                 </tr>
                             }
                         </tbody>

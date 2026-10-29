@@ -125,6 +125,33 @@ public class AdminScrapingTests : IClassFixture<SavvoriWebApiFactory>
         Assert.Equal(["cat-1"], item.GetProperty("failedKeys").EnumerateArray().Select(k => k.GetString()).ToArray());
     }
 
+    [Fact]
+    public async Task ChainStatus_OutcomesIncludeStopReason()
+    {
+        var chainId = Guid.NewGuid();
+        var slug = $"stop-adm-{Guid.NewGuid():N}";
+        const string reason = "reached declared total 100 at offset 70 (30 tiles)";
+        _factory.SeedData(db =>
+        {
+            var chain = TestDataSeeder.CreateTestStoreChain("StopChain", slug);
+            chain.Id = chainId;
+            db.StoreChains.Add(chain);
+            var job = TestDataSeeder.CreateTestScrapingJob(chainId, ScrapingJobStatus.Completed);
+            db.ScrapingJobs.Add(job);
+            db.ScrapingRunOutcomes.Add(new ScrapingRunOutcome
+            {
+                Id = Guid.NewGuid(), ScrapingJobId = job.Id, Kind = OutcomeKind.Category,
+                Key = "cat-1", Url = "https://x/u", Result = OutcomeResult.Ok, StopReason = reason
+            });
+        });
+
+        using var client = _factory.CreateClient();
+        var response = await client.GetAsync($"/api/admin/scraping/status/{slug}", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        Assert.Equal(reason, body.GetProperty("outcomes")[0].GetProperty("stopReason").GetString());
+    }
+
     private async Task<string> GetSeededChainSlug()
     {
         using var client = _factory.CreateClient();

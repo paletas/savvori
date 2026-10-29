@@ -172,7 +172,8 @@ public class LidlScraperTests
     {
         var json = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "lidl_search_all_p0.json"));
         var handler = new FakeHttpMessageHandler();
-        handler.SetDefaultResponse(json);
+        // 47 raw items against a declared total of 218: the guard now walks on, so page 2 is empty.
+        handler.SetupRouteSequence("q/api/search", (System.Net.HttpStatusCode.OK, json), (System.Net.HttpStatusCode.OK, "{\"items\":[]}"));
 
         var nonFood = 0;
         using (var doc = System.Text.Json.JsonDocument.Parse(json))
@@ -194,7 +195,43 @@ public class LidlScraperTests
         var o = Assert.Single(result.Outcomes);
         Assert.Equal(218, o.SiteTotal);
         Assert.Equal(result.Products.Count, o.ProductsListed);
-        Assert.Equal(1, handler.RequestCount);
+        Assert.Equal(2, handler.RequestCount);
+    }
+
+    private static string LidlPage(int offset) =>
+        File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", $"lidl_page_o{offset}.json"));
+
+    [Fact]
+    public async Task Lidl_UnpricedItemsDoNotStopPaging()
+    {
+        var offsets = new[] { 0, 48, 96, 144, 192 };
+        var handler = new FakeHttpMessageHandler();
+        var priced = new HashSet<string>();
+        foreach (var o in offsets)
+        {
+            var json = LidlPage(o);
+            handler.SetupRoute($"offset={o}&fetchsize", json);
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            foreach (var item in doc.RootElement.GetProperty("items").EnumerateArray())
+            {
+                var data = item.GetProperty("gridbox").GetProperty("data");
+                if (data.TryGetProperty("price", out var pr) && pr.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                    pr.TryGetProperty("price", out var pv) && pv.ValueKind == System.Text.Json.JsonValueKind.Number &&
+                    pv.TryGetDecimal(out var price) && price > 0)
+                    priced.Add(data.GetProperty("itemId").ToString());
+            }
+        }
+
+        var result = await NewScraper(handler).ScrapeProductsAsync(null, CancellationToken.None);
+
+        Assert.Equal(5, handler.RequestCount);
+        Assert.Equal(priced.Count, result.Products.Count);
+        var outcome = Assert.Single(result.Outcomes);
+        Assert.Equal(218, outcome.SiteTotal);
+        Assert.Equal(priced.Count, outcome.ProductsListed);
+        Assert.False(string.IsNullOrEmpty(outcome.StopReason));
+        Assert.Equal(OutcomeResult.Ok, outcome.Result);
+        Assert.False(result.Incomplete);
     }
 
     [Fact]

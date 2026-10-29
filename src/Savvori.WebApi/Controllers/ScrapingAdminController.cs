@@ -156,7 +156,8 @@ public class ScrapingAdminController : ControllerBase
                     o.TilesSeen,
                     o.Retries,
                     o.StatusCounts,
-                    o.FirstError
+                    o.FirstError,
+                    o.StopReason
                 })
                 .ToListAsync(ct);
             outcomes.AddRange(rows);

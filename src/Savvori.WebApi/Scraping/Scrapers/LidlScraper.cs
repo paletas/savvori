@@ -79,7 +79,7 @@ public sealed partial class LidlScraper : BaseHttpScraper
         PagingGuard? guard = null;
         for (var offset = 0; ; offset += FetchSize)
         {
-            if (Halted) return;
+            if (Halted) { outcome.StopReason ??= $"run halted: {HaltReason}"; return; }
             var url = SearchUrl(query, offset);
 
             JsonDocument doc;
@@ -98,6 +98,7 @@ public sealed partial class LidlScraper : BaseHttpScraper
             {
                 if (outcome.Result == OutcomeResult.Ok) outcome.Result = OutcomeResult.Failed;
                 outcome.FirstError ??= ex.Message;
+                outcome.StopReason ??= $"failed: {ex.Message}";
                 Logger.LogError(ex, "Lidl: invalid JSON for query='{Query}' offset={Offset}", query, offset);
                 return;
             }
@@ -108,6 +109,7 @@ public sealed partial class LidlScraper : BaseHttpScraper
                 if (!root.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
                 {
                     if (offset == 0) MarkFirstPage(outcome, 0, 0);
+                    outcome.StopReason = "no items array in response";
                     return;
                 }
 
@@ -133,7 +135,9 @@ public sealed partial class LidlScraper : BaseHttpScraper
                 }
 
                 guard ??= new PagingGuard(outcome.Key, FetchSize, numFound > 0 ? numFound : null);
-                switch (guard.Observe(ids, offset))
+                var verdict = guard.Observe(ids, offset, items.GetArrayLength());
+                outcome.StopReason = guard.StopReason;
+                switch (verdict)
                 {
                     case PagingVerdict.Loop:
                         ReportLoop(guard, warnings);

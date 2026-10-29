@@ -194,6 +194,7 @@ public abstract class BaseHttpScraper : IStoreScraper
         {
             if (outcome.Result == OutcomeResult.Ok) outcome.Result = result;
             outcome.FirstError ??= error;
+            outcome.StopReason ??= result == OutcomeResult.Blocked ? $"blocked {error}" : $"failed: {error}";
         }
 
         if (Halted) return (null, null);
@@ -209,6 +210,7 @@ public abstract class BaseHttpScraper : IStoreScraper
         }
         catch (BoundReachedException)
         {
+            outcome.StopReason ??= HaltReason;
             return (null, null);
         }
         catch (Exception ex)
@@ -301,6 +303,7 @@ public abstract class BaseHttpScraper : IStoreScraper
         {
             if (outcome.Result == OutcomeResult.Ok) outcome.Result = OutcomeResult.Failed;
             outcome.FirstError ??= ex.Message;
+            outcome.StopReason ??= $"failed: {ex.Message}";
             return default;
         }
     }
@@ -352,7 +355,8 @@ public abstract class BaseHttpScraper : IStoreScraper
     {
         if (Halted) return;
         var failed = outcomes.Where(o => o.Kind != OutcomeKind.Discovery &&
-            o.Result != OutcomeResult.Ok && o.Result != OutcomeResult.Recovered).ToList();
+            o.Result != OutcomeResult.Ok && o.Result != OutcomeResult.Recovered &&
+            o.Result != OutcomeResult.ContentPage).ToList();
         if (failed.Count == 0) return;
         await Task.Delay(ReattemptDelay, ct);
         foreach (var old in failed)
@@ -388,11 +392,19 @@ public abstract class BaseHttpScraper : IStoreScraper
     protected static ScrapeRunResult DiscoveryFailed(string url, string reason) =>
         new([], [new ScrapeOutcome { Kind = OutcomeKind.Discovery, Key = "discovery", Url = url, Result = OutcomeResult.Failed, FirstError = reason }], []);
 
-    protected static void MarkFirstPage(ScrapeOutcome o, int tilesSeen, int validTiles)
+    protected static void MarkFirstPage(ScrapeOutcome o, int tilesSeen, int validTiles, bool contentPageWhenNoCounter = false)
     {
         if (o.Result != OutcomeResult.Ok) return;
         o.TilesSeen = tilesSeen;
-        if (tilesSeen == 0) o.Result = OutcomeResult.NoTiles;
+        if (tilesSeen == 0)
+        {
+            if (contentPageWhenNoCounter && (o.SiteTotal is null or 0))
+            {
+                o.Result = OutcomeResult.ContentPage;
+                o.StopReason = "content page: no tiles, no counter";
+            }
+            else o.Result = OutcomeResult.NoTiles;
+        }
         else if (validTiles == 0) o.Result = OutcomeResult.MissingFields;
     }
 

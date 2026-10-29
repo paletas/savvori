@@ -94,6 +94,7 @@ public class SavvoriDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
             e.Property(o => o.Url).HasMaxLength(500);
             e.Property(o => o.FirstError).HasMaxLength(500);
+            e.Property(o => o.StopReason).HasMaxLength(300);
             e.HasIndex(o => o.ScrapingJobId);
             e.HasIndex(o => new { o.Key, o.ScrapingJobId });
         });

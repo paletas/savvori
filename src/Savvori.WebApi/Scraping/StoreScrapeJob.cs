@@ -221,7 +221,7 @@ public sealed class StoreScrapeJob : IJob
         persistedJob.Status = health.Status;
         persistedJob.ProductsScraped = productsScraped;
         persistedJob.ProductsReturned = productsReturned;
-        persistedJob.HealthReason = health.Reasons.Count > 0 ? string.Join("; ", health.Reasons) : null;
+        persistedJob.HealthReason = health.Reasons.Count > 0 ? ScrapeHealthEvaluator.Summarize(health.Reasons) : null;
         persistedJob.WarningCount = health.Warnings.Count;
         persistedJob.StaleMarked = processResult.StaleMarked;
         persistedJob.StaleMarkingSkipped = staleMarkingSkipped;
@@ -256,13 +256,16 @@ public sealed class StoreScrapeJob : IJob
                 TilesSeen = o.TilesSeen,
                 Retries = o.Retries,
                 StatusCounts = string.Join(",", o.StatusCounts.OrderBy(k => k.Key).Select(k => $"{k.Key}:{k.Value}")),
-                FirstError = o.FirstError is null ? null : Trunc(o.FirstError)
+                FirstError = o.FirstError is null ? null : Trunc(o.FirstError),
+                StopReason = o.StopReason is null ? null : (o.StopReason.Length > 300 ? o.StopReason[..300] : o.StopReason)
             });
         }
         await _db.SaveChangesAsync(CancellationToken.None);
 
-        foreach (var reason in health.Reasons)
+        foreach (var reason in health.Reasons.Take(10))
             await AddLogAsync(job, ScrapingLogLevel.Error, reason);
+        if (health.Reasons.Count > 10)
+            await AddLogAsync(job, ScrapingLogLevel.Error, $"and {health.Reasons.Count - 10} more problem outcomes (see ScrapingRunOutcomes)");
         foreach (var warning in health.Warnings)
             await AddLogAsync(job, ScrapingLogLevel.Warning, warning);
     }

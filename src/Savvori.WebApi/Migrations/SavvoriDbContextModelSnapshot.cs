@@ -664,6 +664,10 @@ namespace Savvori.WebApi.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("StopReason")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("TilesSeen")
                         .HasColumnType("INTEGER");
 

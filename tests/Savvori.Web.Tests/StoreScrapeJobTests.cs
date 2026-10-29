@@ -110,7 +110,7 @@ public sealed class StoreScrapeJobTests : IAsyncLifetime
         var outcome = new ScrapeOutcome
         {
             Kind = OutcomeKind.Category, Key = "x", Result = OutcomeResult.Failed, Url = "https://e/x",
-            StatusCounts = new() { [410] = 1 }
+            StatusCounts = new() { [410] = 1 }, ProductsFound = 1
         };
 
         await MakeJob(new FakeStoreScraper(outcomes: [outcome])).Execute(MakeContext(ct), CancellationToken.None);
@@ -221,6 +221,27 @@ public sealed class StoreScrapeJobTests : IAsyncLifetime
         Assert.StartsWith("Discovery failed:", saved.HealthReason);
         Assert.True(saved.StaleMarkingSkipped);
         Assert.True((await _db.StoreProducts.AsNoTracking().SingleAsync(p => p.Id == staleId, ct)).IsActive);
+    }
+
+    [Fact]
+    public async Task Outcome_StopReason_Persisted_AndCutTo300()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var shortOutcome = new ScrapeOutcome
+        {
+            Kind = OutcomeKind.Discovery, Key = "short", Url = "https://e/s.xml", Result = OutcomeResult.Failed, StopReason = "short page: 3 of 5 tiles at offset 0"
+        };
+        var longOutcome = new ScrapeOutcome
+        {
+            Kind = OutcomeKind.Discovery, Key = "long", Url = "https://e/l.xml", Result = OutcomeResult.Failed, StopReason = new string('x', 450)
+        };
+
+        await MakeJob(new FakeStoreScraper(result: new ScrapeRunResult([], [shortOutcome, longOutcome], [])))
+            .Execute(MakeContext(ct), CancellationToken.None);
+
+        var rows = await _db.ScrapingRunOutcomes.AsNoTracking().ToListAsync(ct);
+        Assert.Equal(shortOutcome.StopReason, rows.Single(r => r.Key == "short").StopReason);
+        Assert.Equal(300, rows.Single(r => r.Key == "long").StopReason!.Length);
     }
 
     [Fact]

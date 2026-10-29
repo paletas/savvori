@@ -36,6 +36,7 @@ public class ScrapingRunOutcome
     public int Retries { get; set; }
     public string StatusCounts { get; set; } = "";
     public string? FirstError { get; set; }
+    public string? StopReason { get; set; }
 }
 
 public class ScrapingLog
