@@ -323,7 +323,23 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
             }
 
             var tiles = document.QuerySelectorAll(".product-tile").ToList();
-            var parsed = tiles.Select(ParseTile).Where(p => p is not null).Select(p => p!).ToList();
+            var skippedTiles = 0;
+            var parsed = new List<ScrapedProduct>();
+            foreach (var tile in tiles)
+            {
+                try
+                {
+                    var p = ParseTile(tile);
+                    if (p is not null) parsed.Add(p);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    skippedTiles++;
+                }
+            }
+            if (skippedTiles > 0)
+                Logger.LogWarning("Continente: skipped {Skipped} malformed tile(s) in '{Cat}' start={Start}",
+                    skippedTiles, categorySlug, start);
             if (start == 0)
             {
                 outcome.SiteTotal = ParseTotal(document);
@@ -371,11 +387,20 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
             return null;
         }
 
-        var pid = impression.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
-        var name = impression.TryGetProperty("name", out var nameEl) ? nameEl.GetString() : null;
-        var brand = impression.TryGetProperty("brand", out var brandEl) ? brandEl.GetString() : null;
-        var categoryPath = impression.TryGetProperty("category", out var catEl) ? catEl.GetString() : null;
-        decimal price = impression.TryGetProperty("price", out var priceEl) ? priceEl.GetDecimal() : 0;
+        // Fields can be JSON null or a different type; never let GetString/GetDecimal throw.
+        static string? ReadString(JsonElement el, string prop, bool allowNumber = false) =>
+            !el.TryGetProperty(prop, out var v) ? null
+            : v.ValueKind == JsonValueKind.String ? v.GetString()
+            : allowNumber && v.ValueKind == JsonValueKind.Number ? v.GetRawText()
+            : null;
+
+        var pid = ReadString(impression, "id", allowNumber: true);
+        var name = ReadString(impression, "name");
+        var brand = ReadString(impression, "brand");
+        var categoryPath = ReadString(impression, "category");
+        decimal price = impression.TryGetProperty("price", out var priceEl)
+            && priceEl.ValueKind == JsonValueKind.Number
+            && priceEl.TryGetDecimal(out var parsedPrice) ? parsedPrice : 0;
 
         if (string.IsNullOrEmpty(pid) || string.IsNullOrEmpty(name) || price <= 0)
             return null;

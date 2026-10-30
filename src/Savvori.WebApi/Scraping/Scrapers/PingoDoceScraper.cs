@@ -368,8 +368,11 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
         var name = item.TryGetProperty("item_name", out var nameEl) ? nameEl.GetString() : null;
         var brand = item.TryGetProperty("item_brand", out var brandEl) ? brandEl.GetString() : null;
         var category = item.TryGetProperty("item_category", out var catEl) ? catEl.GetString() : null;
-        decimal price = item.TryGetProperty("price", out var priceEl) ? priceEl.GetDecimal() : 0;
-        decimal discount = item.TryGetProperty("discount", out var discEl) ? discEl.GetDecimal() : 0;
+        // A JSON null (or non-number) must not throw: treat as 0.
+        decimal price = item.TryGetProperty("price", out var priceEl)
+            && priceEl.ValueKind == JsonValueKind.Number && priceEl.TryGetDecimal(out var p) ? p : 0;
+        decimal discount = item.TryGetProperty("discount", out var discEl)
+            && discEl.ValueKind == JsonValueKind.Number && discEl.TryGetDecimal(out var d) ? d : 0;
 
         if (string.IsNullOrEmpty(name) || price <= 0) return null;
 
