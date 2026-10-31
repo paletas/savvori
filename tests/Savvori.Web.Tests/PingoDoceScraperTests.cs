@@ -324,6 +324,33 @@ public class PingoDoceScraperTests
     }
 
     [Fact]
+    public async Task PingoDoce_SeasonalEmptyPage_IsContentPage()
+    {
+        var (scraper, handler) = CreateDiscoveryScraper(
+            SitemapXml("/home/produtos/natal-e-ano-novo/x", "/home/produtos/limpeza/x"));
+        SetupSeasonal(handler, "natal-e-ano-novo");
+        handler.SetupRouteSequence("cgid=ec_natal_1200000", (HttpStatusCode.OK, "<html><body></body></html>"));
+
+        var result = await scraper.ScrapeProductsAsync(ct: CancellationToken.None);
+
+        var seasonal = Assert.Single(result.Outcomes, o => o.Key == "ec_natal_1200000");
+        Assert.Equal(OutcomeResult.ContentPage, seasonal.Result);
+        Assert.DoesNotContain(result.Outcomes, o => o.Result == OutcomeResult.NoTiles);
+    }
+
+    [Fact]
+    public async Task PingoDoce_NonSeasonalEmptyPage_StaysNoTiles()
+    {
+        var (scraper, handler) = CreateDiscoveryScraper(SitemapXml("/home/produtos/limpeza/x"));
+        handler.SetupRouteSequence("cgid=ec_limpeza_1800", (HttpStatusCode.OK, "<html><body></body></html>"));
+
+        var result = await scraper.ScrapeProductsAsync(ct: CancellationToken.None);
+
+        var o = Assert.Single(result.Outcomes, o => o.Key == "ec_limpeza_1800");
+        Assert.Equal(OutcomeResult.NoTiles, o.Result);
+    }
+
+    [Fact]
     public async Task PingoDoce_IgnoredSectionsInfoNoWarning()
     {
         var (scraper, _) = CreateDiscoveryScraper(SitemapXml(

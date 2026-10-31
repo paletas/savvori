@@ -58,7 +58,7 @@ public sealed class ScraperResultProcessor
             .ToDictionaryAsync(pc => pc.Slug, pc => pc.Id, ct);
         _taxonomyV2Active = await new TaxonomyMigrationService(_db, TimeProvider.System).IsV2ActiveAsync(ct);
 
-        var scrapedExternalIds = scraped.Select(s => s.ExternalId).ToHashSet();
+        var scrapedExternalIds = scraped.Select(s => s.ExternalId).ToHashSet(StringComparer.Ordinal);
         var chainId = chain.Id;
         var processedCount = 0;
         var skippedCount = 0;
@@ -97,11 +97,13 @@ public sealed class ScraperResultProcessor
 
         // Mark StoreProducts not seen in this scrape as inactive.
         // ChangeTracker is clear here so queries go straight to the DB.
-        var staleProducts = await _db.StoreProducts
-            .Where(sp => sp.StoreChainId == chainId &&
-                         sp.IsActive &&
-                         !scrapedExternalIds.Contains(sp.ExternalId))
-            .ToListAsync(ct);
+        // The seen-id filter runs in memory: translating Contains into SQL needs one parameter per id,
+        // which exceeds SQLite's variable limit for large chains.
+        var staleProducts = (await _db.StoreProducts
+                .Where(sp => sp.StoreChainId == chainId && sp.IsActive)
+                .ToListAsync(ct))
+            .Where(sp => !scrapedExternalIds.Contains(sp.ExternalId))
+            .ToList();
         var staleCount = 0;
         if (policy is { AllowDeactivation: true })
         {

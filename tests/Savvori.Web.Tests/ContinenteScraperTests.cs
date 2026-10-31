@@ -1,5 +1,6 @@
 using System.Net;
 using NSubstitute;
+using Savvori.WebApi.Scraping;
 using Savvori.WebApi.Scraping.Scrapers;
 using Savvori.Shared;
 using Microsoft.Extensions.Logging;
@@ -457,5 +458,45 @@ public class ContinenteScraperTests
         var logger = Substitute.For<ILogger<ContinenteScraper>>();
         var scraper = new ContinenteScraper(factory, logger) { RequestSpacing = TimeSpan.Zero };
         Assert.Equal("continente", scraper.StoreChainSlug);
+    }
+
+    private static string Tile(string impressionJson) =>
+        $"<div class=\"product-tile\" data-product-tile-impression='{impressionJson}'></div>";
+
+    private static async Task<ScrapeRunResult> ScrapeTiles(params string[] tiles)
+    {
+        var (scraper, handler) = CreateScraper();
+        handler.SetupRoute("start=0", "<html><body>" + string.Concat(tiles) + "</body></html>");
+        return await scraper.ScrapeProductsAsync("frescos", CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Continente_NullPriceTile_SkippedWithoutThrowing()
+    {
+        var result = await ScrapeTiles(
+            Tile("{\"name\":\"Sem Preco\",\"id\":\"1\",\"price\":null,\"brand\":\"X\",\"category\":\"A/B\"}"),
+            Tile("{\"name\":\"Com Preco\",\"id\":\"2\",\"price\":1.5,\"brand\":\"X\",\"category\":\"A/B\"}"));
+        var p = Assert.Single(result.Products);
+        Assert.Equal("2", p.ExternalId);
+    }
+
+    [Fact]
+    public async Task Continente_NumericId_Works()
+    {
+        var result = await ScrapeTiles(
+            Tile("{\"name\":\"Numerico\",\"id\":12345,\"price\":2.25,\"brand\":null,\"category\":\"A/B\"}"));
+        var p = Assert.Single(result.Products);
+        Assert.Equal("12345", p.ExternalId);
+        Assert.Null(p.Brand);
+    }
+
+    [Fact]
+    public async Task Continente_MalformedTile_DoesNotDropGoodTiles()
+    {
+        var result = await ScrapeTiles(
+            Tile("{\"name\":\"Bom 1\",\"id\":\"10\",\"price\":1.0,\"category\":\"A/B\"}"),
+            Tile("{\"name\":{\"x\":1},\"id\":[1],\"price\":\"abc\",\"category\":5}"),
+            Tile("{\"name\":\"Bom 2\",\"id\":\"11\",\"price\":2.0,\"category\":\"A/B\"}"));
+        Assert.Equal(new[] { "10", "11" }, result.Products.Select(x => x.ExternalId).OrderBy(x => x));
     }
 }
