@@ -193,7 +193,7 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
 
             guard ??= new PagingGuard(outcome.Key, PageSize, null);
             var verdict = guard.Observe(parsed.Select(p => p.ExternalId).ToList(), start, tiles.Count);
-            outcome.StopReason = guard.StopReason;
+            outcome.StopReason = outcome.Result == OutcomeResult.ContentPage ? outcome.StopReason : guard.StopReason;
             switch (verdict)
             {
                 case PagingVerdict.Loop:
