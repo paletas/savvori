@@ -121,6 +121,64 @@ public class PagingGuardTests
     }
 
     [Fact]
+    public void TotalDeclared_AllSeenPagesBelowTotal_AreTolerated()
+    {
+        var g = new PagingGuard("c", 2, 1000);
+        Assert.Equal(PagingVerdict.Continue, g.Observe(["a", "b"], 0, 2));
+        Assert.Equal(PagingVerdict.Continue, g.Observe(["c", "d"], 2, 2));
+        // snapshot shift: two pages of already-seen ids, then new products
+        Assert.Equal(PagingVerdict.Continue, g.Observe(["b", "c"], 4, 2));
+        Assert.Equal(PagingVerdict.Continue, g.Observe(["a", "d"], 6, 2));
+        Assert.Equal(PagingVerdict.Continue, g.Observe(["e", "f"], 8, 2));
+        Assert.Null(g.StopReason);
+    }
+
+    [Fact]
+    public void TotalDeclared_AllSeenCounterResetsOnNewProducts()
+    {
+        var g = new PagingGuard("c", 2, 1000);
+        g.Observe(["a", "b"], 0, 2);
+        for (var round = 0; round < 3; round++)
+        {
+            for (var i = 0; i < PagingGuard.AllSeenTolerance; i++)
+                Assert.Equal(PagingVerdict.Continue, g.Observe(i % 2 == 0 ? ["b", "a"] : ["a", "b"], 2 + i, 2));
+            Assert.Equal(PagingVerdict.Continue, g.Observe([$"n{round}", $"m{round}"], 100 + round, 2));
+        }
+    }
+
+    [Fact]
+    public void TotalDeclared_EndlessAllSeen_LoopsAfterTolerance()
+    {
+        var g = new PagingGuard("c", 2, 1000);
+        Assert.Equal(PagingVerdict.Continue, g.Observe(["a", "b"], 0, 2));
+        for (var i = 0; i < PagingGuard.AllSeenTolerance; i++)
+            Assert.Equal(PagingVerdict.Continue, g.Observe(i % 2 == 0 ? ["b", "a"] : ["a", "b"], 2 + i, 2));
+        Assert.Equal(PagingVerdict.Loop, g.Observe(["b", "a"], 20, 2));
+        Assert.Equal("no new products", g.Reason);
+    }
+
+    [Fact]
+    public void TotalDeclared_AllSeenAtOrOverTotal_StillStops()
+    {
+        var g = new PagingGuard("c", 2, 10);
+        g.Observe(["a", "b"], 0, 2);
+        // reaches the declared total with nothing new: loop, not tolerated
+        Assert.Equal(PagingVerdict.Loop, g.Observe(["b", "a"], 8, 2));
+        var over = new PagingGuard("c", 2, 10);
+        over.Observe(["a", "b"], 0, 2);
+        Assert.Equal(PagingVerdict.Loop, over.Observe(["b", "a"], 12, 2));
+    }
+
+    [Fact]
+    public void NoTotal_AllSeenPage_StillLoopsImmediately()
+    {
+        var g = new PagingGuard("c", 2, null);
+        g.Observe(["a", "b"], 0, 2);
+        g.Observe(["c", "d"], 2, 2);
+        Assert.Equal(PagingVerdict.Loop, g.Observe(["b", "c"], 4, 2));
+    }
+
+    [Fact]
     public void TotalDeclared_OneUnparseableTile_Continues()
     {
         var g = new PagingGuard("c", 10, 100);
