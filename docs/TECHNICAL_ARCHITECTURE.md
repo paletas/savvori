@@ -54,6 +54,7 @@ Savvori is an ASP.NET Core minimal API (.NET 10) that helps users find the cheap
 - `BaseHttpScraper` — shared HTTP client with Polly v8 retry policy and AngleSharp HTML parsing
 - `ScraperResultProcessor` — normalises raw scraper output and upserts products/prices into the database
 - `StoreScrapeJob` — Quartz.NET job that runs all registered scrapers; scheduled twice daily
+- Live progress: scrapers call `BaseHttpScraper.ReportProgress`/`ReportKeyDone` (throttled); `StoreScrapeJob` persists snapshots and a keep-alive heartbeat (`Scraping:HeartbeatSeconds`, default 15) through short separate scopes (`ScrapeProgressWriter`). `GET /api/admin/scraping/status` adds `progress` for Running jobs (total, `totalIsEstimate` when taken from the last healthy run, ETA from average rate, `stalled` when the heartbeat is older than `Scraping:StalledAfterSeconds`, default 60). Progress columns are nulled when the run ends.
 
 **Store scrapers:**
 

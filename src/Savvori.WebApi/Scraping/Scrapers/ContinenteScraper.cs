@@ -63,11 +63,13 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
         var products = new List<ScrapedProduct>();
         var outcomes = new List<ScrapeOutcome>();
 
+        SetKeysTotal(categories.Count);
         foreach (var cat in categories)
         {
             if (Halted) break;
             ct.ThrowIfCancellationRequested();
             await ScrapeCategory(cat, seen, products, outcomes, warnings, ct);
+            ReportKeyDone(cat, products.Count);
         }
 
         await ReattemptAsync(outcomes, async old =>
@@ -356,6 +358,7 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
                 }
             }
 
+            ReportProgress(outcome.Key, start, products.Count, outcome.SiteTotal);
             guard ??= new PagingGuard(outcome.Key, null, outcome.SiteTotal, counterlessRepeatEndsListing: true);
             var verdict = guard.Observe(parsed.Select(p => p.ExternalId).ToList(), start, tiles.Count);
             outcome.StopReason = outcome.Result == OutcomeResult.ContentPage ? outcome.StopReason : guard.StopReason;

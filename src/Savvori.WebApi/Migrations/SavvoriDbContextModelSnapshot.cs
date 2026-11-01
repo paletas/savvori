@@ -568,6 +568,12 @@ namespace Savvori.WebApi.Migrations
                     b.Property<string>("HealthReason")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("LastHeartbeatAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastProgressAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<int?>("PreviousHealthyCount")
                         .HasColumnType("INTEGER");
 
@@ -575,6 +581,24 @@ namespace Savvori.WebApi.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("ProductsScraped")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ProgressKey")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ProgressKeysDone")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ProgressKeysTotal")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ProgressOffset")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ProgressProductsSeen")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ProgressTotal")
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("StaleMarked")

@@ -79,9 +79,16 @@ public class ScrapingAdminController : ControllerBase
             }
         }
 
+        var stalledAfter = TimeSpan.FromSeconds(
+            _config.GetValue<double?>("Scraping:StalledAfterSeconds") ?? ScrapeProgressEstimator.DefaultStalledAfter.TotalSeconds);
+        var now = DateTime.UtcNow;
+
         var result = chains.Select(chain =>
         {
             latestByChain.TryGetValue(chain.Id, out var job);
+            var progress = job is null ? null : ScrapeProgressEstimator.Build(
+                job, ScrapeProgressEstimator.PreviousHealthyCount(latestJobs.Where(j => j.StoreChainId == chain.Id), job.Id),
+                now, stalledAfter);
             nextFireTimes.TryGetValue(chain.Slug, out var nextFire);
 
             return new
@@ -100,7 +107,8 @@ public class ScrapingAdminController : ControllerBase
                 StaleMarkingSkipped = job?.StaleMarkingSkipped ?? false,
                 StaleMarked = job?.StaleMarked ?? 0,
                 DropRatio = job?.DropRatio,
-                FailedKeys = job is not null && failedKeys.TryGetValue(job.Id, out var keys) ? keys : Array.Empty<string>()
+                FailedKeys = job is not null && failedKeys.TryGetValue(job.Id, out var keys) ? keys : Array.Empty<string>(),
+                Progress = progress
             };
         }).ToList();
 

@@ -22,6 +22,7 @@ public sealed class StoreScrapeJob : IJob
     private readonly ScrapingTelemetry _telemetry;
     private readonly ILogger<StoreScrapeJob> _logger;
     private readonly IConfiguration? _config;
+    private readonly IServiceScopeFactory? _scopeFactory;
 
     public StoreScrapeJob(
         IEnumerable<IStoreScraper> scrapers,
@@ -29,9 +30,11 @@ public sealed class StoreScrapeJob : IJob
         SavvoriDbContext db,
         ScrapingTelemetry telemetry,
         ILogger<StoreScrapeJob> logger,
-        IConfiguration? config = null)
+        IConfiguration? config = null,
+        IServiceScopeFactory? scopeFactory = null)
     {
         _config = config;
+        _scopeFactory = scopeFactory;
         _scrapers = scrapers;
         _processor = processor;
         _db = db;
@@ -80,6 +83,15 @@ public sealed class StoreScrapeJob : IJob
 
         var scrapeLocations = context.MergedJobDataMap.GetBoolean(ScrapeLocationsKey);
 
+        // Keep-alive heartbeat + throttled progress, written through short separate scopes.
+        ScrapeProgressWriter? progress = null;
+        if (_scopeFactory is not null)
+        {
+            var beat = TimeSpan.FromSeconds(Math.Max(1, _config?.GetValue<double?>("Scraping:HeartbeatSeconds") ?? 15));
+            progress = new ScrapeProgressWriter(_scopeFactory, _logger, job.Id, beat);
+            progress.Start();
+        }
+
         try
         {
             var locationCount = 0;
@@ -123,9 +135,12 @@ public sealed class StoreScrapeJob : IJob
             }
             else
             {
+                if (progress is not null && scraper is BaseHttpScraper http) http.ProgressSink = progress.Report;
                 result = (await scraper.ScrapeProductsAsync(ct: context.CancellationToken)) with { Canary = canary };
             }
             var products = result.Products;
+            if (scraper is BaseHttpScraper h2) h2.ProgressSink = null;
+            if (progress is not null) await progress.MarkProcessingAsync();
             var health = ScrapeHealthEvaluator.Evaluate(result);
             var staleAllowed = ScrapeHealthEvaluator.StaleMarkingAllowed(result, health);
             var graceDays = _config?.GetSection("Scraping:Chains").Get<List<ScrapingChainConfig>>()
@@ -185,6 +200,12 @@ public sealed class StoreScrapeJob : IJob
         }
         finally
         {
+            if (scraper is BaseHttpScraper h3) h3.ProgressSink = null;
+            if (progress is not null)
+            {
+                await progress.StopAndClearAsync();
+                await progress.DisposeAsync();
+            }
             await _db.SaveChangesAsync(CancellationToken.None);
         }
     }

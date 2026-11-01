@@ -41,11 +41,13 @@ public sealed partial class AuchanScraper : BaseHttpScraper
         var products = new List<ScrapedProduct>();
         var outcomes = new List<ScrapeOutcome>();
 
+        SetKeysTotal(cgids.Length);
         foreach (var cgid in cgids)
         {
             if (Halted) break;
             ct.ThrowIfCancellationRequested();
             await ScrapeSearch(cgid, seen, products, outcomes, warnings, ct);
+            ReportKeyDone(cgid, products.Count);
         }
 
         await ReattemptAsync(outcomes, async old =>
@@ -121,6 +123,7 @@ public sealed partial class AuchanScraper : BaseHttpScraper
                 }
             }
 
+            ReportProgress(outcome.Key, offset, products.Count, outcome.SiteTotal);
             guard ??= new PagingGuard(outcome.Key, PageSize, outcome.SiteTotal);
             var verdict = guard.Observe(parsed.Select(p => p.ExternalId).ToList(), offset, tiles.Count);
             outcome.StopReason = guard.StopReason;

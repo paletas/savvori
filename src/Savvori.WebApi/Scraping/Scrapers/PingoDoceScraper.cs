@@ -68,6 +68,7 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
             if (failure is not null) return DiscoveryFailed(SitemapIndexUrl, failure);
             warnings.AddRange(discWarnings);
 
+            SetKeysTotal(sections.Count);
             foreach (var (slug, cgid) in sections)
             {
                 if (Halted) break;
@@ -75,6 +76,7 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
                 var seasonal = SeasonalSections.Contains(slug, StringComparer.OrdinalIgnoreCase);
                 if (seasonal) seasonalCgids.Add(cgid!);
                 await ScrapeCategory(cgid!, seen, products, outcomes, warnings, seasonal, ct);
+                ReportKeyDone(cgid!, products.Count);
             }
         }
 
@@ -191,6 +193,8 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
                 }
             }
 
+            // The ajax tiles show no counter, so there is no per-section total; the API falls back to the last healthy run.
+            ReportProgress(outcome.Key, start, products.Count, null);
             guard ??= new PagingGuard(outcome.Key, PageSize, null);
             var verdict = guard.Observe(parsed.Select(p => p.ExternalId).ToList(), start, tiles.Count);
             outcome.StopReason = guard.StopReason;

@@ -43,6 +43,51 @@ public class AdminScrapingTests : IClassFixture<SavvoriWebApiFactory>
     }
 
     [Fact]
+    public async Task GetStatus_RunningJob_ExposesProgressAndStalledFromHeartbeat()
+    {
+        var chainId = Guid.NewGuid();
+        var slug = $"progress-{Guid.NewGuid():N}";
+        _factory.SeedData(db =>
+        {
+            var chain = TestDataSeeder.CreateTestStoreChain("ProgressChain", slug);
+            chain.Id = chainId;
+            db.StoreChains.Add(chain);
+            var prev = TestDataSeeder.CreateTestScrapingJob(chainId, ScrapingJobStatus.Completed);
+            prev.StartedAt = DateTime.UtcNow.AddDays(-1);
+            prev.ProductsScraped = 5000;
+            db.ScrapingJobs.Add(prev);
+            var running = TestDataSeeder.CreateTestScrapingJob(chainId, ScrapingJobStatus.Running);
+            running.StartedAt = DateTime.UtcNow.AddMinutes(-10);
+            running.ProgressProductsSeen = 1000;
+            running.ProgressKey = "cat-a";
+            running.LastProgressAt = DateTime.UtcNow.AddMinutes(-5);
+            running.LastHeartbeatAt = DateTime.UtcNow.AddMinutes(-5);
+            db.ScrapingJobs.Add(running);
+        });
+
+        using var client = _factory.CreateClient();
+        var body = await client.GetFromJsonAsync<JsonElement>("/api/admin/scraping/status", TestContext.Current.CancellationToken);
+        var chain = body.EnumerateArray().Single(c => c.GetProperty("chainSlug").GetString() == slug);
+        var p = chain.GetProperty("progress");
+        Assert.Equal(1000, p.GetProperty("productsSeen").GetInt32());
+        Assert.Equal(5000, p.GetProperty("total").GetInt32());
+        Assert.True(p.GetProperty("totalIsEstimate").GetBoolean());
+        Assert.True(p.GetProperty("stalled").GetBoolean());
+        Assert.True(p.TryGetProperty("lastHeartbeatAt", out _));
+        Assert.True(p.TryGetProperty("etaSeconds", out _));
+    }
+
+    [Fact]
+    public async Task GetStatus_NotRunning_ProgressIsNull()
+    {
+        using var client = _factory.CreateClient();
+        var body = await client.GetFromJsonAsync<JsonElement>("/api/admin/scraping/status", TestContext.Current.CancellationToken);
+        foreach (var c in body.EnumerateArray())
+            if (c.GetProperty("lastStatus").ValueKind == JsonValueKind.Number && c.GetProperty("lastStatus").GetInt32() != 1)
+                Assert.Equal(JsonValueKind.Null, c.GetProperty("progress").ValueKind);
+    }
+
+    [Fact]
     public async Task GetChainStatus_AsAdmin_ValidChain_Returns200WithHistoryAndLogs()
     {
         // Use the chain slug we seeded

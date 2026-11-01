@@ -1,4 +1,11 @@
 @model List<Savvori.WebApp.Services.ApiModels.ScrapingStatusDto>
+@functions {
+    private static string FormatEta(double seconds)
+    {
+        var t = TimeSpan.FromSeconds(seconds);
+        return t.TotalHours >= 1 ? $"{(int)t.TotalHours}h {t.Minutes}m" : t.TotalMinutes >= 1 ? $"{(int)t.TotalMinutes} min" : "<1 min";
+    }
+}
 
 @if (Model == null || !Model.Any())
 {
@@ -32,7 +39,39 @@ else
                         {
                             <div>Completed: <span class="font-medium text-base-content">@job.CompletedAt.Value.ToString("dd/MM/yy HH:mm")</span></div>
                         }
-                        <div>Products scraped: <span class="font-medium text-base-content">@job.ProductsScraped.ToString("N0")</span></div>
+                        @if (job.LastStatus == 1 && job.Progress is { } pr)
+                        {
+                            var est = pr.TotalIsEstimate ? "*" : "";
+                            <div>Products so far: <span class="font-medium text-base-content">@((pr.ProductsSeen ?? 0).ToString("N0"))@if (pr.Total.HasValue) {<text> / @pr.Total.Value.ToString("N0")@est</text>}</span></div>
+                            @if (pr.Total.HasValue && pr.ProductsSeen.HasValue && pr.Total.Value > 0)
+                            {
+                                <progress class="progress progress-warning w-full" value="@Math.Min(pr.ProductsSeen.Value, pr.Total.Value)" max="@pr.Total.Value"></progress>
+                            }
+                            @if (!string.IsNullOrEmpty(pr.Key))
+                            {
+                                <div class="break-words">Key: <span class="font-medium text-base-content">@pr.Key</span>@if (pr.KeysTotal.HasValue) {<text> (@(pr.KeysDone ?? 0)/@pr.KeysTotal.Value)</text>}</div>
+                            }
+                            @if (pr.EtaSeconds.HasValue)
+                            {
+                                <div>ETA: <span class="font-medium text-base-content">~@FormatEta(pr.EtaSeconds.Value)@(pr.EtaIsEstimate ? "*" : "")</span></div>
+                            }
+                            @if (pr.TotalIsEstimate)
+                            {
+                                <div class="text-base-content/50" title="estimated from last healthy run">* estimated from last healthy run</div>
+                            }
+                            @if (pr.LastProgressAt.HasValue)
+                            {
+                                <div>Last progress: @((int)Math.Max(0, (DateTime.UtcNow - pr.LastProgressAt.Value).TotalSeconds))s ago</div>
+                            }
+                            @if (pr.Stalled)
+                            {
+                                <div><span class="badge badge-error badge-sm">Stalled</span> no heartbeat@(pr.LastHeartbeatAt.HasValue ? $" for {(int)Math.Max(0, (DateTime.UtcNow - pr.LastHeartbeatAt.Value).TotalSeconds)}s" : "")</div>
+                            }
+                        }
+                        else
+                        {
+                            <div>Products scraped: <span class="font-medium text-base-content">@job.ProductsScraped.ToString("N0")</span></div>
+                        }
                         @if (!string.IsNullOrEmpty(job.HealthReason))
                         {
                             <div class="text-error break-words" title="@job.HealthReason">Reason: @job.HealthReason</div>
