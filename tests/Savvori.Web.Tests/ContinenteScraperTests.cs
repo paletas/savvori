@@ -314,6 +314,95 @@ public class ContinenteScraperTests
         Assert.Equal(100, o.ProductsListed);
     }
 
+    /// <summary>Counter shows <paramref name="shown"/> (the site's page step) regardless of how many tiles are served.</summary>
+    private static string PageShown(int shown, int total, IEnumerable<int> ids)
+        => Page(total, ids).Replace($"{ids.Count()} de {total} produtos", $"{shown} de {total} produtos");
+
+    private static (ContinenteScraper Scraper, FakeHttpMessageHandler Handler) CreateBareScraper()
+    {
+        var handler = new FakeHttpMessageHandler();
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient("continente").Returns(new HttpClient(handler));
+        var logger = Substitute.For<ILogger<ContinenteScraper>>();
+        return (new ContinenteScraper(factory, logger) { ReattemptDelay = TimeSpan.Zero, RequestSpacing = TimeSpan.Zero }, handler);
+    }
+
+    private static void SetupCategories(FakeHttpMessageHandler handler, params string[] paths)
+    {
+        handler.SetupRoute("sitemap_index.xml",
+            "<sitemapindex xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"><sitemap><loc>https://www.continente.pt/sitemap-categories.xml</loc></sitemap></sitemapindex>");
+        handler.SetupRoute("sitemap-categories.xml",
+            "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">" +
+            string.Concat(paths.Select(p => $"<url><loc>https://www.continente.pt/{p}/</loc></url>")) + "</urlset>");
+    }
+
+    [Fact]
+    public async Task Continente_47TilePages_AdvanceByCounterStep_FullCoverage()
+    {
+        var (scraper, handler) = CreateScraper();
+        // Real shape: counter says 35 but the page serves 47 tiles; the next page starts at offset 35, not 47.
+        handler.SetupRoute("start=0", PageShown(35, 100, Enumerable.Range(1, 47)));
+        handler.SetupRoute("start=35", PageShown(70, 100, Enumerable.Range(36, 47)));
+        handler.SetupRoute("start=70", PageShown(100, 100, Enumerable.Range(71, 30)));
+
+        var result = await scraper.ScrapeProductsAsync("supermercado/congelados", CancellationToken.None);
+
+        Assert.Equal(["0", "35", "70"],
+            handler.RequestUrls.Select(u => System.Text.RegularExpressions.Regex.Match(u, @"start=(\d+)").Groups[1].Value));
+        Assert.Equal(100, result.Products.Select(p => p.ExternalId).Distinct().Count());
+        Assert.Empty(result.Warnings);
+        var o = Assert.Single(result.Outcomes);
+        Assert.StartsWith("reached declared total", o.StopReason);
+    }
+
+    [Fact]
+    public async Task Continente_CatalogueWideCategory_StopsEarly_LaterCategoriesStillScraped()
+    {
+        var (scraper, handler) = CreateBareScraper();
+        SetupCategories(handler, "supermercado/a", "supermercado/wide", "zeta/x");
+        // a: 700 distinct products in 20 pages of 35.
+        for (var k = 0; k < 20; k++)
+            handler.SetupRoute($"supermercado/a/?start={k * 35}&", Page(700, Enumerable.Range(1 + k * 35, 35)));
+        // wide: declares a huge total and serves pages of products the run already has (new only to its own guard).
+        for (var k = 0; k < 20; k++)
+            handler.SetupRoute($"supermercado/wide/?start={k * 35}&", Page(69358, Enumerable.Range(1 + k * 35, 35)));
+        handler.SetupRoute("zeta/x/?start=0&", Page(35, Enumerable.Range(5000, 35)));
+
+        var result = await scraper.ScrapeProductsAsync(null, CancellationToken.None);
+
+        var a = result.Outcomes.Single(o => o.Key == "supermercado/a");
+        var wide = result.Outcomes.Single(o => o.Key == "supermercado/wide");
+        var zeta = result.Outcomes.Single(o => o.Key == "zeta/x");
+        Assert.Equal(700, a.ProductsFound);
+        Assert.Equal(0, wide.ProductsFound);
+        Assert.Equal(10, wide.PagesFetched);
+        Assert.StartsWith("no new products for 10 consecutive pages", wide.StopReason);
+        Assert.Equal(35, zeta.ProductsFound);
+        Assert.Equal(735, result.Products.Count);
+        Assert.Empty(result.Warnings);
+    }
+
+    [Fact]
+    public async Task Continente_NormalCategoryOverlappingEarlierOne_NotStoppedEarly()
+    {
+        var (scraper, handler) = CreateBareScraper();
+        SetupCategories(handler, "supermercado/a", "supermercado/b");
+        for (var k = 0; k < 4; k++)
+            handler.SetupRoute($"supermercado/a/?start={k * 35}&", Page(140, Enumerable.Range(1 + k * 35, 35)));
+        // b: first two pages are all already seen (below the stagnation limit), then new products appear.
+        handler.SetupRoute("supermercado/b/?start=0&", Page(105, Enumerable.Range(1, 35)));
+        handler.SetupRoute("supermercado/b/?start=35&", Page(105, Enumerable.Range(36, 35)));
+        handler.SetupRoute("supermercado/b/?start=70&", Page(105, Enumerable.Range(141, 35)));
+
+        var result = await scraper.ScrapeProductsAsync(null, CancellationToken.None);
+
+        var b = result.Outcomes.Single(o => o.Key == "supermercado/b");
+        Assert.Equal(3, b.PagesFetched);
+        Assert.Equal(35, b.ProductsFound);
+        Assert.StartsWith("reached declared total", b.StopReason);
+        Assert.Equal(175, result.Products.Count);
+    }
+
     [Fact]
     public async Task Continente_ServedPastTotal_NaturalEnd()
     {
