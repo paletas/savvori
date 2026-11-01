@@ -38,11 +38,13 @@ public sealed partial class LidlScraper : BaseHttpScraper
         var outcomes = new List<ScrapeOutcome>();
         string[] queries = category is not null ? [category] : [""];
 
+        SetKeysTotal(queries.Length);
         foreach (var query in queries)
         {
             if (Halted) break;
             ct.ThrowIfCancellationRequested();
             await ScrapeQuery(query, seen, products, outcomes, warnings, ct);
+            ReportKeyDone(query.Length == 0 ? "(empty)" : query, products.Count);
         }
 
         await ReattemptAsync(outcomes, async old =>
@@ -134,6 +136,7 @@ public sealed partial class LidlScraper : BaseHttpScraper
                     }
                 }
 
+                ReportProgress(outcome.Key, offset, products.Count, outcome.SiteTotal);
                 guard ??= new PagingGuard(outcome.Key, FetchSize, numFound > 0 ? numFound : null);
                 var verdict = guard.Observe(ids, offset, items.GetArrayLength());
                 outcome.StopReason = guard.StopReason;

@@ -17,6 +17,19 @@ public class ScrapingJob
     public bool StaleMarkingSkipped { get; set; }
     public int? PreviousHealthyCount { get; set; }
     public double? DropRatio { get; set; }
+
+    // Live progress, written while Status == Running and nulled on completion/failure.
+    public int? ProgressProductsSeen { get; set; }
+    public string? ProgressKey { get; set; }
+    public int? ProgressOffset { get; set; }
+    /// <summary>Site-declared total of a single-key run; null when the run has several keys or no declared total.</summary>
+    public int? ProgressTotal { get; set; }
+    public int? ProgressKeysDone { get; set; }
+    public int? ProgressKeysTotal { get; set; }
+    public DateTime? LastProgressAt { get; set; }
+    /// <summary>Keep-alive written on a timer for the lifetime of the run, independent of page progress.</summary>
+    public DateTime? LastHeartbeatAt { get; set; }
+
     public List<ScrapingLog> Logs { get; set; } = new();
     public List<ScrapingRunOutcome> Outcomes { get; set; } = new();
 }

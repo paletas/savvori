@@ -83,6 +83,17 @@ public abstract class BaseHttpScraper : IStoreScraper
     protected bool Incomplete { get; set; }
     protected string? HaltReason { get; private set; }
 
+    /// <summary>Receives throttled progress snapshots; set by the job runner. Sink errors never fail a scrape.</summary>
+    public Action<ScrapeProgress>? ProgressSink { get; set; }
+
+    /// <summary>Minimum gap between page-level progress snapshots (key completions always pass).</summary>
+    public TimeSpan ProgressInterval { get; set; } = TimeSpan.FromSeconds(15);
+
+    private ProgressThrottle? _progressThrottle;
+    private TimeSpan _throttleInterval;
+    private int _keysDone;
+    private int? _keysTotal;
+
     private readonly Stopwatch _runClock = new();
     private readonly SemaphoreSlim _spacingGate = new(1, 1);
     private long _lastSend; // 0 = none yet
@@ -97,7 +108,45 @@ public abstract class BaseHttpScraper : IStoreScraper
         HaltReason = null;
         _boundWarning = null;
         RequestsUsed = 0;
+        _keysDone = 0;
+        _keysTotal = null;
+        _progressThrottle = null;
         _runClock.Restart();
+    }
+
+    /// <summary>Declares how many keys (categories/sections) the run will visit.</summary>
+    protected void SetKeysTotal(int keysTotal) => _keysTotal = keysTotal;
+
+    /// <summary>Reports progress after a page; throttled to <see cref="ProgressInterval"/>.</summary>
+    protected void ReportProgress(string key, int offset, int productsSeen, int? keySiteTotal)
+        => Emit(new ScrapeProgress(productsSeen, key, offset, keySiteTotal, _keysDone, _keysTotal), force: false);
+
+    /// <summary>Counts a finished key and reports immediately.</summary>
+    protected void ReportKeyDone(string key, int productsSeen)
+    {
+        _keysDone++;
+        Emit(new ScrapeProgress(productsSeen, key, 0, null, _keysDone, _keysTotal), force: true);
+    }
+
+    private void Emit(ScrapeProgress progress, bool force)
+    {
+        var sink = ProgressSink;
+        if (sink is null) return;
+        try
+        {
+            if (_progressThrottle is null || _throttleInterval != ProgressInterval)
+            {
+                _throttleInterval = ProgressInterval;
+                _progressThrottle = new ProgressThrottle(ProgressInterval,
+                    () => Stopwatch.GetTimestamp() * TimeSpan.TicksPerSecond / Stopwatch.Frequency);
+            }
+            if (!_progressThrottle.ShouldEmit() && !force) return;
+            sink(progress);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "Progress sink failed for {StoreChainSlug}; ignored", StoreChainSlug);
+        }
     }
 
     private async Task EnterAttemptAsync(bool bounded, CancellationToken ct)

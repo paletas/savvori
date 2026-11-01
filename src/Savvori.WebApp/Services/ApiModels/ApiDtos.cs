@@ -92,7 +92,14 @@ public record ScrapingStatusDto(
     int? LastStatus, DateTime? LastRunAt, DateTime? CompletedAt,
     int ProductsScraped, string? ErrorMessage,
     string? HealthReason = null, int WarningCount = 0, bool StaleMarkingSkipped = false,
-    int StaleMarked = 0, double? DropRatio = null, string[]? FailedKeys = null);
+    int StaleMarked = 0, double? DropRatio = null, string[]? FailedKeys = null,
+    ScrapingProgressDto? Progress = null);
+
+/// <summary>Live progress of a Running scrape; the API sends null for any other status.</summary>
+public record ScrapingProgressDto(
+    int? ProductsSeen, string? Key, int? Offset, int? Total, bool TotalIsEstimate,
+    int? KeysDone, int? KeysTotal, DateTime? LastProgressAt, DateTime? LastHeartbeatAt,
+    double? EtaSeconds, bool EtaIsEstimate, bool Stalled);
 
 public record ScrapingChainDetailDto(
     string Chain, List<ScrapingJobDto> Jobs, List<ScrapingLogDto> RecentLogs,
