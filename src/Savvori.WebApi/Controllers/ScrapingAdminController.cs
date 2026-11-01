@@ -50,7 +50,7 @@ public class ScrapingAdminController : ControllerBase
         var latestIds = latestByChain.Values.Select(j => j.Id).ToList();
         var failedKeyRows = await _db.ScrapingRunOutcomes
             .Where(o => latestIds.Contains(o.ScrapingJobId) &&
-                        o.Result != Savvori.Shared.OutcomeResult.Ok && o.Result != Savvori.Shared.OutcomeResult.Recovered)
+                        !Savvori.Shared.OutcomeResults.NonFailures.Contains(o.Result))
             .OrderBy(o => o.Kind).ThenBy(o => o.Key)
             .Select(o => new { o.ScrapingJobId, o.Key })
             .ToListAsync(ct);

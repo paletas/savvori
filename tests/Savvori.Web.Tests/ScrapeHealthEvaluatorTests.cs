@@ -26,6 +26,16 @@ public sealed class ScrapeHealthEvaluatorTests
     private static ScrapeOutcome Covered(int siteTotal, int listed) =>
         new() { Kind = OutcomeKind.Category, Key = "c", Url = "https://e/c", Result = OutcomeResult.Ok, SiteTotal = siteTotal, ProductsListed = listed, ProductsFound = 1 };
 
+    [Theory]
+    [InlineData(OutcomeResult.Ok, false)]
+    [InlineData(OutcomeResult.Recovered, false)]
+    [InlineData(OutcomeResult.ContentPage, false)]
+    [InlineData(OutcomeResult.Failed, true)]
+    [InlineData(OutcomeResult.Blocked, true)]
+    [InlineData(OutcomeResult.NoTiles, true)]
+    public void OutcomeResults_IsFailure_ExcludesContentPage(OutcomeResult result, bool expected) =>
+        Assert.Equal(expected, OutcomeResults.IsFailure(result));
+
     [Fact]
     public void ErrorStatus_IsDegraded()
     {

@@ -8,6 +8,14 @@ public enum OutcomeKind { Category, Term, Discovery, Canary }
 
 public enum OutcomeResult { Ok, Failed, Redirected, Blocked, NoTiles, MissingFields, Recovered, ContentPage }
 
+public static class OutcomeResults
+{
+    /// <summary>Results that are not failures: fine, recovered by the re-attempt, or a legitimately empty content page.</summary>
+    public static readonly OutcomeResult[] NonFailures = [OutcomeResult.Ok, OutcomeResult.Recovered, OutcomeResult.ContentPage];
+
+    public static bool IsFailure(OutcomeResult result) => !NonFailures.Contains(result);
+}
+
 public enum ScrapingLogLevel { Info, Warning, Error }
 
 public enum MatchStatus

@@ -110,6 +110,11 @@ public class AdminScrapingTests : IClassFixture<SavvoriWebApiFactory>
                 Id = Guid.NewGuid(), ScrapingJobId = job.Id, Kind = OutcomeKind.Category,
                 Key = "cat-1", Url = "https://x/u", Result = OutcomeResult.Failed
             });
+            db.ScrapingRunOutcomes.Add(new ScrapingRunOutcome
+            {
+                Id = Guid.NewGuid(), ScrapingJobId = job.Id, Kind = OutcomeKind.Category,
+                Key = "seasonal-1", Url = "https://x/s", Result = OutcomeResult.ContentPage
+            });
         });
 
         using var client = _factory.CreateClient();

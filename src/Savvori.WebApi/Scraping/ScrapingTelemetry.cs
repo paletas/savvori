@@ -138,7 +138,7 @@ public sealed class ScrapingTelemetry : IDisposable
     {
         var tags = new TagList { { "store.chain.slug", slug } };
 
-        var failed = result.Outcomes.Count(o => o.Result is not (OutcomeResult.Ok or OutcomeResult.Recovered));
+        var failed = result.Outcomes.Count(o => OutcomeResults.IsFailure(o.Result));
         if (failed > 0) CategoriesFailed.Add(failed, tags);
 
         var blocked = result.Outcomes.Count(o => o.Result == OutcomeResult.Blocked);
