@@ -16,6 +16,15 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
         "https://www.continente.pt/on/demandware.store/Sites-continente-Site/default/Stores-FindStores";
     private const int PageSize = 48;
 
+    // The site answers sz=48 with up to ~47 tiles but pages in steps of 35 (start=35 is the next page, start=47 repeats
+    // it). The real step is read from the first-page counter ("35 de 1080"); this is the fallback when there is none.
+    private const int DefaultPageStep = 35;
+
+    // A category that adds no product new to the whole run for this many consecutive pages ends early. It stops
+    // catalogue-wide listings (presentes/jantar-romantico serves "35 de 69358") from eating the wall clock, while a
+    // category still yielding new products (e.g. pesquisa) never trips it because any new product resets the count.
+    private const int MaxPagesWithoutNewProducts = 10;
+
     // Geographic sweep centres — 300 km radius covers all of mainland Portugal from two points.
     private static readonly (double Lat, double Lng)[] SweepCentres =
     [
@@ -311,6 +320,8 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
         PagingGuard? guard = null;
 
         var start = 0;
+        var step = DefaultPageStep;
+        var staleSincePages = 0;
         while (true)
         {
             if (Halted) { outcome.StopReason ??= $"run halted: {HaltReason}"; return; }
@@ -346,17 +357,21 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
             {
                 outcome.SiteTotal = ParseTotal(document);
                 MarkFirstPage(outcome, tiles.Count, parsed.Count, contentPageWhenNoCounter: true);
+                step = ParseCounterStep(document) ?? DefaultPageStep;
             }
             outcome.ProductsListed += parsed.Count;
 
+            var newOnPage = 0;
             foreach (var product in parsed)
             {
                 if (seen.Add(product.ExternalId))
                 {
                     products.Add(product);
                     outcome.ProductsFound++;
+                    newOnPage++;
                 }
             }
+            staleSincePages = newOnPage > 0 ? 0 : staleSincePages + 1;
 
             ReportProgress(outcome.Key, start, products.Count, outcome.SiteTotal);
             guard ??= new PagingGuard(outcome.Key, null, outcome.SiteTotal, counterlessRepeatEndsListing: true);
@@ -371,7 +386,16 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
                     return;
             }
 
-            start += tiles.Count;
+            if (staleSincePages >= MaxPagesWithoutNewProducts)
+            {
+                outcome.StopReason = $"no new products for {MaxPagesWithoutNewProducts} consecutive pages at offset {start}";
+                Logger.LogInformation("Continente: '{Cat}' stopped at offset {Start}: {Reason}",
+                    categorySlug, start, outcome.StopReason);
+                return;
+            }
+
+            // Advance by the site's page step, never past the tiles served (seen set dedupes the overlap).
+            start += Math.Min(step, tiles.Count);
         }
     }
 
@@ -484,6 +508,17 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
         }
         if (number is null) return null;
         var digits = number.Replace(",", "").Replace(".", "");
+        return int.TryParse(digits, out var val) && val > 0 ? val : null;
+    }
+
+    /// <summary>The first-page counter's "shown" number ("35" in "35 de 1080"), which is the site's real page step.</summary>
+    private static int? ParseCounterStep(IDocument doc)
+    {
+        var text = doc.QuerySelector(".search-results-products-counter")?.TextContent;
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        var m = CounterRegex().Match(text);
+        if (!m.Success) return null;
+        var digits = m.Groups[1].Value.Replace(",", "").Replace(".", "");
         return int.TryParse(digits, out var val) && val > 0 ? val : null;
     }
 
