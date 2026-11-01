@@ -21,6 +21,15 @@ public sealed class PagingGuard
     private List<string> _previous = [];
     private string? _firstPageFirstId;
     private readonly bool _counterlessRepeatEndsListing;
+    private int _consecutiveAllSeen;
+
+    /// <summary>
+    /// How many consecutive all-seen pages rule (4) tolerates while the walk is still below a declared total.
+    /// Some sites (Auchan) serve two shifted catalogue snapshots, so a few pages can overlap fully with earlier
+    /// ones before new products resume. Bounded: the offset keeps advancing to the declared total, and a run
+    /// of more than this many all-seen pages is still a loop.
+    /// </summary>
+    public const int AllSeenTolerance = 3;
 
     /// <summary>Human-readable label for what is being paged (chain/category), used in logs by the caller.</summary>
     public string Scope { get; }
@@ -57,7 +66,8 @@ public sealed class PagingGuard
     /// (2) on any page after the first, the same id list as the previous page means we asked again and got the same thing
     /// (without a declared total and with the counterless flag, page 2 repeating page 1 is a natural end);
     /// (3) on any page after the first, the first id being the one seen at the very start means the site ignored our offset (same exception);
-    /// (4) a page whose ids have all been counted before brings nothing new;
+    /// (4) a page whose ids have all been counted before brings nothing new (below a declared total up to
+    /// <see cref="AllSeenTolerance"/> consecutive such pages are tolerated, see there);
     /// (5) without a declared total, a page with fewer raw tiles than the requested size is the last page;
     /// (6) with a declared total, a page requested at or beyond it is past the end and a page reaching it is the last one;
     /// without a total the page cap applies; otherwise paging continues.
@@ -92,8 +102,16 @@ public sealed class PagingGuard
             foreach (var id in ids)
                 if (_seen.Add(id))
                     anyNew = true;
-            if (!anyNew)
-                return Finish(ids, PagingVerdict.Loop, "no new products", requestedOffset);
+            if (anyNew)
+                _consecutiveAllSeen = 0;
+            else
+            {
+                // Tolerated only below a declared total; with no total, or at/over it, any all-seen page is a loop.
+                var belowTotal = _declaredTotal is int dt && requestedOffset + rawCount < dt;
+                if (!belowTotal || ++_consecutiveAllSeen > AllSeenTolerance)
+                    return Finish(ids, PagingVerdict.Loop, "no new products", requestedOffset);
+                return Finish(ids, PagingVerdict.Continue, null, requestedOffset);
+            }
 
             // (5)
             if (_declaredTotal is null && _pageSize is int p && rawCount < p)
