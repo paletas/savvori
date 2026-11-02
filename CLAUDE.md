@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Savvori is a grocery price-comparison API + web app for Portugal. It scrapes product prices from major Portuguese supermarket chains (Continente, Pingo Doce, Auchan, Lidl, Celeiro; chains without a working scraper are not kept as stubs), and helps users build shopping lists and optimize them for cheapest cost across stores.
+Savvori is a grocery price-comparison API + web app for Portugal. It scrapes product prices from major Portuguese supermarket chains (Continente, Pingo Doce, Auchan, Lidl; chains without a working scraper are not kept as stubs), and helps users build shopping lists and optimize them for cheapest cost across stores.
 
 ASP.NET Core / .NET 10, orchestrated locally with .NET Aspire, SQLite via EF Core. There is no authentication (single-user homelab deployment).
 
@@ -54,6 +54,7 @@ tests/
 - `ProductNormalizer` — size/unit extraction, text normalization, brand extraction.
 - `ProductMatcher` / `CategoryMapper` / `CategoryTaxonomy` / `CategorySeeder` — category taxonomy assignment and product-to-category mapping (added in the "Phase 4" work).
 - `StoreScrapeJob` — Quartz.NET job running all registered scrapers, scheduled twice daily.
+- Run health, the stale-product grace window and the canary live in `ScrapeHealthEvaluator` and `StoreScrapeJob`; a `Degraded` run never deactivates products.
 - New store chain = implement `IStoreScraper` + register with DI; scrapers differ by underlying platform (SFCC JSON, SAP Hybris HTML, etc.) — check an existing scraper for the closest-matching platform before writing a new one from scratch.
 
 ### Model-assisted matching and categories (`src/Savvori.WebApi/Modeling`)

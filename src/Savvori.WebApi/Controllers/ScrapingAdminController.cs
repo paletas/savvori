@@ -14,10 +14,12 @@ public class ScrapingAdminController : ControllerBase
 {
     private readonly SavvoriDbContext _db;
     private readonly ISchedulerFactory _schedulerFactory;
+    private readonly IConfiguration _config;
 
-    public ScrapingAdminController(SavvoriDbContext db, ISchedulerFactory schedulerFactory)
+    public ScrapingAdminController(SavvoriDbContext db, ISchedulerFactory schedulerFactory, IConfiguration config)
     {
         _db = db;
+        _config = config;
         _schedulerFactory = schedulerFactory;
     }
 
@@ -44,6 +46,18 @@ public class ScrapingAdminController : ControllerBase
             .GroupBy(j => j.StoreChainId)
             .ToDictionary(g => g.Key, g => g.First());
 
+        // Keys of non-ok outcomes of each chain's latest job
+        var latestIds = latestByChain.Values.Select(j => j.Id).ToList();
+        var failedKeyRows = await _db.ScrapingRunOutcomes
+            .Where(o => latestIds.Contains(o.ScrapingJobId) &&
+                        !Savvori.Shared.OutcomeResults.NonFailures.Contains(o.Result))
+            .OrderBy(o => o.Kind).ThenBy(o => o.Key)
+            .Select(o => new { o.ScrapingJobId, o.Key })
+            .ToListAsync(ct);
+        var failedKeys = failedKeyRows
+            .GroupBy(o => o.ScrapingJobId)
+            .ToDictionary(g => g.Key, g => g.Select(o => o.Key).ToArray());
+
         // Next fire times from Quartz
         var scheduler = await _schedulerFactory.GetScheduler(ct);
         var nextFireTimes = new Dictionary<string, DateTime?>();
@@ -65,9 +79,31 @@ public class ScrapingAdminController : ControllerBase
             }
         }
 
+        // Per-key pages of each running chain's last healthy run, weighting the ETA of the keys still to do.
+        var prevJobIds = latestByChain.Values
+            .Where(j => j.Status == Savvori.Shared.ScrapingJobStatus.Running)
+            .Select(j => ScrapeProgressEstimator.PreviousHealthyJobId(latestJobs.Where(x => x.StoreChainId == j.StoreChainId), j.Id))
+            .Where(id => id is not null).Select(id => id!.Value).ToList();
+        var prevPageRows = prevJobIds.Count == 0 ? [] : await _db.ScrapingRunOutcomes
+            .Where(o => prevJobIds.Contains(o.ScrapingJobId))
+            .Select(o => new { o.ScrapingJobId, o.Key, o.PagesFetched })
+            .ToListAsync(ct);
+
+        var stalledAfter = TimeSpan.FromSeconds(
+            _config.GetValue<double?>("Scraping:StalledAfterSeconds") ?? ScrapeProgressEstimator.DefaultStalledAfter.TotalSeconds);
+        var now = DateTime.UtcNow;
+
         var result = chains.Select(chain =>
         {
             latestByChain.TryGetValue(chain.Id, out var job);
+            var chainJobs = latestJobs.Where(j => j.StoreChainId == chain.Id).ToList();
+            IReadOnlyDictionary<string, int>? prevPages = null;
+            if (job is not null && ScrapeProgressEstimator.PreviousHealthyJobId(chainJobs, job.Id) is { } prevId)
+                prevPages = prevPageRows.Where(o => o.ScrapingJobId == prevId)
+                    .GroupBy(o => o.Key).ToDictionary(g => g.Key, g => g.Sum(o => o.PagesFetched));
+            var progress = job is null ? null : ScrapeProgressEstimator.Build(
+                job, ScrapeProgressEstimator.PreviousHealthyCount(chainJobs, job.Id),
+                now, stalledAfter, prevPages);
             nextFireTimes.TryGetValue(chain.Slug, out var nextFire);
 
             return new
@@ -80,7 +116,14 @@ public class ScrapingAdminController : ControllerBase
                 LastRunAt    = job?.StartedAt,
                 CompletedAt  = job?.CompletedAt,
                 ProductsScraped = job?.ProductsScraped ?? 0,
-                ErrorMessage = job?.ErrorMessage
+                ErrorMessage = job?.ErrorMessage,
+                HealthReason = job?.HealthReason,
+                WarningCount = job?.WarningCount ?? 0,
+                StaleMarkingSkipped = job?.StaleMarkingSkipped ?? false,
+                StaleMarked = job?.StaleMarked ?? 0,
+                DropRatio = job?.DropRatio,
+                FailedKeys = job is not null && failedKeys.TryGetValue(job.Id, out var keys) ? keys : Array.Empty<string>(),
+                Progress = progress
             };
         }).ToList();
 
@@ -110,9 +153,38 @@ public class ScrapingAdminController : ControllerBase
                 j.StartedAt,
                 j.CompletedAt,
                 j.ProductsScraped,
-                j.ErrorMessage
+                j.ErrorMessage,
+                j.HealthReason,
+                j.WarningCount,
+                j.StaleMarkingSkipped,
+                j.DropRatio
             })
             .ToListAsync(ct);
+
+        var outcomes = new List<object>();
+        if (jobs.Count > 0)
+        {
+            var latestId = jobs[0].Id;
+            var rows = await _db.ScrapingRunOutcomes
+                .Where(o => o.ScrapingJobId == latestId)
+                .OrderBy(o => o.Kind).ThenBy(o => o.Key)
+                .Select(o => new
+                {
+                    Kind = o.Kind.ToString(),
+                    o.Key,
+                    o.Url,
+                    Result = o.Result.ToString(),
+                    o.PagesFetched,
+                    o.ProductsFound,
+                    o.TilesSeen,
+                    o.Retries,
+                    o.StatusCounts,
+                    o.FirstError,
+                    o.StopReason
+                })
+                .ToListAsync(ct);
+            outcomes.AddRange(rows);
+        }
 
         var logs = jobs.Select(j => j.Id).ToList();
         var recentLogs = await _db.ScrapingLogs
@@ -128,7 +200,7 @@ public class ScrapingAdminController : ControllerBase
             })
             .ToListAsync(ct);
 
-        return Ok(new { Chain = chainSlug, Jobs = jobs, RecentLogs = recentLogs });
+        return Ok(new { Chain = chainSlug, Jobs = jobs, RecentLogs = recentLogs, Outcomes = outcomes });
     }
 
     /// <summary>
@@ -164,5 +236,37 @@ public class ScrapingAdminController : ControllerBase
         {
             return StatusCode(500, new { Error = ex.Message });
         }
+    }
+
+    /// <summary>
+    /// Reactivate inactive products last scraped within each chain's grace window (backfill after the
+    /// health-gated stale rule). Dry run unless apply=true.
+    /// POST /api/admin/scraping/reactivate-recent?apply=true
+    /// </summary>
+    [HttpPost("reactivate-recent")]
+    public async Task<IActionResult> ReactivateRecent([FromQuery] bool apply = false, CancellationToken ct = default)
+    {
+        var configured = _config.GetSection("Scraping:Chains").Get<List<ScrapingChainConfig>>() ?? [];
+        var chains = await _db.StoreChains.Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync(ct);
+
+        var results = new List<object>();
+        foreach (var chain in chains)
+        {
+            var graceDays = configured.FirstOrDefault(c => c.Slug == chain.Slug)?.EffectiveGraceDays
+                ?? new ScrapingChainConfig { Slug = chain.Slug }.EffectiveGraceDays;
+            var cutoff = DateTime.UtcNow.AddDays(-graceDays);
+            var products = await _db.StoreProducts
+                .Where(sp => sp.StoreChainId == chain.Id && !sp.IsActive && sp.LastScraped >= cutoff)
+                .ToListAsync(ct);
+
+            if (apply)
+            {
+                foreach (var sp in products) sp.IsActive = true;
+                await _db.SaveChangesAsync(ct);
+            }
+
+            results.Add(new { ChainSlug = chain.Slug, GraceDays = graceDays, Count = products.Count, Applied = apply });
+        }
+        return Ok(results);
     }
 }

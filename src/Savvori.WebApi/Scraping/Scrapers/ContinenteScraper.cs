@@ -16,6 +16,15 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
         "https://www.continente.pt/on/demandware.store/Sites-continente-Site/default/Stores-FindStores";
     private const int PageSize = 48;
 
+    // The site answers sz=48 with up to ~47 tiles but pages in steps of 35 (start=35 is the next page, start=47 repeats
+    // it). The real step is read from the first-page counter ("35 de 1080"); this is the fallback when there is none.
+    private const int DefaultPageStep = 35;
+
+    // A category that adds no product new to the whole run for this many consecutive pages ends early. It stops
+    // catalogue-wide listings (presentes/jantar-romantico serves "35 de 69358") from eating the wall clock, while a
+    // category still yielding new products (e.g. pesquisa) never trips it because any new product resets the count.
+    private const int MaxPagesWithoutNewProducts = 10;
+
     // Geographic sweep centres — 300 km radius covers all of mainland Portugal from two points.
     private static readonly (double Lat, double Lng)[] SweepCentres =
     [
@@ -23,37 +32,31 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
         (37.02, -7.93),   // Faro   — covers Algarve + Alentejo south
     ];
 
-    private const int MaxPagesPerCategory = 50;  // safety cap (~2,400 products per category)
     private const string SitemapIndexUrl = $"{BaseUrl}/sitemap_index.xml";
 
-    // Top-level slugs to include when discovering categories.
-    // Extend this list to capture non-grocery departments as well.
-    private static readonly HashSet<string> AllowedTopSlugs = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "frescos", "laticinios-e-ovos", "mercearia", "congelados",
-        "peixaria-e-talho", "bebidas-e-garrafeira", "bio-e-saudavel",
-        "padaria-e-pastelaria", "higiene-e-beleza", "limpeza-e-casa",
-        "pet", "bebe"
-    };
+    // Brands pages repeat products already listed under the departments; destaques is a promotional landing section.
+    private static readonly string[] ExcludedTops = ["marcas", "destaques"];
 
-    // Last-resort fallback: top-level slugs used when all discovery mechanisms fail.
-    private static readonly string[] FallbackCategories =
-    [
-        "frescos", "laticinios-e-ovos", "mercearia", "congelados",
-        "peixaria-e-talho", "bebidas-e-garrafeira", "bio-e-saudavel",
-        "padaria-e-pastelaria"
-    ];
+    // Sections scraped first, in this order; every other section follows alphabetically.
+    private static readonly string[] FirstTops = ["supermercado", "bebe", "animais", "beleza"];
+
+    // Real leaf category requested by the canary probe.
+    private const string ProbeCategory = "supermercado/frutas-e-legumes/frutas/banana";
 
     public ContinenteScraper(
         IHttpClientFactory httpClientFactory,
         ILogger<ContinenteScraper> logger)
         : base(httpClientFactory, logger, "continente")
     {
+        RequestCeiling = 8000;
+        WallClockLimit = TimeSpan.FromHours(8);
     }
 
-    public override async Task<IReadOnlyList<ScrapedProduct>> ScrapeProductsAsync(
+    public override async Task<ScrapeRunResult> ScrapeProductsAsync(
         string? category = null, CancellationToken ct = default)
     {
+        BeginRun();
+        var warnings = new List<string>();
         IReadOnlyList<string> categories;
         if (category is not null)
         {
@@ -61,23 +64,65 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
         }
         else
         {
-            categories = await DiscoverCategoryPathsAsync(ct);
-            await Task.Delay(500, ct);
+            (categories, var discoveryFailure) = await DiscoverCategoryPathsAsync(ct);
+            if (discoveryFailure is not null) return DiscoveryFailed(SitemapIndexUrl, discoveryFailure);
         }
 
         var seen = new HashSet<string>();
         var products = new List<ScrapedProduct>();
+        var outcomes = new List<ScrapeOutcome>();
 
+        SetKeysTotal(categories.Count);
         foreach (var cat in categories)
         {
+            if (Halted) break;
             ct.ThrowIfCancellationRequested();
-            await ScrapeCategory(cat, seen, products, ct);
-            await Task.Delay(300, ct);
+            await ScrapeCategory(cat, seen, products, outcomes, warnings, ct);
+            ReportKeyDone(cat, products.Count);
         }
+
+        await ReattemptAsync(outcomes, async old =>
+        {
+            var tmp = new List<ScrapeOutcome>();
+            await ScrapeCategory(old.Key, seen, products, tmp, warnings, ct);
+            return tmp[0];
+        }, ct);
 
         Logger.LogInformation("Continente: scraped {Count} distinct products across {Cats} categories",
             products.Count, categories.Count);
-        return products;
+        return BuildResult(products, outcomes, warnings);
+    }
+
+    public override async Task<CanaryResult> ProbeAsync(CancellationToken ct = default)
+    {
+        var o = new ScrapeOutcome { Url = SitemapIndexUrl };
+        var xml = await GetStringAsync(SitemapIndexUrl, o, ct);
+        var requests = o.StatusCounts.Values.Sum();
+        if (xml is null)
+            return new CanaryResult(false, $"{SitemapIndexUrl}: {o.Result} {o.FirstError}".Trim(), requests);
+
+        try
+        {
+            var index = XDocument.Parse(xml);
+            var ns = index.Root?.GetDefaultNamespace() ?? XNamespace.None;
+            var hasCategorySitemap = index.Descendants(ns + "loc").Any(e =>
+                e.Value.Contains("categor", StringComparison.OrdinalIgnoreCase) &&
+                !e.Value.Contains("refinement", StringComparison.OrdinalIgnoreCase));
+            if (!hasCategorySitemap)
+                return new CanaryResult(false, $"{SitemapIndexUrl}: no category sitemap", requests);
+        }
+        catch (Exception)
+        {
+            return new CanaryResult(false, $"{SitemapIndexUrl}: unparseable response", requests);
+        }
+
+        var page = await ProbeHtmlAsync(
+            $"{BaseUrl}/{ProbeCategory}/?start=0&sz={PageSize}&srule=Continente", d =>
+            {
+                var t = d.QuerySelectorAll(".product-tile").ToList();
+                return (t.Count, t.Count(x => ParseTile(x) is not null));
+            }, ct);
+        return page with { Requests = page.Requests + requests };
     }
 
     public override async Task<IReadOnlyList<ScrapedStoreLocation>> ScrapeStoreLocationsAsync(
@@ -129,12 +174,63 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
     }
 
     /// <summary>
+    /// Selects the categories to scrape from the sitemap paths: every top-level section except
+    /// <c>marcas</c> (brand pages repeat the departments), no allowlist. Per section: the
+    /// <c>T/todos</c> page when it is present, else every distinct second-level
+    /// <c>T/x</c>, else the section itself. Paths with a <c>ver-todos</c> segment are ignored
+    /// (robots.txt disallows them). Order: supermercado, bebe, animais, beleza, then the other
+    /// sections alphabetically.
+    /// </summary>
+    public static IReadOnlyList<string> SelectCategories(IEnumerable<string> sitemapPaths)
+    {
+        var byTop = new Dictionary<string, List<string[]>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var raw in sitemapPaths)
+        {
+            var path = raw.Trim().Trim('/');
+            if (path.Length == 0) continue;
+            var segs = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segs.Length == 0 || segs.Any(x => x.Contains("ver-todos", StringComparison.OrdinalIgnoreCase)))
+                continue;
+            if (ExcludedTops.Any(t => string.Equals(segs[0], t, StringComparison.OrdinalIgnoreCase))) continue;
+            if (!byTop.TryGetValue(segs[0], out var list)) byTop[segs[0]] = list = [];
+            list.Add(segs);
+        }
+
+        var tops = FirstTops.Where(byTop.ContainsKey)
+            .Concat(byTop.Keys
+                .Where(k => !FirstTops.Contains(k, StringComparer.OrdinalIgnoreCase))
+                .OrderBy(k => k, StringComparer.OrdinalIgnoreCase));
+
+        var result = new List<string>();
+        foreach (var top in tops)
+        {
+            var paths = byTop[top];
+            var todos = paths.FirstOrDefault(x => x.Length == 2 && x[1].Equals("todos", StringComparison.OrdinalIgnoreCase));
+            if (todos is not null)
+            {
+                result.Add($"{todos[0]}/todos");
+                continue;
+            }
+            var children = paths.Where(x => x.Length >= 2)
+                .Select(x => $"{x[0]}/{x[1]}")
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (children.Count > 0) result.AddRange(children);
+            else result.Add(top);
+        }
+        return result;
+    }
+
+    /// <summary>
     /// Discovers category paths from the Continente sitemap.
     /// Fetches the sitemap index, locates the category sitemap (excluding refinement sitemaps),
-    /// parses category URLs, filters to allowed top-level slugs, and prunes parent paths so only
-    /// leaf categories are scraped. Falls back to <see cref="FallbackCategories"/> on failure.
+    /// collects every in-domain category URL (no allowlist) and applies <see cref="SelectCategories"/>
+    /// (todos page or second-level categories per section; <c>marcas</c> excluded; supermercado,
+    /// bebe, animais, beleza first). On failure returns no paths and a <c>FailureReason</c>
+    /// (the run is then reported as failed discovery).
     /// </summary>
-    private async Task<IReadOnlyList<string>> DiscoverCategoryPathsAsync(CancellationToken ct)
+    private async Task<(IReadOnlyList<string> Paths, string? FailureReason)> DiscoverCategoryPathsAsync(CancellationToken ct)
     {
         try
         {
@@ -152,11 +248,11 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
 
             if (categorySitemapUrls.Count == 0)
             {
-                Logger.LogWarning("Continente: no category sitemap found in {Url}, using fallback", SitemapIndexUrl);
-                return FallbackCategories;
+                Logger.LogWarning("Continente: no category sitemap found in {Url}, discovery failed", SitemapIndexUrl);
+                return ([], "no category sitemap found in index");
             }
 
-            // Step 2: Parse each category sitemap and collect matching paths.
+            // Step 2: Parse each category sitemap and collect every in-domain path.
             var discovered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var sitemapUrl in categorySitemapUrls)
@@ -175,18 +271,12 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
                         // Extract path after domain: "/frescos/fruta-e-legumes/"
                         var path = loc[BaseUrl.Length..].Split('?')[0].Trim('/');
                         if (string.IsNullOrEmpty(path)) continue;
-
-                        var firstSegment = path.Split('/')[0];
-                        if (!AllowedTopSlugs.Contains(firstSegment)) continue;
-
                         discovered.Add(path);
                     }
 
                     Logger.LogInformation(
-                        "Continente: parsed sitemap '{Url}', {Count} matching paths so far",
+                        "Continente: parsed sitemap '{Url}', {Count} paths so far",
                         sitemapUrl, discovered.Count);
-
-                    await Task.Delay(300, ct);
                 }
                 catch (Exception ex)
                 {
@@ -196,28 +286,19 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
 
             if (discovered.Count == 0)
             {
-                Logger.LogWarning("Continente: category sitemaps yielded no matching paths, using fallback");
-                return FallbackCategories;
+                Logger.LogWarning("Continente: category sitemaps yielded no matching paths, discovery failed");
+                return ([], "category sitemaps yielded no matching paths");
             }
 
-            // Step 3: Prune parent paths — only scrape leaves to avoid duplicate products.
-            // If both "frescos/fruta" and "frescos/fruta/maca" exist, drop "frescos/fruta".
-            var paths = discovered.OrderByDescending(p => p).ToList();
-            var leaves = paths
-                .Where(p => !paths.Any(other =>
-                    other != p && other.StartsWith(p + "/", StringComparison.OrdinalIgnoreCase)))
-                .ToList();
-
-            Logger.LogInformation(
-                "Continente: {Total} category paths in sitemap → {Leaves} leaf categories to scrape",
-                paths.Count, leaves.Count);
-
-            return leaves;
+            var selected = SelectCategories(discovered);
+            Logger.LogInformation("Continente: {Total} sitemap paths -> {Count} categories to scrape",
+                discovered.Count, selected.Count);
+            return (selected, null);
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "Continente: sitemap category discovery failed, using fallback list");
-            return FallbackCategories;
+            Logger.LogWarning(ex, "Continente: sitemap category discovery failed");
+            return ([], ex.Message);
         }
     }
 
@@ -225,70 +306,97 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
         string categorySlug,
         HashSet<string> seen,
         List<ScrapedProduct> products,
+        List<ScrapeOutcome> outcomes,
+        List<string> warnings,
         CancellationToken ct)
     {
-        var start = 0;
-        int? total = null;
-        var pageCount = 0;
-
-        do
+        var outcome = new ScrapeOutcome
         {
-            var url = $"{BaseUrl}/{categorySlug}/?start={start}&sz={PageSize}&srule=Continente";
-            IDocument document;
+            Kind = OutcomeKind.Category,
+            Key = categorySlug,
+            Url = $"{BaseUrl}/{categorySlug}/?start=0&sz={PageSize}&srule=Continente"
+        };
+        outcomes.Add(outcome);
+        PagingGuard? guard = null;
 
-            try
+        var start = 0;
+        var step = DefaultPageStep;
+        var staleSincePages = 0;
+        while (true)
+        {
+            if (Halted) { outcome.StopReason ??= $"run halted: {HaltReason}"; return; }
+
+            var url = $"{BaseUrl}/{categorySlug}/?start={start}&sz={PageSize}&srule=Continente";
+            var document = await GetHtmlAsync(url, outcome, ct);
+            if (document is null)
             {
-                document = await GetHtmlAsync(url, ct);
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError(ex, "Continente: failed to fetch category '{Cat}' start={Start}", categorySlug, start);
-                break;
+                Logger.LogError("Continente: failed to fetch category '{Cat}' start={Start}: {Err}",
+                    categorySlug, start, outcome.FirstError);
+                return;
             }
 
             var tiles = document.QuerySelectorAll(".product-tile").ToList();
-            if (tiles.Count == 0) break;
-
-            var newOnThisPage = 0;
+            var skippedTiles = 0;
+            var parsed = new List<ScrapedProduct>();
             foreach (var tile in tiles)
             {
-                var product = ParseTile(tile);
-                if (product is null) continue;
+                try
+                {
+                    var p = ParseTile(tile);
+                    if (p is not null) parsed.Add(p);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    skippedTiles++;
+                }
+            }
+            if (skippedTiles > 0)
+                Logger.LogWarning("Continente: skipped {Skipped} malformed tile(s) in '{Cat}' start={Start}",
+                    skippedTiles, categorySlug, start);
+            if (start == 0)
+            {
+                outcome.SiteTotal = ParseTotal(document);
+                MarkFirstPage(outcome, tiles.Count, parsed.Count, contentPageWhenNoCounter: true);
+                step = ParseCounterStep(document) ?? DefaultPageStep;
+            }
+            outcome.ProductsListed += parsed.Count;
+
+            var newOnPage = 0;
+            foreach (var product in parsed)
+            {
                 if (seen.Add(product.ExternalId))
                 {
                     products.Add(product);
-                    newOnThisPage++;
+                    outcome.ProductsFound++;
+                    newOnPage++;
                 }
             }
+            staleSincePages = newOnPage > 0 ? 0 : staleSincePages + 1;
 
-            // No new products on this page → we've looped back to already-seen results; stop.
-            if (newOnThisPage == 0) break;
-
-            if (total is null)
+            ReportProgress(outcome.Key, start, products.Count, outcome.SiteTotal, step);
+            guard ??= new PagingGuard(outcome.Key, null, outcome.SiteTotal, counterlessRepeatEndsListing: true);
+            var verdict = guard.Observe(parsed.Select(p => p.ExternalId).ToList(), start, tiles.Count);
+            outcome.StopReason = outcome.Result == OutcomeResult.ContentPage ? outcome.StopReason : guard.StopReason;
+            switch (verdict)
             {
-                var countText = document.QuerySelector(".product-count")?.TextContent;
-                total = ParseCount(countText);
+                case PagingVerdict.Loop:
+                    ReportLoop(guard, warnings);
+                    return;
+                case PagingVerdict.NaturalEnd:
+                    return;
             }
 
-            // Fewer tiles than requested means this is the last page.
-            if (tiles.Count < PageSize) break;
-
-            start += PageSize;
-            pageCount++;
-
-            // Safety cap: bail out if pagination produces an unexpectedly large number of pages.
-            if (pageCount >= MaxPagesPerCategory)
+            if (staleSincePages >= MaxPagesWithoutNewProducts)
             {
-                Logger.LogWarning(
-                    "Continente: hit page cap ({Max}) for category '{Cat}', stopping pagination",
-                    MaxPagesPerCategory, categorySlug);
-                break;
+                outcome.StopReason = $"{CoverageCheck.StagnationReason} {MaxPagesWithoutNewProducts} consecutive pages at offset {start}";
+                Logger.LogInformation("Continente: '{Cat}' stopped at offset {Start}: {Reason}",
+                    categorySlug, start, outcome.StopReason);
+                return;
             }
 
-            if (start < (total ?? int.MaxValue))
-                await Task.Delay(200, ct);
-
-        } while (start < (total ?? int.MaxValue));
+            // Advance by the site's page step, never past the tiles served (seen set dedupes the overlap).
+            start += Math.Min(step, tiles.Count);
+        }
     }
 
     private static ScrapedProduct? ParseTile(IElement tile)
@@ -306,11 +414,20 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
             return null;
         }
 
-        var pid = impression.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
-        var name = impression.TryGetProperty("name", out var nameEl) ? nameEl.GetString() : null;
-        var brand = impression.TryGetProperty("brand", out var brandEl) ? brandEl.GetString() : null;
-        var categoryPath = impression.TryGetProperty("category", out var catEl) ? catEl.GetString() : null;
-        decimal price = impression.TryGetProperty("price", out var priceEl) ? priceEl.GetDecimal() : 0;
+        // Fields can be JSON null or a different type; never let GetString/GetDecimal throw.
+        static string? ReadString(JsonElement el, string prop, bool allowNumber = false) =>
+            !el.TryGetProperty(prop, out var v) ? null
+            : v.ValueKind == JsonValueKind.String ? v.GetString()
+            : allowNumber && v.ValueKind == JsonValueKind.Number ? v.GetRawText()
+            : null;
+
+        var pid = ReadString(impression, "id", allowNumber: true);
+        var name = ReadString(impression, "name");
+        var brand = ReadString(impression, "brand");
+        var categoryPath = ReadString(impression, "category");
+        decimal price = impression.TryGetProperty("price", out var priceEl)
+            && priceEl.ValueKind == JsonValueKind.Number
+            && priceEl.TryGetDecimal(out var parsedPrice) ? parsedPrice : 0;
 
         if (string.IsNullOrEmpty(pid) || string.IsNullOrEmpty(name) || price <= 0)
             return null;
@@ -371,17 +488,45 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
             ? val : null;
     }
 
-    private static int? ParseCount(string? text)
+    private static int? ParseTotal(IDocument doc)
     {
-        if (string.IsNullOrWhiteSpace(text)) return null;
-        var match = CountDigits().Match(text);
-        if (!match.Success) return null;
-        var digits = match.Value.Replace(",", "").Replace(".", "");
-        return int.TryParse(digits, out var val) ? val : null;
+        var text = doc.QuerySelector(".search-results-products-counter")?.TextContent;
+        string? number = null;
+        if (!string.IsNullOrWhiteSpace(text))
+        {
+            var m = CounterRegex().Match(text);
+            if (m.Success) number = m.Groups[2].Value;
+        }
+        if (number is null)
+        {
+            var count = doc.QuerySelector(".product-count")?.TextContent;
+            if (!string.IsNullOrWhiteSpace(count))
+            {
+                var m = FirstNumberRegex().Match(count);
+                if (m.Success) number = m.Value;
+            }
+        }
+        if (number is null) return null;
+        var digits = number.Replace(",", "").Replace(".", "");
+        return int.TryParse(digits, out var val) && val > 0 ? val : null;
     }
 
-    [GeneratedRegex(@"[\d,.]+")]
-    private static partial Regex CountDigits();
+    /// <summary>The first-page counter's "shown" number ("35" in "35 de 1080"), which is the site's real page step.</summary>
+    private static int? ParseCounterStep(IDocument doc)
+    {
+        var text = doc.QuerySelector(".search-results-products-counter")?.TextContent;
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        var m = CounterRegex().Match(text);
+        if (!m.Success) return null;
+        var digits = m.Groups[1].Value.Replace(",", "").Replace(".", "");
+        return int.TryParse(digits, out var val) && val > 0 ? val : null;
+    }
+
+    [GeneratedRegex(@"(\d[\d.,]*)\s+de\s+([\d.,]+)\s+produtos", RegexOptions.IgnoreCase)]
+    private static partial Regex CounterRegex();
+
+    [GeneratedRegex(@"\d[\d.,]*")]
+    private static partial Regex FirstNumberRegex();
 
     // ---- DTOs for SFCC store finder response -----------------------------------
 

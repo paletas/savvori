@@ -7,6 +7,22 @@
 
 <h1 class="text-2xl font-bold mb-6">Admin Dashboard</h1>
 
+@if (Model.DegradedChains.Count > 0)
+{
+    <div role="alert" class="alert alert-error mb-6 overflow-hidden">
+        <div class="min-w-0 w-full">
+            <span class="font-bold">Scraping degraded:</span>
+            @foreach (var c in Model.DegradedChains)
+            {
+                <div class="truncate" title="@c.HealthReason">
+                    <a asp-page="/Admin/Scraping/Index" class="link font-bold">@(c.ChainName ?? c.ChainSlug)</a>
+                    <span>@c.HealthReason</span>
+                </div>
+            }
+        </div>
+    </div>
+}
+
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
     <a asp-page="/Admin/Scraping/Index" class="card bg-base-100 shadow hover:shadow-md transition-shadow cursor-pointer">
         <div class="card-body">

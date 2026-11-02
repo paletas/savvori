@@ -76,11 +76,11 @@ public sealed class EmbedJobHandler(
     public async Task HandleBatchAsync(IReadOnlyList<ModelJob> jobs, CancellationToken ct)
     {
         var ids = jobs.Select(j => j.SubjectId).Distinct().ToList();
-        var products = await db.StoreProducts.AsNoTracking().Where(sp => ids.Contains(sp.Id))
+        var products = await db.StoreProducts.AsNoTracking().Where(sp => ids.Contains(sp.Id) && sp.IsActive)
             .Select(sp => new { sp.Id, sp.Name, sp.Brand })
             .ToDictionaryAsync(sp => sp.Id, ct);
 
-        // A job whose product vanished, or whose text has changed since it was queued, is obsolete:
+        // A job whose product vanished or is inactive, or whose text has changed since it was queued, is obsolete:
         // the scan queues a fresh job for the new text. Completing it without work is correct and idempotent.
         var work = new List<(Guid Id, string Text, string Hash)>();
         foreach (var job in jobs)

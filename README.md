@@ -1,6 +1,6 @@
 ﻿# Savvori
 
-Savvori is a smart grocery shopping list API and web app for Portugal. It compares product prices across major Portuguese supermarkets — **Continente**, **Pingo Doce**, **Auchan**, **Lidl**, and **Celeiro** — and helps users find the cheapest way to fill their shopping lists.
+Savvori is a smart grocery shopping list API and web app for Portugal. It compares product prices across major Portuguese supermarkets — **Continente**, **Pingo Doce**, **Auchan**, and **Lidl** — and helps users find the cheapest way to fill their shopping lists.
 
 Built with ASP.NET Core .NET 10, orchestrated locally with .NET Aspire, SQLite via EF Core. There is no authentication — it is designed to run as a single-user app on a trusted network (e.g. a homelab).
 
@@ -117,7 +117,6 @@ Product prices are scraped from store websites **twice daily** via Quartz.NET ba
 | Pingo Doce | SFCC JSON endpoint | ✅ Implemented |
 | Auchan | SFCC + `data-gtm` attribute, page-based pagination | ✅ Implemented |
 | Lidl | JSON search API (`/q/api/search`) | ✅ Implemented |
-| Celeiro | Magento, `.product-item-info` microdata | ✅ Implemented |
 
 ## Notes
 

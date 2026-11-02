@@ -86,6 +86,41 @@ public class MatchingAdminTests : IClassFixture<SavvoriWebApiFactory>
     }
 
     [Fact]
+    public async Task Review_DefaultExcludesInactive_FilterInactiveLists_SummaryCounts()
+    {
+        var before = await Json(await _client.GetAsync("/api/admin/matching/summary", TestContext.Current.CancellationToken));
+        var inactiveBefore = before.GetProperty("inactiveUndecided").GetInt32();
+        int NeedsReview(JsonElement j) => j.GetProperty("byStatus").EnumerateArray()
+            .Where(x => x.GetProperty("status").GetString() == "NeedsReview").Select(x => x.GetProperty("count").GetInt32()).SingleOrDefault();
+        var reviewBefore = NeedsReview(before);
+
+        var active = SeedPair();
+        var gone = SeedPair();
+        _factory.SeedData(db =>
+        {
+            db.StoreProducts.Single(p => p.Id == gone.A).IsActive = false;
+            db.SaveChanges();
+        });
+
+        var def = await _client.GetAsync("/api/admin/matching/review?pageSize=50", TestContext.Current.CancellationToken);
+        var defIds = (await Json(def)).GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetGuid()).ToList();
+        Assert.Contains(active.Candidate, defIds);
+        Assert.DoesNotContain(gone.Candidate, defIds);
+
+        var inactive = await _client.GetAsync("/api/admin/matching/review?filter=inactive&pageSize=50", TestContext.Current.CancellationToken);
+        var items = (await Json(inactive)).GetProperty("items").EnumerateArray().ToList();
+        Assert.DoesNotContain(items, i => i.GetProperty("id").GetGuid() == active.Candidate);
+        var item = items.Single(i => i.GetProperty("id").GetGuid() == gone.Candidate);
+        Assert.True(item.GetProperty("inactive").GetBoolean());
+        var sides = new[] { item.GetProperty("a"), item.GetProperty("b") };
+        Assert.Contains(sides, x => !x.GetProperty("isActive").GetBoolean());
+
+        var after = await Json(await _client.GetAsync("/api/admin/matching/summary", TestContext.Current.CancellationToken));
+        Assert.Equal(inactiveBefore + 1, after.GetProperty("inactiveUndecided").GetInt32());
+        Assert.Equal(reviewBefore + 1, NeedsReview(after)); // only the active pair is added to the visible counts
+    }
+
+    [Fact]
     public async Task Accept_MergesTheTwoProducts_MarksThemManual_AndUndoRestores()
     {
         var s = SeedPair();

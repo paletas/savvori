@@ -354,15 +354,17 @@ public sealed class ScrapingWithModelDownTests : IDisposable
     {
         public string StoreChainSlug => "pingodoce";
 
-        public Task<IReadOnlyList<ScrapedProduct>> ScrapeProductsAsync(string? category = null, CancellationToken ct = default)
+        public Task<ScrapeRunResult> ScrapeProductsAsync(string? category = null, CancellationToken ct = default)
         {
             IReadOnlyList<ScrapedProduct> products =
             [
                 new ScrapedProduct("Leite Meio Gordo 1L", "Marca Teste", "leite", 1.09m, 1.09m, null, "t-1",
                     null, "https://example.test/1", false, null, ProductUnit.L, 1m)
             ];
-            return Task.FromResult(products);
+            return Task.FromResult(new ScrapeRunResult(products, [], []));
         }
+
+        public Task<CanaryResult> ProbeAsync(CancellationToken ct = default) => Task.FromResult(new CanaryResult(true, "ok", 0));
 
         public Task<IReadOnlyList<ScrapedStoreLocation>> ScrapeStoreLocationsAsync(CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<ScrapedStoreLocation>>([]);

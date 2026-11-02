@@ -10,7 +10,54 @@ public class ScrapingJob
     public DateTime? CompletedAt { get; set; }
     public int ProductsScraped { get; set; }
     public string? ErrorMessage { get; set; }
+    public int ProductsReturned { get; set; }
+    public string? HealthReason { get; set; }
+    public int WarningCount { get; set; }
+    public int StaleMarked { get; set; }
+    public bool StaleMarkingSkipped { get; set; }
+    public int? PreviousHealthyCount { get; set; }
+    public double? DropRatio { get; set; }
+
+    // Live progress, written while Status == Running and nulled on completion/failure.
+    public int? ProgressProductsSeen { get; set; }
+    public string? ProgressKey { get; set; }
+    public int? ProgressOffset { get; set; }
+    /// <summary>Site-declared total of a single-key run; null when the run has several keys or no declared total.</summary>
+    public int? ProgressTotal { get; set; }
+    public int? ProgressKeysDone { get; set; }
+    public int? ProgressKeysTotal { get; set; }
+    /// <summary>Pages fetched so far in the whole run.</summary>
+    public int? ProgressPagesDone { get; set; }
+    /// <summary>Pages fetched so far in the current key.</summary>
+    public int? ProgressKeyPages { get; set; }
+    /// <summary>Pages the current key is expected to have (declared total / page step), when known.</summary>
+    public int? ProgressKeyPagesTotal { get; set; }
+    /// <summary>Keys fully paged so far, as a JSON string array (to pair them with the last run's per-key pages).</summary>
+    public string? ProgressDoneKeys { get; set; }
+    public DateTime? LastProgressAt { get; set; }
+    /// <summary>Keep-alive written on a timer for the lifetime of the run, independent of page progress.</summary>
+    public DateTime? LastHeartbeatAt { get; set; }
+
     public List<ScrapingLog> Logs { get; set; } = new();
+    public List<ScrapingRunOutcome> Outcomes { get; set; } = new();
+}
+
+public class ScrapingRunOutcome
+{
+    public Guid Id { get; set; }
+    public Guid ScrapingJobId { get; set; }
+    public ScrapingJob ScrapingJob { get; set; } = null!;
+    public OutcomeKind Kind { get; set; }
+    public string Key { get; set; } = "";
+    public string Url { get; set; } = "";
+    public OutcomeResult Result { get; set; }
+    public int PagesFetched { get; set; }
+    public int ProductsFound { get; set; }
+    public int TilesSeen { get; set; }
+    public int Retries { get; set; }
+    public string StatusCounts { get; set; } = "";
+    public string? FirstError { get; set; }
+    public string? StopReason { get; set; }
 }
 
 public class ScrapingLog

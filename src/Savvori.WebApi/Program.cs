@@ -1,3 +1,4 @@
+using System.Net;
 using Microsoft.EntityFrameworkCore;
 using Quartz;
 using Savvori.Shared;
@@ -14,6 +15,7 @@ builder.AddServiceDefaults();
 // Register scraping and model ActivitySources/Meters with the OTel pipeline. Microsoft.EntityFrameworkCore is
 // EF Core's own built-in meter (query counts/duration, active DbContexts) - no package needed, just AddMeter.
 builder.Services.AddSingleton<ScrapingTelemetry>();
+builder.Services.AddHostedService<ScrapingTelemetrySampler>();
 builder.Services.AddOpenTelemetry()
     .WithTracing(t => t.AddSource(ScrapingTelemetry.ActivitySourceName).AddSource(ModelTelemetry.ActivitySourceName))
     .WithMetrics(m => m
@@ -35,6 +37,12 @@ builder.Services.AddDbContext<SavvoriDbContext>(opts => opts.UseSqlite(connectio
 builder.Services.AddControllers();
 
 // --- Scraping infrastructure ---
+// Advertise and decode gzip/deflate/br: category pages are ~3.4 MB uncompressed and stall past the timeout otherwise.
+static HttpMessageHandler ScraperPrimaryHandler() => new SocketsHttpHandler
+{
+    AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate | DecompressionMethods.Brotli
+};
+
 builder.Services.AddHttpClient("continente", c =>
 {
     c.BaseAddress = new Uri("https://www.continente.pt");
@@ -42,7 +50,8 @@ builder.Services.AddHttpClient("continente", c =>
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
     c.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "pt-PT,pt;q=0.9");
     c.Timeout = TimeSpan.FromSeconds(60);
-});
+})
+.ConfigurePrimaryHttpMessageHandler(ScraperPrimaryHandler);
 
 builder.Services.AddHttpClient("pingodoce", c =>
 {
@@ -51,7 +60,8 @@ builder.Services.AddHttpClient("pingodoce", c =>
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
     c.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "pt-PT,pt;q=0.9");
     c.Timeout = TimeSpan.FromSeconds(60);
-});
+})
+.ConfigurePrimaryHttpMessageHandler(ScraperPrimaryHandler);
 
 builder.Services.AddHttpClient("auchan", c =>
 {
@@ -60,16 +70,8 @@ builder.Services.AddHttpClient("auchan", c =>
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
     c.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "pt-PT,pt;q=0.9");
     c.Timeout = TimeSpan.FromSeconds(60);
-});
-
-builder.Services.AddHttpClient("celeiro", c =>
-{
-    c.BaseAddress = new Uri("https://www.celeiro.pt");
-    c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
-    c.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "pt-PT,pt;q=0.9");
-    c.Timeout = TimeSpan.FromSeconds(60);
-});
+})
+.ConfigurePrimaryHttpMessageHandler(ScraperPrimaryHandler);
 
 builder.Services.AddHttpClient("lidl", c =>
 {
@@ -78,7 +80,8 @@ builder.Services.AddHttpClient("lidl", c =>
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
     c.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "pt-PT,pt;q=0.9");
     c.Timeout = TimeSpan.FromSeconds(60);
-});
+})
+.ConfigurePrimaryHttpMessageHandler(ScraperPrimaryHandler);
 
 builder.Services.AddScoped<ScraperResultProcessor>();
 builder.Services.AddScoped<TaxonomyMigrationService>();
@@ -89,7 +92,6 @@ builder.Services.AddScoped<ProductMergeResolver>();
 builder.Services.AddScoped<IStoreScraper, ContinenteScraper>();
 builder.Services.AddScoped<IStoreScraper, PingoDoceScraper>();
 builder.Services.AddScoped<IStoreScraper, AuchanScraper>();
-builder.Services.AddScoped<IStoreScraper, CeleiroScraper>();
 builder.Services.AddScoped<IStoreScraper, LidlScraper>();
 
 // Location and optimization services
@@ -265,4 +267,6 @@ public class ScrapingChainConfig
     public bool ScrapeLocations { get; set; } = true;
     public string? MorningCron { get; set; }
     public string? EveningCron { get; set; }
+    public int? GraceDays { get; set; }
+    public int EffectiveGraceDays => GraceDays ?? (Slug == "lidl" ? 14 : 3);
 }

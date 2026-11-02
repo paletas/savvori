@@ -45,6 +45,7 @@ public sealed class MatchingService(
         var eligible = await db.MatchCandidates
             .Where(c => c.ModelName == opts.EmbeddingModel && (info == null || c.ModelDigest == info.ModelDigest) &&
                         (c.Status == CandidateStatus.Proposed || c.Status == CandidateStatus.PendingJudge))
+            .ExcludingInactiveUndecided(db)
             .OrderByDescending(c => c.Cosine)
             .ToListAsync(ct);
 
@@ -93,6 +94,7 @@ public sealed class MatchingService(
         foreach (var c in candidates)
         {
             if (!products.TryGetValue(c.StoreProductAId, out var a) || !products.TryGetValue(c.StoreProductBId, out var b)) continue;
+            if (!a.IsActive || !b.IsActive) continue; // inactive side: no model call
             c.Status = CandidateStatus.PendingJudge;
             jobs.Add((c.Id, JudgeInputs.Build(a, b, judgeModel).Hash));
         }
@@ -123,6 +125,7 @@ public sealed class JudgeJobHandler(
             var a = await db.StoreProducts.Include(sp => sp.StoreChain).FirstOrDefaultAsync(sp => sp.Id == c.StoreProductAId, ct);
             var b = await db.StoreProducts.Include(sp => sp.StoreChain).FirstOrDefaultAsync(sp => sp.Id == c.StoreProductBId, ct);
             if (a is null || b is null) return;
+            if (!a.IsActive || !b.IsActive) return; // inactive side: complete as skipped, no model call, not dead-lettered
             var opts = options.Value;
             var (ia, ib, hash) = JudgeInputs.Build(a, b, opts.PairJudgeModel);
             if (hash != job.PayloadHash) return; // the listings changed since queueing; the next matching run re-queues

@@ -25,6 +25,7 @@
     <Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Fixtures\*.html" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Fixtures\*.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Fixtures\*.xml" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
