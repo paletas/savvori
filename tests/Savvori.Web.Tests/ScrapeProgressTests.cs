@@ -28,6 +28,40 @@ public class ProgressThrottleTests
         now += TimeSpan.FromSeconds(1).Ticks;
         Assert.False(t.ShouldEmit());
     }
+
+    [Fact]
+    public void LinuxNanosecondClock_KeepsEmittingAcrossTheOldOverflowPoint()
+    {
+        // Stopwatch.Frequency is 1e9 on Linux: the old `ts * TicksPerSecond / Frequency` overflowed a long once
+        // ts passed 2^63 / 1e7 ns (~922 s of uptime) and then wrapped every ~1844.67 s, gating emits for ~30 min.
+        const long freq = 1_000_000_000;
+        long ts = (long.MaxValue / TimeSpan.TicksPerSecond) - 5 * freq; // 5 s before the old wrap point
+        Assert.True(OldClock(ts, freq) > 0); // sanity: still fine here
+        var t = new ProgressThrottle(TimeSpan.FromSeconds(1), () => ts, freq);
+        var emitted = 0;
+        for (var i = 0; i < 40; i++)           // 40 s of one-per-second pages straddling the wrap
+        {
+            if (t.ShouldEmit()) emitted++;
+            ts += freq;
+        }
+        Assert.Equal(40, emitted);
+        Assert.True(OldClock(ts, freq) < OldClock(ts - 40 * freq, freq)); // the old formula really went backwards
+
+        static long OldClock(long raw, long f) => unchecked(raw * TimeSpan.TicksPerSecond / f);
+    }
+
+    [Fact]
+    public void LinuxNanosecondClock_FarFromZero_StillGatesWithinInterval()
+    {
+        const long freq = 1_000_000_000;
+        long ts = 4_000_000_000_000_000_000; // ~46 days of uptime
+        var t = new ProgressThrottle(TimeSpan.FromSeconds(15), () => ts, freq);
+        Assert.True(t.ShouldEmit());
+        ts += 14 * freq;
+        Assert.False(t.ShouldEmit());
+        ts += 1 * freq;
+        Assert.True(t.ShouldEmit());
+    }
 }
 
 public class ScrapeProgressEstimatorTests
@@ -135,6 +169,88 @@ public class ScrapeProgressEstimatorTests
         Assert.Equal(20, ScrapeProgressEstimator.PreviousHealthyCount(jobs, cur.Id));
     }
 
+    private static ScrapingJob MultiKey(Action<ScrapingJob>? tweak = null) => Running(j =>
+    {
+        j.ProgressKeysTotal = 4;
+        j.ProgressKeysDone = 1;
+        j.ProgressDoneKeys = "[\"a\"]";
+        j.ProgressKey = "b";
+        j.ProgressPagesDone = 12;   // a: 10 pages, b: 2 so far
+        j.ProgressKeyPages = 2;
+        tweak?.Invoke(j);
+    });
+
+    private static readonly DateTime Now = Start.AddSeconds(120); // 10 s per page
+
+    [Fact]
+    public void MultiKey_WithHistory_WeighsRemainingKeysByLastRunPages()
+    {
+        var hist = new Dictionary<string, int> { ["a"] = 10, ["b"] = 8, ["c"] = 100, ["d"] = 1 };
+        var v = ScrapeProgressEstimator.Build(MultiKey(), null, Now, Threshold, hist)!;
+        // current key remainder 8-2=6, plus c and d = 101 -> 107 pages x 10 s
+        Assert.Equal(1070, v.EtaSeconds!.Value, 3);
+        Assert.True(v.EtaIsEstimate);
+        Assert.True(v.TotalIsEstimate);
+    }
+
+    [Fact]
+    public void MultiKey_NoHistory_UsesDeclaredCurrentKeyThenFinishedKeyAverage()
+    {
+        var v = ScrapeProgressEstimator.Build(MultiKey(j => j.ProgressKeyPagesTotal = 5), null, Now, Threshold)!;
+        // current: 5-2=3; two unknown keys at the finished-key average (10) = 20 -> 23 pages
+        Assert.Equal(230, v.EtaSeconds!.Value, 3);
+    }
+
+    [Fact]
+    public void MultiKey_NoHistoryNoDeclared_CurrentKeyAssumedAverage()
+    {
+        var v = ScrapeProgressEstimator.Build(MultiKey(), null, Now, Threshold)!;
+        // current: avg 10 - 2 = 8; two keys x 10 = 20 -> 28 pages
+        Assert.Equal(280, v.EtaSeconds!.Value, 3);
+    }
+
+    [Fact]
+    public void MultiKey_ContentPageKeysOfOnePage_AreNotInflated()
+    {
+        var hist = new Dictionary<string, int> { ["a"] = 10, ["b"] = 3, ["c"] = 1, ["d"] = 1 };
+        var v = ScrapeProgressEstimator.Build(MultiKey(), null, Now, Threshold, hist)!;
+        Assert.Equal(30, v.EtaSeconds!.Value, 3); // (3-2) + 1 + 1 = 3 pages
+    }
+
+    [Fact]
+    public void MultiKey_CurrentKeyPastHistory_RemainderIsZeroNotNegative()
+    {
+        var hist = new Dictionary<string, int> { ["a"] = 10, ["b"] = 1, ["c"] = 4, ["d"] = 4 };
+        var v = ScrapeProgressEstimator.Build(MultiKey(), null, Now, Threshold, hist)!;
+        Assert.Equal(80, v.EtaSeconds!.Value, 3); // 0 + 4 + 4
+    }
+
+    [Fact]
+    public void MultiKey_ElapsedAnchoredToNow_NotLastProgressAt()
+    {
+        var job = MultiKey(j => j.LastProgressAt = Start.AddSeconds(30));
+        var v = ScrapeProgressEstimator.Build(job, null, Now, Threshold)!;
+        Assert.Equal(280, v.EtaSeconds!.Value, 3);
+    }
+
+    [Fact]
+    public void SingleKeyDeclaredTotal_UsesOffsetOverTotal()
+    {
+        var v = ScrapeProgressEstimator.Build(
+            Running(j => { j.ProgressTotal = 2000; j.ProgressOffset = 500; j.ProgressKeysTotal = 1; j.ProgressPagesDone = 21; }),
+            null, Start.AddSeconds(100), Threshold)!;
+        Assert.Equal(300, v.EtaSeconds!.Value, 3); // 500 in 100 s -> 1500 left
+        Assert.False(v.EtaIsEstimate);
+        Assert.False(v.TotalIsEstimate);
+    }
+
+    [Fact]
+    public void MultiKey_NothingKnown_EtaNull()
+    {
+        var job = MultiKey(j => { j.ProgressKeysDone = 0; j.ProgressDoneKeys = null; j.ProgressPagesDone = 2; });
+        Assert.Null(ScrapeProgressEstimator.Build(job, null, Now, Threshold)!.EtaSeconds);
+    }
+
     [Fact]
     public void StatusDto_DeserializesProgressFields()
     {
@@ -165,7 +281,7 @@ public class BaseScraperProgressTests
             => throw new NotImplementedException();
         public void Begin() => BeginRun();
         public void Keys(int n) => SetKeysTotal(n);
-        public void Page(string key, int seen, int? total = null) => ReportProgress(key, 0, seen, total);
+        public void Page(string key, int seen, int? total = null, int? step = null) => ReportProgress(key, 0, seen, total, step);
         public void Done(string key, int seen) => ReportKeyDone(key, seen);
     }
 
@@ -188,6 +304,25 @@ public class BaseScraperProgressTests
         Assert.Equal(100, got[0].KeySiteTotal);
         Assert.Equal((1, 3), (got[1].KeysDone, got[1].KeysTotal));
         Assert.Equal((2, 3), (got[2].KeysDone, got[2].KeysTotal));
+    }
+
+    [Fact]
+    public void PageCounters_CarriedPerKey_WithDoneKeysAndExpectedPages()
+    {
+        var p = new Probe { ProgressInterval = TimeSpan.Zero };
+        var got = new List<ScrapeProgress>();
+        p.ProgressSink = got.Add;
+        p.Begin();
+        p.Keys(2);
+        p.Page("a", 10, 100, 48);
+        p.Page("a", 20, 100, 48);
+        p.Done("a", 20);
+        p.Page("b", 30);
+
+        Assert.Equal(3, got[0].KeyPagesTotal); // ceil(100/48)
+        Assert.Equal((2, 2), (got[1].PagesDone, got[1].KeyPages));
+        Assert.Equal(["a"], got[2].DoneKeys);
+        Assert.Equal((3, 1, null), (got[3].PagesDone, got[3].KeyPages, got[3].KeyPagesTotal));
     }
 
     [Fact]
