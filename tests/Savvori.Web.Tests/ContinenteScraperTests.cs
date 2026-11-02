@@ -36,6 +36,23 @@ public class ContinenteScraperTests
         "<sitemapindex xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"><sitemap><loc>https://www.continente.pt/sitemap-categories.xml</loc></sitemap></sitemapindex>";
 
     [Fact]
+    public async Task Continente_ReportsProgressAfterEveryPage_NotOnlyWhenKeyEnds()
+    {
+        var (scraper, _) = CreateScraper();
+        scraper.ProgressInterval = TimeSpan.Zero;
+        var snaps = new List<Savvori.WebApi.Scraping.ScrapeProgress>();
+        scraper.ProgressSink = snaps.Add;
+        var result = await scraper.ScrapeProductsAsync("leite", CancellationToken.None);
+        var o = Assert.Single(result.Outcomes);
+        Assert.True(o.PagesFetched >= 1);
+        var pageSnaps = snaps.Where(s => s.KeysDone == 0).ToList();
+        Assert.Equal(o.PagesFetched, pageSnaps.Count);
+        Assert.Equal(Enumerable.Range(1, pageSnaps.Count), pageSnaps.Select(s => s.PagesDone));
+        Assert.All(pageSnaps, s => Assert.Equal("leite", s.Key));
+        Assert.True(pageSnaps[0].ProductsSeen > 0);
+    }
+
+    [Fact]
     public async Task Continente_Probe_Ok()
     {
         var (scraper, handler) = CreateScraper();

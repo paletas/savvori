@@ -123,7 +123,7 @@ public sealed partial class AuchanScraper : BaseHttpScraper
                 }
             }
 
-            ReportProgress(outcome.Key, offset, products.Count, outcome.SiteTotal);
+            ReportProgress(outcome.Key, offset, products.Count, outcome.SiteTotal, PageSize);
             guard ??= new PagingGuard(outcome.Key, PageSize, outcome.SiteTotal);
             var verdict = guard.Observe(parsed.Select(p => p.ExternalId).ToList(), offset, tiles.Count);
             outcome.StopReason = guard.StopReason;

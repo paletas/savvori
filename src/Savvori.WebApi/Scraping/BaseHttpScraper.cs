@@ -93,6 +93,10 @@ public abstract class BaseHttpScraper : IStoreScraper
     private TimeSpan _throttleInterval;
     private int _keysDone;
     private int? _keysTotal;
+    private int _pagesDone;
+    private int _keyPages;
+    private string? _progressKey;
+    private readonly List<string> _doneKeys = [];
 
     private readonly Stopwatch _runClock = new();
     private readonly SemaphoreSlim _spacingGate = new(1, 1);
@@ -110,6 +114,10 @@ public abstract class BaseHttpScraper : IStoreScraper
         RequestsUsed = 0;
         _keysDone = 0;
         _keysTotal = null;
+        _pagesDone = 0;
+        _keyPages = 0;
+        _progressKey = null;
+        _doneKeys.Clear();
         _progressThrottle = null;
         _runClock.Restart();
     }
@@ -117,15 +125,28 @@ public abstract class BaseHttpScraper : IStoreScraper
     /// <summary>Declares how many keys (categories/sections) the run will visit.</summary>
     protected void SetKeysTotal(int keysTotal) => _keysTotal = keysTotal;
 
-    /// <summary>Reports progress after a page; throttled to <see cref="ProgressInterval"/>.</summary>
-    protected void ReportProgress(string key, int offset, int productsSeen, int? keySiteTotal)
-        => Emit(new ScrapeProgress(productsSeen, key, offset, keySiteTotal, _keysDone, _keysTotal), force: false);
+    /// <summary>
+    /// Reports progress after a page; throttled to <see cref="ProgressInterval"/>. Call once per fetched page;
+    /// <paramref name="pageStep"/> (products per page) lets the declared total become an expected page count.
+    /// </summary>
+    protected void ReportProgress(string key, int offset, int productsSeen, int? keySiteTotal, int? pageStep = null)
+    {
+        if (key != _progressKey) { _progressKey = key; _keyPages = 0; }
+        _pagesDone++;
+        _keyPages++;
+        int? keyPagesTotal = keySiteTotal is > 0 && pageStep is > 0 ? (keySiteTotal.Value + pageStep.Value - 1) / pageStep.Value : null;
+        Emit(new ScrapeProgress(productsSeen, key, offset, keySiteTotal, _keysDone, _keysTotal,
+            _pagesDone, _keyPages, keyPagesTotal, _doneKeys.ToArray()), force: false);
+    }
 
     /// <summary>Counts a finished key and reports immediately.</summary>
     protected void ReportKeyDone(string key, int productsSeen)
     {
         _keysDone++;
-        Emit(new ScrapeProgress(productsSeen, key, 0, null, _keysDone, _keysTotal), force: true);
+        _doneKeys.Add(key);
+        if (key != _progressKey) { _progressKey = key; _keyPages = 0; }
+        Emit(new ScrapeProgress(productsSeen, key, 0, null, _keysDone, _keysTotal,
+            _pagesDone, _keyPages, null, _doneKeys.ToArray()), force: true);
     }
 
     private void Emit(ScrapeProgress progress, bool force)
@@ -137,8 +158,8 @@ public abstract class BaseHttpScraper : IStoreScraper
             if (_progressThrottle is null || _throttleInterval != ProgressInterval)
             {
                 _throttleInterval = ProgressInterval;
-                _progressThrottle = new ProgressThrottle(ProgressInterval,
-                    () => Stopwatch.GetTimestamp() * TimeSpan.TicksPerSecond / Stopwatch.Frequency);
+                // Raw timestamp + its frequency: multiplying a Linux ns timestamp by TicksPerSecond overflows a long.
+                _progressThrottle = new ProgressThrottle(ProgressInterval, Stopwatch.GetTimestamp, Stopwatch.Frequency);
             }
             if (!_progressThrottle.ShouldEmit() && !force) return;
             sink(progress);
