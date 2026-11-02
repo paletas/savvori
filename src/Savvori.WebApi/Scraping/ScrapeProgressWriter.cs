@@ -51,6 +51,7 @@ public sealed class ScrapeProgressWriter : IAsyncDisposable
             try
             {
                 // A declared total only makes sense when the whole run is one key.
+                var doneKeysJson = p.DoneKeys is null ? null : System.Text.Json.JsonSerializer.Serialize(p.DoneKeys);
                 int? total = p.KeysTotal is 1 && p.KeySiteTotal is > 0 ? p.KeySiteTotal : null;
                 await WriteAsync(j =>
                 {
@@ -60,6 +61,10 @@ public sealed class ScrapeProgressWriter : IAsyncDisposable
                     j.ProgressTotal = total ?? j.ProgressTotal;
                     j.ProgressKeysDone = p.KeysDone;
                     j.ProgressKeysTotal = p.KeysTotal;
+                    j.ProgressPagesDone = p.PagesDone;
+                    j.ProgressKeyPages = p.KeyPages;
+                    j.ProgressKeyPagesTotal = p.KeyPagesTotal;
+                    j.ProgressDoneKeys = doneKeysJson;
                     j.LastProgressAt = DateTime.UtcNow;
                 });
             }
@@ -89,6 +94,10 @@ public sealed class ScrapeProgressWriter : IAsyncDisposable
             j.ProgressTotal = null;
             j.ProgressKeysDone = null;
             j.ProgressKeysTotal = null;
+            j.ProgressPagesDone = null;
+            j.ProgressKeyPages = null;
+            j.ProgressKeyPagesTotal = null;
+            j.ProgressDoneKeys = null;
             j.LastProgressAt = null;
             j.LastHeartbeatAt = null;
         });
