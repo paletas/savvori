@@ -5,9 +5,16 @@ public static class CoverageCheck
 {
     public const double Threshold = 0.80;
 
+    /// <summary>Stop reason prefix of a listing ended because it only yielded products already seen.</summary>
+    public const string StagnationReason = "no new products for";
+
     public static IReadOnlyList<string> Evaluate(IReadOnlyList<ScrapeOutcome> outcomes)
     {
-        var withTotal = outcomes.Where(o => o.SiteTotal > 0).ToList();
+        // Listings that stagnated (only repeats of products listed elsewhere, typically catalog-wide search or
+        // campaign views declaring the whole catalog as their total) say nothing about missing products.
+        var withTotal = outcomes
+            .Where(o => o.SiteTotal > 0 && o.StopReason?.StartsWith(StagnationReason, StringComparison.Ordinal) != true)
+            .ToList();
 
         static string Norm(string key)
         {

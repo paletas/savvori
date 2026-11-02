@@ -388,7 +388,7 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
 
             if (staleSincePages >= MaxPagesWithoutNewProducts)
             {
-                outcome.StopReason = $"no new products for {MaxPagesWithoutNewProducts} consecutive pages at offset {start}";
+                outcome.StopReason = $"{CoverageCheck.StagnationReason} {MaxPagesWithoutNewProducts} consecutive pages at offset {start}";
                 Logger.LogInformation("Continente: '{Cat}' stopped at offset {Start}: {Reason}",
                     categorySlug, start, outcome.StopReason);
                 return;
