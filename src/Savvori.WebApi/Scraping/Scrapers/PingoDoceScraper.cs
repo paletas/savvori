@@ -194,7 +194,7 @@ public sealed partial class PingoDoceScraper : BaseHttpScraper
             }
 
             // The ajax tiles show no counter, so there is no per-section total; the API falls back to the last healthy run.
-            ReportProgress(outcome.Key, start, products.Count, null);
+            ReportProgress(outcome.Key, start, products.Count, null, PageSize);
             guard ??= new PagingGuard(outcome.Key, PageSize, null);
             var verdict = guard.Observe(parsed.Select(p => p.ExternalId).ToList(), start, tiles.Count);
             outcome.StopReason = outcome.Result == OutcomeResult.ContentPage ? outcome.StopReason : guard.StopReason;

@@ -373,7 +373,7 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
             }
             staleSincePages = newOnPage > 0 ? 0 : staleSincePages + 1;
 
-            ReportProgress(outcome.Key, start, products.Count, outcome.SiteTotal);
+            ReportProgress(outcome.Key, start, products.Count, outcome.SiteTotal, step);
             guard ??= new PagingGuard(outcome.Key, null, outcome.SiteTotal, counterlessRepeatEndsListing: true);
             var verdict = guard.Observe(parsed.Select(p => p.ExternalId).ToList(), start, tiles.Count);
             outcome.StopReason = outcome.Result == OutcomeResult.ContentPage ? outcome.StopReason : guard.StopReason;
