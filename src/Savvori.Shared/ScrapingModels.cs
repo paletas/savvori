@@ -26,6 +26,14 @@ public class ScrapingJob
     public int? ProgressTotal { get; set; }
     public int? ProgressKeysDone { get; set; }
     public int? ProgressKeysTotal { get; set; }
+    /// <summary>Pages fetched so far in the whole run.</summary>
+    public int? ProgressPagesDone { get; set; }
+    /// <summary>Pages fetched so far in the current key.</summary>
+    public int? ProgressKeyPages { get; set; }
+    /// <summary>Pages the current key is expected to have (declared total / page step), when known.</summary>
+    public int? ProgressKeyPagesTotal { get; set; }
+    /// <summary>Keys fully paged so far, as a JSON string array (to pair them with the last run's per-key pages).</summary>
+    public string? ProgressDoneKeys { get; set; }
     public DateTime? LastProgressAt { get; set; }
     /// <summary>Keep-alive written on a timer for the lifetime of the run, independent of page progress.</summary>
     public DateTime? LastHeartbeatAt { get; set; }

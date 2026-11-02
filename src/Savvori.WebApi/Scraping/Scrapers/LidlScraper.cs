@@ -136,7 +136,7 @@ public sealed partial class LidlScraper : BaseHttpScraper
                     }
                 }
 
-                ReportProgress(outcome.Key, offset, products.Count, outcome.SiteTotal);
+                ReportProgress(outcome.Key, offset, products.Count, outcome.SiteTotal, FetchSize);
                 guard ??= new PagingGuard(outcome.Key, FetchSize, numFound > 0 ? numFound : null);
                 var verdict = guard.Observe(ids, offset, items.GetArrayLength());
                 outcome.StopReason = guard.StopReason;

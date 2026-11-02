@@ -583,8 +583,17 @@ namespace Savvori.WebApi.Migrations
                     b.Property<int>("ProductsScraped")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("ProgressDoneKeys")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ProgressKey")
                         .HasColumnType("TEXT");
+
+                    b.Property<int?>("ProgressKeyPages")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ProgressKeyPagesTotal")
+                        .HasColumnType("INTEGER");
 
                     b.Property<int?>("ProgressKeysDone")
                         .HasColumnType("INTEGER");
@@ -593,6 +602,9 @@ namespace Savvori.WebApi.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<int?>("ProgressOffset")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ProgressPagesDone")
                         .HasColumnType("INTEGER");
 
                     b.Property<int?>("ProgressProductsSeen")

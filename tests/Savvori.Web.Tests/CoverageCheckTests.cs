@@ -37,4 +37,12 @@ public sealed class CoverageCheckTests
         Assert.Contains("worst: p 10% (10 of 100), q 20% (20 of 100), r 30% (30 of 100)", w);
         Assert.DoesNotContain("s 40%", w);
     }
+
+    [Fact]
+    public void StagnatedListings_AreExcluded()
+    {
+        var meta = O(69733, 350, "pesquisa");
+        meta.StopReason = "no new products for 10 consecutive pages at offset 315";
+        Assert.Empty(CoverageCheck.Evaluate([O(100, 100, "a"), meta]));
+    }
 }

@@ -373,7 +373,7 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
             }
             staleSincePages = newOnPage > 0 ? 0 : staleSincePages + 1;
 
-            ReportProgress(outcome.Key, start, products.Count, outcome.SiteTotal);
+            ReportProgress(outcome.Key, start, products.Count, outcome.SiteTotal, step);
             guard ??= new PagingGuard(outcome.Key, null, outcome.SiteTotal, counterlessRepeatEndsListing: true);
             var verdict = guard.Observe(parsed.Select(p => p.ExternalId).ToList(), start, tiles.Count);
             outcome.StopReason = outcome.Result == OutcomeResult.ContentPage ? outcome.StopReason : guard.StopReason;
@@ -388,7 +388,7 @@ public sealed partial class ContinenteScraper : BaseHttpScraper
 
             if (staleSincePages >= MaxPagesWithoutNewProducts)
             {
-                outcome.StopReason = $"no new products for {MaxPagesWithoutNewProducts} consecutive pages at offset {start}";
+                outcome.StopReason = $"{CoverageCheck.StagnationReason} {MaxPagesWithoutNewProducts} consecutive pages at offset {start}";
                 Logger.LogInformation("Continente: '{Cat}' stopped at offset {Start}: {Reason}",
                     categorySlug, start, outcome.StopReason);
                 return;

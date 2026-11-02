@@ -79,6 +79,16 @@ public class ScrapingAdminController : ControllerBase
             }
         }
 
+        // Per-key pages of each running chain's last healthy run, weighting the ETA of the keys still to do.
+        var prevJobIds = latestByChain.Values
+            .Where(j => j.Status == Savvori.Shared.ScrapingJobStatus.Running)
+            .Select(j => ScrapeProgressEstimator.PreviousHealthyJobId(latestJobs.Where(x => x.StoreChainId == j.StoreChainId), j.Id))
+            .Where(id => id is not null).Select(id => id!.Value).ToList();
+        var prevPageRows = prevJobIds.Count == 0 ? [] : await _db.ScrapingRunOutcomes
+            .Where(o => prevJobIds.Contains(o.ScrapingJobId))
+            .Select(o => new { o.ScrapingJobId, o.Key, o.PagesFetched })
+            .ToListAsync(ct);
+
         var stalledAfter = TimeSpan.FromSeconds(
             _config.GetValue<double?>("Scraping:StalledAfterSeconds") ?? ScrapeProgressEstimator.DefaultStalledAfter.TotalSeconds);
         var now = DateTime.UtcNow;
@@ -86,9 +96,14 @@ public class ScrapingAdminController : ControllerBase
         var result = chains.Select(chain =>
         {
             latestByChain.TryGetValue(chain.Id, out var job);
+            var chainJobs = latestJobs.Where(j => j.StoreChainId == chain.Id).ToList();
+            IReadOnlyDictionary<string, int>? prevPages = null;
+            if (job is not null && ScrapeProgressEstimator.PreviousHealthyJobId(chainJobs, job.Id) is { } prevId)
+                prevPages = prevPageRows.Where(o => o.ScrapingJobId == prevId)
+                    .GroupBy(o => o.Key).ToDictionary(g => g.Key, g => g.Sum(o => o.PagesFetched));
             var progress = job is null ? null : ScrapeProgressEstimator.Build(
-                job, ScrapeProgressEstimator.PreviousHealthyCount(latestJobs.Where(j => j.StoreChainId == chain.Id), job.Id),
-                now, stalledAfter);
+                job, ScrapeProgressEstimator.PreviousHealthyCount(chainJobs, job.Id),
+                now, stalledAfter, prevPages);
             nextFireTimes.TryGetValue(chain.Slug, out var nextFire);
 
             return new
