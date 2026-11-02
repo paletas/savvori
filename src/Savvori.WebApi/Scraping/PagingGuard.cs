@@ -20,6 +20,7 @@ public sealed class PagingGuard
     private readonly HashSet<string> _seen = [];
     private List<string> _previous = [];
     private string? _firstPageFirstId;
+    private HashSet<string> _firstPageIds = [];
     private readonly bool _counterlessRepeatEndsListing;
     private int _consecutiveAllSeen;
 
@@ -65,7 +66,7 @@ public sealed class PagingGuard
     /// (1b) tiles served but none parsed skips rules 2-5 and goes to rule 6;
     /// (2) on any page after the first, the same id list as the previous page means we asked again and got the same thing
     /// (without a declared total and with the counterless flag, page 2 repeating page 1 is a natural end);
-    /// (3) on any page after the first, the first id being the one seen at the very start means the site ignored our offset (same exception);
+    /// (3) on any page after the first, the first id being the one seen at the very start and at least half of the ids coming from page 1 means the site ignored our offset (same exception; a shared prefix of pinned tiles alone is not enough, Continente repeats ~12 on every page);
     /// (4) a page whose ids have all been counted before brings nothing new (below a declared total up to
     /// <see cref="AllSeenTolerance"/> consecutive such pages are tolerated, see there);
     /// (5) without a declared total, a page with fewer raw tiles than the requested size is the last page;
@@ -92,7 +93,7 @@ public sealed class PagingGuard
                     : Finish(ids, PagingVerdict.Loop, "repeated page", requestedOffset);
 
             // (3)
-            if (PageNumber > 1 && ids[0] == _firstPageFirstId)
+            if (PageNumber > 1 && ids[0] == _firstPageFirstId && MostlyFromFirstPage(ids))
                 return landing
                     ? Finish(ids, PagingVerdict.NaturalEnd, landingText, requestedOffset)
                     : Finish(ids, PagingVerdict.Loop, "offset ignored", requestedOffset);
@@ -151,8 +152,14 @@ public sealed class PagingGuard
 
         _previous = ids.ToList();
         if (PageNumber == 1 && ids.Count > 0)
+        {
             _firstPageFirstId = ids[0];
+            _firstPageIds = [.. ids];
+        }
 
         return verdict;
     }
+
+    private bool MostlyFromFirstPage(IReadOnlyList<string> ids) =>
+        ids.Count(_firstPageIds.Contains) * 2 >= ids.Count;
 }

@@ -26,6 +26,17 @@ public class PagingGuardTests
     }
 
     [Fact]
+    public void PinnedPrefix_IsNotOffsetIgnored()
+    {
+        // Continente: every page starts with the same pinned tiles, then 35 real ones that differ.
+        string[] pinned = [.. Ids("p", 12)];
+        var g = new PagingGuard("cat-x", 48, 1080);
+        Assert.Equal(PagingVerdict.Continue, g.Observe([.. pinned, .. Ids("a", 35)], 0, 47));
+        Assert.Equal(PagingVerdict.Continue, g.Observe([.. pinned, .. Ids("b", 35)], 35, 47));
+        Assert.Equal(PagingVerdict.Loop, g.Observe([.. pinned, .. Ids("a", 35)], 70, 47));
+    }
+
+    [Fact]
     public void Loop_NoNewProducts()
     {
         var g = new PagingGuard("cat-x", 2, null);
