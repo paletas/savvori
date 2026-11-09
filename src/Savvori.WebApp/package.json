@@ -10,8 +10,8 @@
     "htmx.org": "^2.0.4"
   },
   "devDependencies": {
-    "@tailwindcss/cli": "^4.3.3",
-    "daisyui": "^5.7.47",
+    "@tailwindcss/cli": "^4.3.4",
+    "daisyui": "^5.7.50",
     "tailwindcss": "^4.3.3"
   }
 }
