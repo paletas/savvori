@@ -21,7 +21,7 @@ COPY --from=css /src/src/Savvori.WebApp/wwwroot/css/site.css src/Savvori.WebApp/
 COPY --from=css /src/src/Savvori.WebApp/wwwroot/lib/htmx.min.js src/Savvori.WebApp/wwwroot/lib/htmx.min.js
 RUN dotnet publish src/Savvori.WebApp/Savvori.WebApp.csproj -c Release -o /app --no-restore
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
+FROM mcr.microsoft.com/dotnet/aspnet:11.0 AS final
 WORKDIR /app
 COPY --from=build /app .
 
